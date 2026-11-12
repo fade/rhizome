@@ -18,7 +18,8 @@ SUITES    := animations decorations surface window-rules floating frame-pruning 
              focus-on-close focus-after-capture layer-focus \
              workspace-modes theming bar-guard session-icons quickwins \
              groups interactivity workspace-restore workspace-switch-away \
-             takeover tray-menus keymap-layers key-sequences key-grabs key-names
+             takeover tray-menus keymap-layers key-sequences key-grabs key-names \
+             prompt-free-text
 
 .PHONY: all build test install docs clean help
 
