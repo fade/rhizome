@@ -133,3 +133,11 @@ stubbed river requests. Run with:
   run from the command palette or over IPC: the command's own message
   stays, a non-empty reply is shown when the command showed nothing,
   and an empty reply never replaces a message.
+- `shm-buffers.lisp` - layer-surface shm buffers: repeated configures
+  of one surface hold one shm file, and tearing down the bar, the
+  message window, the prefix capture surface, the prompt or the eval
+  prompt leaves none; a second teardown is harmless. Covers the
+  compositor closing each overlay, a second message arriving before
+  the first is configured or during a resize (one surface, one
+  buffer), and reopening an overlay over a state that still holds a
+  buffer.
