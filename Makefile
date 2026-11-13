@@ -20,7 +20,8 @@ SUITES    := animations decorations surface window-rules floating \
              interactivity workspace-restore workspace-switch-away takeover \
              tray-menus prompt-free-text palette-message frame-pruning \
              repl-server-config repl-server-port keymap-layers key-sequences \
-             key-grabs key-names placement-policy split-focus shm-buffers
+             key-grabs key-names placement-policy split-focus shm-buffers \
+             pull-hidden
 
 .PHONY: all build test install docs clean help
 

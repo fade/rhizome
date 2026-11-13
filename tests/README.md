@@ -141,3 +141,7 @@ stubbed river requests. Run with:
   the first is configured or during a resize (one surface, one
   buffer), and reopening an overlay over a state that still holds a
   buffer.
+- `pull-hidden.lisp` - pull-hidden-next and its previous direction:
+  hidden windows cycle in window-number order whatever order the
+  workspace lists them in, wrapping at either end; unnumbered windows
+  come after the numbered ones.
