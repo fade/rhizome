@@ -128,3 +128,9 @@ stubbed river requests. Run with:
   hidden windows cycle in window-number order whatever order the
   workspace lists them in, wrapping at either end; unnumbered windows
   come after the numbered ones.
+- `workspace-focus.lisp` - keyboard focus across workspace changes:
+  switching to an empty workspace clears focus; switching back focuses
+  the window last focused there, or the newest unminimized window
+  there; moving the focused marked window off the visible workspace
+  hands focus to a window that stays; and when the focused window is
+  moved, the view follows the window and it keeps focus.
