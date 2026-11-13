@@ -134,3 +134,7 @@ stubbed river requests. Run with:
   there; moving the focused marked window off the visible workspace
   hands focus to a window that stays; and when the focused window is
   moved, the view follows the window and it keeps focus.
+- `palette-message.lisp` - the message a command leaves on screen when
+  run from the command palette or over IPC: the command's own message
+  stays, a non-empty reply is shown when the command showed nothing,
+  and an empty reply never replaces a message.
