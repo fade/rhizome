@@ -60,3 +60,7 @@ stubbed river requests. Run with:
   eval prompt's evaluator.
 - `ipc.lisp` — command dispatch and a real unix-socket round-trip
   (server thread + client thread + main-thread queue drain).
+- `palette-message.lisp` - the message a command leaves on screen when
+  run from the command palette or over IPC: the command's own message
+  stays, a non-empty reply is shown when the command showed nothing,
+  and an empty reply never replaces a message.
