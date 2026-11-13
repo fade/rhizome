@@ -19,7 +19,7 @@ SUITES    := animations decorations surface window-rules floating \
              theming bar-guard session-icons quickwins groups interactivity \
              workspace-restore workspace-switch-away takeover tray-menus \
              prompt-free-text frame-pruning repl-server-config keymap-layers \
-             key-sequences key-grabs key-names
+             key-sequences key-grabs key-names placement-policy
 
 .PHONY: all build test install docs clean help
 
