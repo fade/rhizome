@@ -138,7 +138,11 @@ Returns (values value found-p)."
     ;; workspace switch (river_seat_v1.pointer_warp); set it nil if
     ;; pointer jumps bother you. xcursor theme/size default to the
     ;; XCURSOR_THEME/XCURSOR_SIZE the session exports.
-    :pointer (:warp-on-switch t)
+    ;; :focus-policy :click focuses a window when it is clicked;
+    ;; :sloppy also focuses the window the pointer moves into,
+    ;; without raising it (StumpWM's *mouse-focus-policy*).
+    :pointer (:warp-on-switch t
+              :focus-policy :click)
     :theme (:font-family "monospace"
             :font-size 14
             :focused-border "#7aa2f7"

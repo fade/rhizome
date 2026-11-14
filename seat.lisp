@@ -165,6 +165,109 @@ the sequence that grants non-exclusive focus keeps it from the surface."
         (error (e)
           (format t "~&; Rhizome: failed to register seat with layer shell: ~A~%" e))))))
 
+;;; --- Mouse focus policy ---
+;;;
+;;; (:pointer :focus-policy) is :click (only a click focuses) or
+;;; :sloppy (the window the pointer crosses into takes keyboard focus,
+;;; without raising). River sends pointer_enter and pointer_leave
+;;; ahead of a manage sequence, and pointer_position only inside one
+;;; when the position changed; a position change alone never starts a
+;;; manage sequence. Sloppy focus therefore acts on a pointer_enter
+;;; that arrived since the previous pass, with motion: an enter without
+;;; motion came from a layout change, a workspace switch, or a window
+;;; mapping under a still pointer, and motion without an enter stayed
+;;; inside the window already entered. A pointer warp rhizome sends
+;;; counts as neither.
+
+(defvar *pointer-focus-state* (make-hash-table :test 'eq)
+  "Per-seat pointer focus bookkeeping, a plist per seat:
+:entered is the window under the pointer, or NIL;
+:crossed is true when a pointer_enter arrived since the previous pass;
+:x and :y are the pointer position at the previous manage sequence;
+:focus is the seat's focused window when the previous pass ended;
+:warp is (X . Y) of a pointer warp sent and not yet landed, or NIL.")
+
+(defun pointer-focus-get (seat key)
+  "KEY of SEAT's pointer focus bookkeeping."
+  (getf (gethash seat *pointer-focus-state*) key))
+
+(defun pointer-focus-put (seat key value)
+  "Set KEY of SEAT's pointer focus bookkeeping to VALUE."
+  (setf (getf (gethash seat *pointer-focus-state*) key) value))
+
+(defun mouse-focus-policy ()
+  "The configured mouse focus policy, :click or :sloppy. A missing or
+unrecognized (:pointer :focus-policy) reads as :click."
+  (if (eq (config-getf '(:pointer) :focus-policy :default :click) :sloppy)
+      :sloppy
+      :click))
+
+(defun pointer-focus-suppressed-p (seat)
+  "True while a modal interaction owns input: the expose overview, a
+prompt, the eval prompt, the launcher, a menu, prefix-key capture
+(which-key included), interactive frame resize, or an interactive
+float move/resize on SEAT."
+  (or (seat-op-state seat)
+      (seat-op-pending seat)
+      (some (lambda (name) (and (boundp name) (symbol-value name)))
+            '(*expose-active* *prompt-active* *eval-prompt-active*
+              *launcher-active* *menu-active* *prefix-mode-active*
+              *iresize-active*))))
+
+(defun pointer-focus-target (seat)
+  "The managed, shown, unfocused window under SEAT's pointer, or NIL."
+  (let ((win (pointer-focus-get seat :entered)))
+    (and win
+         (window-proxy win)
+         (eq (gethash (window-proxy win) *windows*) win)
+         (not (window-hidden-p win))
+         (not (window-minimized-p win))
+         (not (window-focused-p win))
+         win)))
+
+(defun note-pointer-warp (seat x y)
+  "Record that a pointer warp to X, Y was sent for SEAT. The pass in
+which the pointer lands there takes that position as its baseline, so
+the enter and motion the warp causes take no focus."
+  (pointer-focus-put seat :warp (cons x y)))
+
+(defun pointer-focus-manage-pass ()
+  "Apply the :sloppy mouse focus policy in a manage sequence, before
+queued focus requests flush. For each seat, the window under the
+pointer takes keyboard focus, without raising, only when all hold:
+a pointer_enter arrived since the previous manage sequence;
+the pointer moved since the previous manage sequence;
+the pointer is not where a pointer warp of rhizome's put it;
+the seat's focus is what the previous pass left it as.
+Motion inside the entered window never takes focus. The last
+condition skips the sequence in which a key or command moved focus,
+because the motion that sequence reports may predate the move."
+  (let ((sloppy (eq (mouse-focus-policy) :sloppy)))
+    (dolist (seat (all-seats))
+      (let* ((x (seat-pointer-x seat))
+             (y (seat-pointer-y seat))
+             (last-x (pointer-focus-get seat :x))
+             (last-y (pointer-focus-get seat :y))
+             (moved (and last-x last-y
+                         (or (/= x last-x) (/= y last-y))))
+             (warp (pointer-focus-get seat :warp))
+             (warped (and warp (= x (car warp)) (= y (cdr warp))))
+             (crossed (pointer-focus-get seat :crossed))
+             (undisturbed (eq (seat-focused-window seat)
+                              (pointer-focus-get seat :focus)))
+             (target (pointer-focus-target seat)))
+        (when (and sloppy crossed moved (not warped) undisturbed target
+                   (not (pointer-focus-suppressed-p seat)))
+          (focus-window target seat :raise nil))
+        ;; A warp stays pending until the pointer lands on it or moves
+        ;; elsewhere
+        (when (and warp (or warped moved))
+          (pointer-focus-put seat :warp nil))
+        (pointer-focus-put seat :crossed nil)
+        (pointer-focus-put seat :x x)
+        (pointer-focus-put seat :y y)
+        (pointer-focus-put seat :focus (seat-focused-window seat))))))
+
 (defun handle-seat-event (seat event-name &rest args)
   "Dispatch river_seat_v1 events for SEAT."
   (case event-name
@@ -180,12 +283,14 @@ the sequence that grants non-exclusive focus keeps it from the surface."
              (seat-pointer-y seat) y)))
 
     (:pointer-enter
+     ;; Recorded for the mouse focus policy, which acts on it in the
+     ;; manage sequence that follows (pointer-focus-manage-pass)
      (destructuring-bind (window-proxy) args
-       (declare (ignore window-proxy))
-       nil))
+       (pointer-focus-put seat :entered (gethash window-proxy *windows*))
+       (pointer-focus-put seat :crossed t)))
 
     (:pointer-leave
-     nil)
+     (pointer-focus-put seat :entered nil))
 
     (:window-interaction
      (destructuring-bind (window-proxy) args
