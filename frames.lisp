@@ -276,19 +276,72 @@ nearest in the raw direction."
           (or (find-if #'overlaps-p sorted)
               (first sorted)))))))
 
+(defun frames-focus-empty-p ()
+  "True when (:frames (:focus-empty t)) lets frame focus move into an
+empty frame."
+  (and (config-getf '(:frames) :focus-empty :default nil) t))
+
+(defun workspace-frame-leaf (output workspace index)
+  "The leaf frame at 0-based INDEX in layout order of WORKSPACE's tree
+on OUTPUT, or NIL when the tree has fewer leaves."
+  (and (integerp index)
+       (>= index 0)
+       (nth index (frame-leaves (frame-tree-for output workspace)))))
+
+(defun frame-focus-window (frame)
+  "The window focusing FRAME gives keyboard focus to: its current
+window unless minimized, else its first unminimized window, else NIL."
+  (let ((current (frame-current-window frame)))
+    (if (and current (not (window-minimized-p current)))
+        current
+        (find-if-not #'window-minimized-p (frame-windows frame)))))
+
+(defun clear-keyboard-focus ()
+  "Unfocus every window and queue a focus clear on every seat."
+  (dolist (win (all-windows))
+    (setf (window-focused-p win) nil))
+  (dolist (seat (all-seats))
+    (clear-focus seat)))
+
+(defun focus-frame (output workspace frame)
+  "Make FRAME the current frame of WORKSPACE on OUTPUT and move keyboard
+focus with it: every seat focuses (frame-focus-window FRAME), or, when
+FRAME holds no such window, keyboard focus clears, so a new window
+opens in FRAME under the :focused placement entry. Returns FRAME, or
+NIL with nothing changed when OUTPUT does not show WORKSPACE or FRAME
+is not a leaf of its tree."
+  (when (and (eql (current-workspace output) workspace)
+             (member frame (frame-leaves (frame-tree-for output workspace))
+                     :test #'eq))
+    (setf (gethash (frame-key output workspace) *current-frames*) frame)
+    (let ((win (frame-focus-window frame)))
+      (if win
+          (dolist (seat (all-seats))
+            (focus-window win seat))
+          (clear-keyboard-focus)))
+    (request-manage-dirty)
+    frame))
+
 (defun focus-frame-direction (output workspace direction)
   "Move frame focus one step in DIRECTION. If the target frame holds
-windows, the nearest one takes keyboard focus."
+windows, the nearest one takes keyboard focus. An empty target takes
+focus only under (:frames (:focus-empty t)), through focus-frame;
+otherwise only the stored current-frame pointer moves."
   (let* ((root (frame-tree-for output workspace))
          (target (frame-at-direction (current-frame-for output workspace)
                                      direction (frame-leaves root))))
     (when target
-      (setf (gethash (frame-key output workspace) *current-frames*) target)
-      (let ((win (frame-current-window target)))
-        (when win
-          (dolist (seat (all-seats))
-            (focus-window win seat))))
-      (request-manage-dirty))))
+      (if (and (null (frame-focus-window target))
+               (frames-focus-empty-p))
+          (focus-frame output workspace target)
+          (progn
+            (setf (gethash (frame-key output workspace) *current-frames*)
+                  target)
+            (let ((win (frame-current-window target)))
+              (when win
+                (dolist (seat (all-seats))
+                  (focus-window win seat))))
+            (request-manage-dirty))))))
 
 (defun move-window-to-frame-direction (output workspace direction)
   "Move the focused window to the frame in DIRECTION (StumpWM's

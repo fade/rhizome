@@ -579,9 +579,18 @@ window, on every visible output, with one numbering: outputs left to
 right, each frame tree in layout order, using the characters of
 =rhizome:*frame-number-map*= (=0-9=, then =a-z=). Type a label to focus
 that frame and its window, on whichever output it sits. =C-g=,
-Escape, or any other key cancels. Empty frames carry no label. The
-label colour is =(:theme :frame-outline)= when it is a colour, else the
-focused border colour.
+Escape, or any other key cancels. Empty frames carry a label only
+under =(:frames (:focus-empty t))=, below. The label colour is
+=(:theme :frame-outline)= when it is a colour, else the focused border
+colour.
+
+=rhizome-cmd launch-into LABEL COMMAND...= starts =COMMAND= so that its
+first window opens in the frame =C-t f= labels =LABEL=, on any visible
+output, without moving focus or switching workspaces. An occupied frame
+splits for it as any new window's frame does. The window must come from
+the process the command starts or one of its children: a program that
+hands the window to an instance already running opens where any new
+window does.
 
 ** Message window and interactive prompts
 
@@ -1054,6 +1063,15 @@ frames holding windows, one visible at a time:
   ;; :auto    the default: your splits stay, dynamic splits close
   ;; :never   every empty frame stays, as in StumpWM
   ;; :always  every empty frame closes
+  #+end_src
+- By default, =C-t= arrows into an empty frame leave keyboard focus on
+  the window that had it, and =C-t f= skips empty frames. With
+  =(:frames (:focus-empty t))= both move into an empty frame: keyboard focus
+  clears, the frame outline moves there, and the next new window opens
+  in it. Split, move into the empty half, launch.
+
+  #+begin_src lisp
+  (rhizome:configure '(:frames (:focus-empty t)))
   #+end_src
 - Placement is a policy, and the default mirrors StumpWM
   (=*new-frame-action*= and =*new-window-preferred-frame*=). A split

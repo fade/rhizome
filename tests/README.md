@@ -219,3 +219,10 @@ stubbed river requests. Run with:
   output's frame, the C-t f and C-t F bindings, and the label surfaces
   torn down on a pick, C-g, Escape, any other key, the timeout, and
   the removal of an output.
+- `focus-empty-frames.lisp` - focus into empty frames and frame
+  launches: `(:frames (:focus-empty ...))` off and on, toggled at
+  runtime, for the C-t arrows and C-t f; keyboard focus cleared and the
+  next new window landing in the empty frame; `focus-frame`;
+  `launch-into-frame` into a frame on another output, an occupied
+  frame, and a hidden workspace, which stays hidden; claims matched by
+  process ancestry, lapsed claims, and windows older than the launch.

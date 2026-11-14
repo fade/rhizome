@@ -185,17 +185,19 @@ being its visible window."
 ;;; --- Call sites ---
 
 (defun placement-frame-for-new-window (win output workspace)
-  "The leaf frame WIN enters on WORKSPACE of OUTPUT, as the configured
-policy chooses; the current frame when the policy yields no leaf of
-this workspace or signals an error."
+  "The leaf frame WIN enters on WORKSPACE of OUTPUT: the frame WIN was
+launched into (launch-into-frame) while it is still a leaf there, else
+the frame the configured policy chooses, else the current frame when
+the policy yields no leaf of this workspace or signals an error."
   (let ((leaves (frame-leaves (frame-tree-for output workspace)))
-        (frame (handler-case
-                   (placement-new-window-frame
-                    (current-placement-policy) output workspace win
-                    (workspace-focus-history output workspace))
-                 (error (c)
-                   (format t "~&; Rhizome: placement policy error: ~A~%" c)
-                   nil))))
+        (frame (or (launch-target-frame win output workspace)
+                   (handler-case
+                       (placement-new-window-frame
+                        (current-placement-policy) output workspace win
+                        (workspace-focus-history output workspace))
+                     (error (c)
+                       (format t "~&; Rhizome: placement policy error: ~A~%" c)
+                       nil)))))
     (if (and (frame-p frame) (member frame leaves :test #'eq))
         frame
         (current-frame-for output workspace))))
