@@ -312,6 +312,10 @@ handlers should make window management requests here."
   ;; use_ssd / use_csd answer decoration hints: manage-state too
   (sync-window-decorations)
 
+  ;; Windows whose remembered output awaited a connector name move
+  ;; now, before this pass adopts them (workspaces.lisp)
+  (resolve-pending-window-outputs)
+
   ;; New windows open on the current output; bind it once so every
   ;; per-output pass uses the same output while focus moves
   (let ((*arrival-output* (current-output)))

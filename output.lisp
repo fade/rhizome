@@ -54,6 +54,11 @@ re-sends the presentation mode (apply-presentation-mode diffs it)."
    (width    :initarg :width    :accessor output-width :initform 0)
    (height   :initarg :height   :accessor output-height :initform 0)
    (wl-output-name :initarg :wl-output-name :accessor output-wl-output-name :initform nil)
+   (geometry-pending :initarg :geometry-pending
+                     :accessor output-geometry-pending :initform nil
+                     :documentation "The geometry events (:position,
+:dimensions) river has not sent yet. Until both arrive, X, Y, WIDTH
+and HEIGHT are defaults, not facts.")
    (current-layout :initarg :current-layout :accessor output-current-layout :initform :master-stack)
    (capture-sessions :initarg :capture-sessions
                      :accessor output-capture-sessions :initform 0)
@@ -62,7 +67,10 @@ re-sends the presentation mode (apply-presentation-mode diffs it)."
 
 (defun register-output (proxy)
   "Register a new river_output_v1 proxy and set up event handlers."
-  (let ((output (make-instance 'rhizome-output :proxy proxy)))
+  (let ((output (make-instance 'rhizome-output
+                               :proxy proxy
+                               :geometry-pending (list :position
+                                                       :dimensions))))
     (setf (gethash proxy *outputs*) output)
     (push (lambda (event-name &rest args)
             (apply #'handle-output-event output event-name args))
@@ -91,7 +99,9 @@ re-sends the presentation mode (apply-presentation-mode diffs it)."
     (:position
      (destructuring-bind (x y) args
        (setf (output-x output) x
-             (output-y output) y)))
+             (output-y output) y
+             (output-geometry-pending output)
+             (remove :position (output-geometry-pending output)))))
 
     (:capture-sessions
      ;; v5: active screen captures (screencasts, portals) on this
@@ -104,7 +114,9 @@ re-sends the presentation mode (apply-presentation-mode diffs it)."
     (:dimensions
      (destructuring-bind (width height) args
        (setf (output-width output) width
-             (output-height output) height)
+             (output-height output) height
+             (output-geometry-pending output)
+             (remove :dimensions (output-geometry-pending output)))
        ;; Frame trees cache their geometry: rescale them to the new
        ;; size and re-tile (defined in frames.lisp, which loads later)
        (handler-case
