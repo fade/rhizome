@@ -37,6 +37,11 @@ stubbed river requests. Run with:
   window split open still close with it; `(:frames (:prune-empty :never))`
   keeps every empty frame and `:always` prunes user splits too; removing a
   split or collapsing to one frame leaves nothing marked.
+- `frame-adoption.lisp` - every tiled window stays in a leaf of its
+  workspace's tree: the manage pass that splits a frame for a new window
+  proposes both halves their size, and a window whose frame left the tree
+  (a layout switch while minimized, removing a split, expose) is adopted
+  again with a log line; a new window never follows a stale frame.
 - `placement-policy.lisp` - frame placement policy: by default a split
   fills its new half with the most recently focused hidden window and a
   new window enters the focused frame; `:new-frame :empty`, the
