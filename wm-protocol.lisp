@@ -89,6 +89,11 @@ feedback storm)."
 sequence. Focus is applied once per new window, not on every manage
 cycle (which would fight the user for focus).")
 
+(defvar *arrival-output* nil
+  "The output new windows open on, bound for the duration of one
+manage pass so every output's pass agrees on it. NIL outside a pass:
+find-output-for-window then asks current-output.")
+
 (defun update-wm-snapshot ()
   "Refresh the snapshot read by the bar thread. Called from the WM
 thread during manage and render sequences. Writes only when the
@@ -307,13 +312,16 @@ handlers should make window management requests here."
   ;; use_ssd / use_csd answer decoration hints: manage-state too
   (sync-window-decorations)
 
-  (maphash (lambda (output-proxy output)
-             (declare (ignore output-proxy))
-             (when (debug-events-p)
-               (format t "~&; Rhizome [debug]: output ~A dims ~Ax~A~%"
-                       output (output-width output) (output-height output)))
-             (apply-layout-for-output output))
-           *outputs*)
+  ;; New windows open on the current output; fix it once so the
+  ;; per-output passes cannot disagree as focus moves under them
+  (let ((*arrival-output* (current-output)))
+    (maphash (lambda (output-proxy output)
+               (declare (ignore output-proxy))
+               (when (debug-events-p)
+                 (format t "~&; Rhizome [debug]: output ~A dims ~Ax~A~%"
+                         output (output-width output) (output-height output)))
+               (apply-layout-for-output output))
+             *outputs*))
 
   ;; Advance interactive float move/resize operations (op-start,
   ;; op-delta application, op-end). Placeholder: redefined by
