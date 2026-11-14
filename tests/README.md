@@ -181,3 +181,12 @@ stubbed river requests. Run with:
   `launch-into-frame` into a frame on another output, an occupied
   frame, and a hidden workspace, which stays hidden; claims matched by
   process ancestry, lapsed claims, and windows older than the launch.
+- `bindings-overridable.lisp` - every default key binding, enumerated
+  from the default keymaps, rebound, unbound, and moved to a new key from
+  a user init, whether the init loads before the defaults exist (WM
+  start) or runs after them. The user's choice, and every other
+  default, holds through manage sequences, set-user-mod, set-prefix-key,
+  a rebuild of the defaults, reload-config, an output hotplug, and
+  configure. Also covers swapping C-t f and C-t F, a user key inside a
+  default sub-keymap (C-t h, C-t M, C-t e), and an unbind on a literal
+  modifier across set-user-mod.
