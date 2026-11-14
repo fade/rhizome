@@ -1,6 +1,7 @@
 ;;; Tests for session management (lock/logout/idle) and the bar
 ;;; icons module (discovery, scaling, hitbox action wiring).
 (ql:quickload :rhizome)
+(require :sb-posix)
 
 (in-package #:rhizome)
 
@@ -109,7 +110,11 @@
     ;; disables the bar, but never sends the stop request.
     (setf *detach-pending* nil
           spawned nil)
+    ;; Detach writes takeover state and window placements. Both stay
+    ;; out of the real home directory: a later WM boot that finds a
+    ;; takeover file there hot-swaps into stale state.
     (let ((*window-state-path* #p"/tmp/rhizome-test-detach-state.sexp")
+          (*takeover-state-path* #p"/tmp/rhizome-test-detach-takeover.sexp")
           (*window-state* (make-hash-table :test 'equal))
           (stopped 0))
       (setf (symbol-function 'rwm:river-window-manager-v1.stop)
@@ -146,6 +151,7 @@
               (symbol-function 'request-manage-dirty) real-dirty)))
     (setf *config* (default-config))
     (ignore-errors (delete-file #p"/tmp/rhizome-test-detach-state.sexp"))
+    (ignore-errors (delete-file #p"/tmp/rhizome-test-detach-takeover.sexp"))
 
     ;; --- Bar icons ---
 
@@ -202,12 +208,21 @@
 
     ;; --- Launcher: user-local desktop files + rescan ---
 
-    (ok "home applications dir resolves with the username intact"
-        (and (member #P"/home/glenn/.local/share/applications/"
-                     (launcher-desktop-paths)
-                     :test #'equal)
-             t)
-        t)
+    ;; A slashless HOME must keep its last component: run against a
+    ;; fixed fixture HOME so the check never depends on who runs it.
+    (let ((real-home (sb-ext:posix-getenv "HOME")))
+      (unwind-protect
+           (progn
+             (sb-posix:setenv "HOME" "/home/rhizome-test" 1)
+             (ok "home applications dir resolves with the username intact"
+                 (and (member #P"/home/rhizome-test/.local/share/applications/"
+                              (launcher-desktop-paths)
+                              :test #'equal)
+                      t)
+                 t))
+        (if real-home
+            (sb-posix:setenv "HOME" real-home 1)
+            (sb-posix:unsetenv "HOME"))))
     (ok "launcher rescan repopulates the app list"
         (let ((*launcher-app-list* nil))
           (launcher-refresh-app-list)
