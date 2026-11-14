@@ -21,7 +21,8 @@ SUITES    := animations decorations surface window-rules floating \
              tray-menus prompt-free-text palette-message frame-pruning \
              repl-server-config repl-server-port keymap-layers key-sequences \
              key-grabs key-names placement-policy split-focus shm-buffers \
-             pull-hidden bar-hide
+             pull-hidden bar-hide \
+             server-side-decorations
 
 .PHONY: all build test install docs clean help
 
