@@ -1,9 +1,9 @@
 ;;; Tests for the mouse focus policy: :click (the default) ignores
 ;;; pointer_enter, :sloppy gives the entered window keyboard focus
 ;;; without raising it, leaving a window for empty space keeps focus,
-;;; a pointer that has not moved never takes focus back from a key
-;;; or command, modal interactions suppress it, and a click still
-;;; focuses and raises.
+;;; only a pointer crossing into a window takes focus (never motion
+;;; inside it, a still pointer, or a pointer warp), modal interactions
+;;; suppress it, and a click still focuses and raises.
 (ql:quickload :rhizome)
 
 (in-package #:rhizome)
@@ -22,7 +22,7 @@
     ;; River-touching stubs
     (dolist (name '(message request-manage-dirty propose-window-dimensions
                     set-window-position set-window-borders show-window
-                    hide-window))
+                    hide-window rwm:river-seat-v1.focus-window))
       (setf (symbol-function name)
             (lambda (&rest args) (declare (ignore args)) nil)))
     (setf (symbol-function 'make-window-node)
@@ -40,7 +40,10 @@
            (c (make-instance 'rhizome-window :proxy :mf-c))
            (f1 (make-instance 'rhizome-window :proxy :mf-f1))
            (f2 (make-instance 'rhizome-window :proxy :mf-f2))
-           (px 100) (py 100))
+           (px 100) (py 100)
+           (warps-sent '()))
+      (setf (symbol-function 'rwm:river-seat-v1.pointer-warp)
+            (lambda (proxy x y) (push (list proxy x y) warps-sent)))
       (labels ((reset-world ()
                  (setf *seats* (make-hash-table)
                        (gethash :mf-seat *seats*) seat
@@ -49,6 +52,11 @@
                        *window-workspace* (make-hash-table)
                        *minimized-windows* (make-hash-table)
                        *pending-focus-requests* nil
+                       *pending-pointer-warps* nil
+                       warps-sent nil
+                       px 100 py 100
+                       (seat-pointer-x seat) px
+                       (seat-pointer-y seat) py
                        (gethash out *output-workspace*) 1)
                  (when (boundp '*pointer-focus-state*)
                    (clrhash (symbol-value '*pointer-focus-state*)))
@@ -82,6 +90,18 @@
                (move ()
                  (incf px 7)
                  (event :pointer-position px py))
+               (warp (x y)
+                 ;; A WM-initiated warp, sent by the manage pass that
+                 ;; flushes it
+                 (push (list :warp x y) *pending-pointer-warps*)
+                 (manage)
+                 (funcall 'flush-focus-requests))
+               (land (win x y)
+                 ;; River applies a warp: the pointer enters WIN and
+                 ;; the next sequence reports the new position
+                 (setf px x py y)
+                 (enter win)
+                 (event :pointer-position x y))
                (enter (win) (event :pointer-enter (window-proxy win)))
                (focused () (seat-focused-window seat))
                (top-float ()
@@ -151,8 +171,9 @@
         (enter a) (manage)
         (ok "an enter without motion does not take focus" (focused) c)
         (move) (manage)
-        (ok "motion afterwards hands focus to the window under the pointer"
-            (focused) a)
+        (ok "motion without a crossing does not take focus" (focused) c)
+        (event :pointer-leave) (enter b) (move) (manage)
+        (ok "crossing into a window afterwards focuses it" (focused) b)
 
         ;; A window opening under a still pointer
         (reset-world)
@@ -160,6 +181,65 @@
         (enter c) (manage)
         (ok "a window mapping under a still pointer does not take focus"
             (focused) b)
+
+        ;; --- Motion inside the entered window never focuses ---
+
+        (reset-world)
+        (enter b) (move) (manage)
+        ;; A key moves focus off the window under the pointer
+        (focus-window c seat)
+        (manage)
+        ;; Motion inside b starts no sequence; an unrelated one
+        ;; (an IPC eval, say) reports it later
+        (move) (move)
+        (manage)
+        (ok "motion inside the entered window leaves key focus"
+            (focused) c)
+        (move)
+        (manage)
+        (manage)
+        (ok "a later unrelated manage pass leaves key focus" (focused) c)
+        (event :pointer-leave) (enter a) (move) (manage)
+        (ok "a crossing after key focus focuses the entered window"
+            (focused) a)
+
+        ;; --- A pointer warp is not motion ---
+
+        (reset-world)
+        (enter b) (move) (manage)
+        (warp 960 540)
+        (ok "a queued warp reaches river"
+            (first warps-sent) (list :mf-seat 960 540))
+        (land f1 960 540)
+        (manage)
+        (ok "a warp onto a float does not focus it" (focused) b)
+        (move) (manage)
+        (ok "motion inside the float after a warp does not focus it"
+            (focused) b)
+        (event :pointer-leave) (enter c) (move) (manage)
+        (ok "a crossing after a warp focuses the entered window"
+            (focused) c)
+
+        ;; The warp lands after an unrelated sequence
+        (reset-world)
+        (enter b) (move) (manage)
+        (warp 960 540)
+        (manage)
+        (land f1 960 540)
+        (manage)
+        (ok "a warp landing a sequence late does not focus" (focused) b)
+        (event :pointer-leave) (enter f2) (move) (manage)
+        (ok "a crossing after a late warp focuses the entered window"
+            (focused) f2)
+
+        ;; A warp to where the pointer already is moves nothing
+        (reset-world)
+        (enter b) (move) (manage)
+        (warp px py)
+        (manage)
+        (event :pointer-leave) (enter c) (move) (manage)
+        (ok "a crossing after a no-op warp focuses the entered window"
+            (focused) c)
 
         ;; --- Expose, prompt, prefix and float ops suppress ---
 

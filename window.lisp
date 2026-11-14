@@ -489,8 +489,11 @@ A queued NIL window sends clear_focus for its seat."
     (when (eq (first w) :warp)
       (dolist (seat (all-seats))
         (handler-case
-            (rwm:river-seat-v1.pointer-warp (seat-proxy seat)
-                                           (second w) (third w))
+            (progn
+              (rwm:river-seat-v1.pointer-warp (seat-proxy seat)
+                                             (second w) (third w))
+              ;; Mouse focus ignores the enter and motion it causes
+              (note-pointer-warp seat (second w) (third w)))
           (error ()
             ;; Pre-v3 river or transient seat state: no warp, no crash
             nil)))))
