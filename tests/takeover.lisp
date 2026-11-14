@@ -369,6 +369,205 @@
                 (list (eq (window-output legacy) hdmi)
                       (eq (window-output legacy) dvi))
                 '(t nil))))
+
+        ;; --- boot: restore waits until connector names are known ---
+        ;; The successor learns its windows and outputs from river
+        ;; before the output manager names any head: in the VM log the
+        ;; first done with named heads follows the first manage pass.
+        ;; Events go through the real registration functions and proxy
+        ;; hooks, in that order.
+        (labels ((proxy () (make-instance 'wl:wl-proxy))
+                 (deliver (proxy event &rest args)
+                   (dolist (hook (wl:wl-proxy-hooks proxy))
+                     (apply hook event args)))
+                 (arrive-window (id)
+                   (let ((proxy (proxy)))
+                     (register-window proxy)
+                     (deliver proxy :identifier id)
+                     (gethash proxy *windows*)))
+                 (arrive-output (x width height)
+                   (let ((proxy (proxy)))
+                     (register-output proxy)
+                     (deliver proxy :dimensions width height)
+                     (deliver proxy :position x 0)
+                     (gethash proxy *outputs*)))
+                 (arrive-heads ()
+                   ;; Virtual-1 1280x800 at 0,0 and Virtual-2 1024x768
+                   ;; at 1280,0, as in the VM, then the done
+                   (loop for (name x width height)
+                           in '(("Virtual-1" 0 1280 800)
+                                ("Virtual-2" 1280 1024 768))
+                         do (let ((head (proxy)) (mode (proxy)))
+                              (display-manager-event :head head)
+                              (deliver head :name name)
+                              (deliver head :mode mode)
+                              (deliver mode :size width height)
+                              (deliver mode :refresh 60000)
+                              (deliver head :enabled 1)
+                              (deliver head :current-mode mode)
+                              (deliver head :position x 0)
+                              (deliver head :scale 1)))
+                   (display-manager-event :done 1))
+                 (manage-pass ()
+                   ;; The restore steps of on-manage-sequence, in order
+                   (resolve-pending-window-outputs)
+                   (when (and *takeover-state* (takeover-settled-p))
+                     (apply-takeover-trees)))
+                 (connector (win)
+                   (output-connector-name (window-output win)))
+                 (boot-wm ()
+                   (fresh-wm)
+                   (setf *pending-window-outputs* (make-hash-table)
+                         *window-state* (make-hash-table :test 'equal)))
+                 (two-window-takeover (&optional (second-output "Virtual-2"))
+                   (setf *takeover-state*
+                         (list :outputs (list (cons "Virtual-1" 1)
+                                              (cons second-output 1))
+                               :windows (list (list "term-a" :workspace 1
+                                                    :number 1
+                                                    :output "Virtual-1")
+                                              (list "term-b" :workspace 1
+                                                    :number 2
+                                                    :output second-output))
+                               :trees (list (cons (cons "Virtual-1" 1)
+                                                  '(:frame (:rect 0 0 1280 800) 1))
+                                            (cons (cons second-output 1)
+                                                  '(:frame (:rect 0 0 1024 768) 2))))))
+                 (takeover-boot (outputs-first)
+                   ;; Returns (term-a term-b virtual-1 virtual-2 log)
+                   (boot-wm)
+                   (two-window-takeover)
+                   (let (a b v1 v2)
+                     (let ((log (with-output-to-string (*standard-output*)
+                                  (when outputs-first
+                                    (setf v1 (arrive-output 0 1280 800)
+                                          v2 (arrive-output 1280 1024 768)))
+                                  (setf a (arrive-window "term-a")
+                                        b (arrive-window "term-b"))
+                                  (manage-pass)
+                                  (unless outputs-first
+                                    (setf v1 (arrive-output 0 1280 800)
+                                          v2 (arrive-output 1280 1024 768))
+                                    (manage-pass))
+                                  (arrive-heads)
+                                  (manage-pass))))
+                       (list a b v1 v2 log)))))
+          (let ((*window-state-path*
+                  #P"/tmp/rhizome-test-window-state-boot.sexp")
+                (*window-state* (make-hash-table :test 'equal))
+                (*pending-window-outputs* (make-hash-table)))
+            ;; Windows, then outputs, then heads and done
+            (destructuring-bind (a b v1 v2 log) (takeover-boot nil)
+              (ok "windows before outputs before heads: each window returns to its own output"
+                  (list (connector a) (connector b))
+                  '("Virtual-1" "Virtual-2"))
+              (ok "windows before outputs before heads: each tree is restored on its own output"
+                  (list (tree-windows v1 1) (tree-windows v2 1)
+                        (and (search "tree restored Virtual-2" log) t))
+                  (list (list a) (list b) t))
+              (ok "windows before outputs before heads: the takeover is consumed once settled"
+                  *takeover-state* nil))
+            ;; River's own order: outputs with geometry, windows, heads
+            (destructuring-bind (a b v1 v2 log) (takeover-boot t)
+              (declare (ignore log))
+              (ok "outputs before windows before heads: each window returns to its own output"
+                  (list (connector a) (connector b)
+                        (tree-windows v1 1) (tree-windows v2 1))
+                  (list "Virtual-1" "Virtual-2" (list a) (list b))))
+
+            ;; Heads never arrive: the wait is bounded and names the
+            ;; connectors it gave up on
+            (boot-wm)
+            (two-window-takeover)
+            (let* ((passes 0)
+                   (log (with-output-to-string (*standard-output*)
+                          (arrive-output 0 1280 800)
+                          (arrive-output 1280 1024 768)
+                          (arrive-window "term-a")
+                          (arrive-window "term-b")
+                          (loop while (and *takeover-state* (< passes 100))
+                                do (incf passes) (manage-pass)))))
+              (ok "with no heads the takeover settles after the pass limit"
+                  passes (1+ *output-name-pass-limit*))
+              (ok "the timeout logs the unresolved connectors"
+                  (and (search "outputs unresolved after" log)
+                       (search "Virtual-1, Virtual-2" log)
+                       t)
+                  t))
+
+            ;; Heads known, but the saved head is gone: settle at once
+            ;; and log the output and the skipped tree
+            (boot-wm)
+            (two-window-takeover "Virtual-9")
+            (let* ((passes 0)
+                   (log (with-output-to-string (*standard-output*)
+                          (arrive-output 0 1280 800)
+                          (arrive-output 1280 1024 768)
+                          (arrive-heads)
+                          (arrive-window "term-a")
+                          (arrive-window "term-b")
+                          (loop while (and *takeover-state* (< passes 100))
+                                do (incf passes) (manage-pass)))))
+              (ok "a gone head does not hold the takeover once heads are named"
+                  passes 1)
+              (ok "a gone head is logged, and so is its skipped tree"
+                  (list (and (search "takeover: no output Virtual-9" log) t)
+                        (and (search "takeover tree skipped: no output Virtual-9"
+                                     log)
+                             t))
+                  '(t t)))
+
+            ;; An output whose geometry has not arrived matches no head;
+            ;; its default 0,0 must not borrow Virtual-1's name
+            (boot-wm)
+            (let ((*standard-output* (make-broadcast-stream)))
+              (arrive-heads))
+            (let ((proxy (proxy)))
+              (let ((*standard-output* (make-broadcast-stream)))
+                (register-output proxy))
+              (let ((out (gethash proxy *outputs*)))
+                (ok "an output without position or dimensions has no connector name"
+                    (output-connector-name out) nil)
+                (deliver proxy :dimensions 1024 768)
+                (ok "an output without its position has no connector name"
+                    (output-connector-name out) nil)
+                (deliver proxy :position 1280 0)
+                (ok "an output with its geometry takes its head's name"
+                    (output-connector-name out) "Virtual-2")))
+
+            ;; window-state.sexp (a crash relaunch): the remembered
+            ;; output waits for the heads the same way
+            (boot-wm)
+            (setf (gethash "remembered-b" *window-state*)
+                  '(:workspace 2 :output "Virtual-2"))
+            (let ((*standard-output* (make-broadcast-stream)))
+              (arrive-output 0 1280 800)
+              (arrive-output 1280 1024 768))
+            (let ((win (let ((*standard-output* (make-broadcast-stream)))
+                         (arrive-window "remembered-b"))))
+              (let ((*standard-output* (make-broadcast-stream)))
+                (manage-pass)
+                (arrive-heads)
+                (manage-pass))
+              (ok "window-state: the remembered output is restored once heads are named"
+                  (list (connector win) (window-workspace win)
+                        (hash-table-count *pending-window-outputs*))
+                  '("Virtual-2" 2 0)))
+            ;; ... and gives up, logged, when heads never come
+            (boot-wm)
+            (setf (gethash "remembered-b" *window-state*)
+                  '(:workspace 2 :output "Virtual-2"))
+            (let ((log (with-output-to-string (*standard-output*)
+                         (arrive-output 0 1280 800)
+                         (arrive-output 1280 1024 768)
+                         (arrive-window "remembered-b")
+                         (loop repeat (+ 5 *output-name-pass-limit*)
+                               do (manage-pass)))))
+              (ok "window-state: an output that never resolves is dropped and logged"
+                  (list (hash-table-count *pending-window-outputs*)
+                        (and (search "no output Virtual-2 for remembered-b" log)
+                             t))
+                  '(0 t)))))
         (ignore-errors (delete-file *takeover-state-path*))
         (ignore-errors
           (delete-file #P"/tmp/rhizome-test-window-state.sexp"))))

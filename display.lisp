@@ -49,7 +49,11 @@ offers it (or after the manager says finished).")
     (:done
      (destructuring-bind (serial) args
        (setf *display-serial* serial)
-       (display-layout-on-done)))
+       (display-layout-on-done)
+       ;; Heads are named now: a restore waiting on connector names
+       ;; resolves in the next manage pass
+       (when (and *wm-proxy* (saved-outputs-awaited-p))
+         (request-manage-dirty))))
     (:finished
      (setf *output-manager* nil))))
 
@@ -105,8 +109,10 @@ the result back to the hash."
 OUTPUT, or NIL when no head matches. A head matches when its position
 equals OUTPUT's and, where both sizes are known, its logical size
 does too. Unlike the wl_output global name, the connector name names
-the same head after a river restart."
-  (when output
+the same head after a river restart. NIL while OUTPUT's position or
+dimensions have not arrived: its defaults would match the head at
+0,0."
+  (when (and output (null (output-geometry-pending output)))
     (let ((x (output-x output)) (y (output-y output))
           (width (output-width output)) (height (output-height output)))
       (flet ((matches-p (state)
@@ -126,6 +132,21 @@ saved file, matches nothing."
   (and (stringp name)
        (find name (all-outputs) :key #'output-connector-name
                                 :test #'equal)))
+
+(defparameter *output-name-pass-limit* 20
+  "Manage passes a saved output may wait for its connector name before
+restore gives up on it. Bounds the wait when the output manager never
+names a head.")
+
+(defun output-names-pending-p ()
+  "True while connector names are not yet known: no output is
+registered, or some registered output matches no head. At boot river
+sends outputs and windows before the output manager names its heads,
+so a saved connector name that resolves to nothing then is not yet
+evidence the head is gone."
+  (let ((outputs (all-outputs)))
+    (or (null outputs)
+        (notevery #'output-connector-name outputs))))
 
 (defun display-mode-label (mode)
   "Human label for a mode proxy: \"1920x1080 @ 60Hz\"."
