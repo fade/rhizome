@@ -335,7 +335,11 @@ query returns the candidates unchanged."
         (nconc (nreverse direct) (nreverse fuzzy)))))
 
 (defun load-user-config ()
-  "Load the user's config file if it exists."
+  "Load the user's config file if it exists. The default keymaps are
+built first, so a user binding inside a default sub-keymap, or through
+the prefix key, extends the default instead of replacing it."
+  (when (fboundp 'ensure-default-keybindings)
+    (funcall 'ensure-default-keybindings))
   (let ((path (config-pathname)))
     (when (probe-file path)
       (format t "~&; Rhizome: loading config from ~A~%" path)

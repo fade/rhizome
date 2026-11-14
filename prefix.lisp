@@ -67,6 +67,14 @@ Labels and picking live in fselect.lisp (stub-redefined here).")
                :doc "Rhizome's prefix chain bindings.")
   "The default layer of the root prefix keymap: key -> binding. Only setup-default-prefix-bindings writes it.")
 
+(defvar *default-prefix-submaps*
+  (list :move (make-keymap :name :default-move)
+        :exchange (make-keymap :name :default-exchange)
+        :help (make-keymap :name :default-help))
+  "The default sub-keymaps under the prefix key (C-t M, C-t e, C-t h),
+by role. setup-default-prefix-bindings refills these objects in place,
+so a user keymap whose parent is one of them sees a rebuilt default.")
+
 (defvar *prefix-map*
   (make-keymap :name :prefix
                :doc "User prefix chain bindings."
@@ -748,7 +756,7 @@ by setup-default-prefix-bindings, which directs the writes to
   (define-prefix-key 65364 (lambda () (focus-frame-direction* :down)) "focus frame down")
   ;; C-t M <arrow> — move the focused window to the frame in that
   ;; direction (StumpWM: move-window; StumpWM's C-t m is lastmsg)
-  (let ((move-map (make-keymap)))
+  (let ((move-map (clear-keymap (getf *default-prefix-submaps* :move))))
     (define-keymap-key move-map 65361 (lambda () (move-window-direction* :left)))
     (define-keymap-key move-map 65362 (lambda () (move-window-direction* :up)))
     (define-keymap-key move-map 65363 (lambda () (move-window-direction* :right)))
@@ -757,7 +765,7 @@ by setup-default-prefix-bindings, which directs the writes to
   ;; C-t e <arrow> — swap the current frame's window with the frame
   ;; in that direction (StumpWM: exchange-direction, C-t x there;
   ;; rhizome keeps C-t x for the command palette)
-  (let ((exchange-map (make-keymap)))
+  (let ((exchange-map (clear-keymap (getf *default-prefix-submaps* :exchange))))
     (define-keymap-key exchange-map 65361
                        (lambda () (with-frame-context
                                     (exchange-window-direction out ws :left))))
@@ -785,7 +793,7 @@ by setup-default-prefix-bindings, which directs the writes to
                                                  (all-windows))))
                          "toggle fullscreen")                      ; F11
   ;; C-t h — help map (StumpWM: *help-map*)
-  (let ((help-map (make-keymap)))
+  (let ((help-map (clear-keymap (getf *default-prefix-submaps* :help))))
     ;; b — describe-bindings
     (define-keymap-key help-map 98 (lambda () (describe-prefix-bindings)))
     ;; c — describe-command
