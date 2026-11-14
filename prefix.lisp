@@ -115,6 +115,12 @@ the surface maps and receives keyboard focus."
   "True when the globals the capture surface needs are bound."
   (and *compositor* *shm* *layer-shell* t))
 
+(defun prefix-capture-open-p ()
+  "True while a key sequence holds an open capture surface. River gives
+that surface the keyboard once it maps; exit-prefix-mode and the
+surface's :closed handler give it back to the focused window."
+  (and *prefix-mode-active* *prefix-state* t))
+
 (defun open-prefix-capture-surface ()
   "Create the invisible keyboard-exclusive layer surface that routes
 keys to the WM's wl_keyboard, and set *prefix-mode-active*."

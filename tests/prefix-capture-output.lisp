@@ -2,7 +2,8 @@
 ;;; multi-output host: the prefix capture, its which-key message, and
 ;;; the prompt open on the current output's wl_output, never on
 ;;; whichever output the compositor picks for a surface without one.
-;;; River requests are stubbed.
+;;; Also covers focus_none while the prefix capture is open. River
+;;; requests are stubbed.
 (ql:quickload :rhizome)
 
 (in-package #:rhizome)
@@ -195,7 +196,46 @@
         (quiet #'enter-prefix-mode)
         (try "an output that returns is bound again"
              (lambda () (mapcar #'first binds))
-             '(42 42))))
+             '(42 42)))
+
+      ;; focus_none while the prefix capture is open
+      (flet ((focused-seat ()
+               (let* ((seat (make-instance 'rhizome-seat :proxy :seat))
+                      (win (make-instance 'rhizome-window :proxy :win)))
+                 (setf (gethash :seat *seats*) seat
+                       (gethash :win *windows*) win
+                       (seat-focused-window seat) win
+                       (window-focused-p win) t)
+                 seat)))
+        (two-heads)
+        (focused-seat)
+        (quiet #'enter-prefix-mode)
+        (setf *pending-focus-requests* nil
+              manage-requests 0)
+        (let ((text (with-output-to-string (*standard-output*)
+                      (handle-layer-shell-seat-event :focus-none))))
+          (try "focus_none while the capture is open queues no window focus"
+               (lambda () (list *pending-focus-requests* manage-requests))
+               '(nil 0))
+          (try "focus_none while the capture is open is logged as such"
+               (lambda () (and (search "prefix capture" text) t))
+               t))
+        (quiet #'exit-prefix-mode)
+        (setf *pending-focus-requests* nil)
+        (quiet (lambda () (handle-layer-shell-seat-event :focus-none)))
+        (try "focus_none after the capture closes gives the window the keyboard"
+             (lambda () (length *pending-focus-requests*))
+             1)
+        ;; The compositor closed the capture: its handler clears the mode
+        (two-heads)
+        (focused-seat)
+        (quiet #'enter-prefix-mode)
+        (setf *prefix-mode-active* nil
+              *pending-focus-requests* nil)
+        (quiet (lambda () (handle-layer-shell-seat-event :focus-none)))
+        (try "focus_none after the compositor closed the capture refocuses"
+             (lambda () (length *pending-focus-requests*))
+             1)))
 
     (format t "~&=== ~A passed, ~A failed ===~%" pass fail)
     (unless (zerop fail) (uiop:quit 1))))
