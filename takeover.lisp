@@ -123,6 +123,12 @@ The file is deleted so a later fresh boot sees nothing."
         *takeover-manage-passes* 0)
   (ignore-errors (delete-file *takeover-state-path*)))
 
+(defun saved-outputs-awaited-p ()
+  "True while a restore may still be waiting on connector names: a
+takeover is unapplied, or a remembered window output is pending."
+  (or (and *takeover-state* t)
+      (plusp (hash-table-count *pending-window-outputs*))))
+
 (defun find-output-by-wl-name (name)
   "The output whose wl_output global name is NAME, or NIL. The name
 holds for the life of one river session only; saved state uses
@@ -164,6 +170,9 @@ registered; see RESTORE-WINDOW-OUTPUT."
               ;; window onto its remembered output and workspace,
               ;; not the current ones
               (restore-window-output win (getf entry :output))
+              ;; The takeover entry supersedes a deferred window-state
+              ;; output; apply-takeover-trees re-homes the window
+              (remhash win *pending-window-outputs*)
               (when (getf entry :minimized)
                 (setf (window-minimized-p win) t))
               (when (getf entry :float)
@@ -178,19 +187,41 @@ registered; see RESTORE-WINDOW-OUTPUT."
                 (when (getf entry :float-height)
                   (setf (window-float-height win) (getf entry :float-height))))
               (request-manage-dirty)
-              (format t "~&; Rhizome: takeover: ~A → output ~A workspace ~A~%"
-                      (window-identifier win)
-                      (window-output-connector-name win)
-                      (getf entry :workspace)))
+              (let ((now (window-output-connector-name win))
+                    (saved (getf entry :output)))
+                (format t "~&; Rhizome: takeover: ~A → output ~A~:[~; (pending)~] workspace ~A~%"
+                        (window-identifier win)
+                        (or now saved)
+                        (and (stringp saved) (not (equal now saved)))
+                        (getf entry :workspace))))
           (error (e)
             (format t "~&; Rhizome: takeover placement failed: ~A~%" e)))))))
 
 ;;; --- Settle detection and tree/focus application ---
 
+(defun takeover-unresolved-connectors ()
+  "The connector names the takeover state records, for outputs,
+windows and trees, that resolve to no registered output, without
+duplicates. Non-string names from older files are ignored."
+  (let ((names (append (mapcar #'car (getf *takeover-state* :outputs))
+                       (loop for pair in (getf *takeover-state* :windows)
+                             collect (getf (cdr pair) :output))
+                       (mapcar #'caar (getf *takeover-state* :trees)))))
+    (remove-duplicates
+     (remove-if (lambda (name)
+                  (or (not (stringp name))
+                      (find-output-by-connector name)))
+                names)
+     :test #'equal :from-end t)))
+
 (defun takeover-settled-p ()
-  "Whether every takeover window has re-registered (or enough
-manage passes passed — windows closed during the gap never
-return)."
+  "Whether the takeover can be applied: every takeover window has
+re-registered (or more than 5 manage passes went by; windows closed
+during the gap never return), and every output the state names
+resolves by connector name. An output that does not resolve is waited
+for while connector names are not yet known, for at most
+*OUTPUT-NAME-PASS-LIMIT* passes. Settling with an output unresolved
+logs its connector name."
   (incf *takeover-manage-passes*)
   (let ((ids (loop for pair in (getf *takeover-state* :windows)
                    collect (car pair))))
@@ -199,13 +230,23 @@ return)."
     ;; 30 passes of waiting on them meant stale state lingered
     ;; across WM restarts — placing windows on the wrong
     ;; workspace (the 2026-11-04 MOD+D bug)
-    (or (> *takeover-manage-passes* 5)
-        (every (lambda (id)
-                 (find id (loop for w being the hash-values of *windows*
-                                when (window-identifier w)
-                                  collect (window-identifier w))
-                       :test #'equal))
-               ids))))
+    (when (or (> *takeover-manage-passes* 5)
+              (every (lambda (id)
+                       (find id (loop for w being the hash-values of *windows*
+                                      when (window-identifier w)
+                                        collect (window-identifier w))
+                             :test #'equal))
+                     ids))
+      (let ((unresolved (takeover-unresolved-connectors)))
+        (cond ((null unresolved) t)
+              ((not (output-names-pending-p))
+               (format t "~&; Rhizome: takeover: no output ~{~A~^, ~}~%"
+                       unresolved)
+               t)
+              ((> *takeover-manage-passes* *output-name-pass-limit*)
+               (format t "~&; Rhizome: takeover: outputs unresolved after ~D passes: ~{~A~^, ~}~%"
+                       (1- *takeover-manage-passes*) unresolved)
+               t))))))
 
 (defun translate-tree-numbers (sexp number-map)
   "Rewrite a dump sexp's window numbers through NUMBER-MAP
@@ -249,6 +290,9 @@ restore focus, then consume the takeover state."
         (let* ((key (car tree-entry))
                (out (find-output-by-connector (car key)))
                (ws (cdr key)))
+          (unless out
+            (format t "~&; Rhizome: takeover tree skipped: no output ~A~%"
+                    (car key)))
           (when (and out ws)
             (handler-case
                 (progn

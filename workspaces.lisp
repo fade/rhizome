@@ -417,6 +417,50 @@ Return the output WIN ends on, or NIL when no output exists."
       (setf (window-output win) target))
     target))
 
+(defvar *pending-window-outputs* (make-hash-table)
+  "Window → (connector-name . passes): a remembered output whose
+connector name did not resolve when the window registered, while
+connector names were not yet known. RESOLVE-PENDING-WINDOW-OUTPUTS
+retries it each manage pass.")
+
+(defun restore-window-output-or-defer (win output-name)
+  "RESTORE-WINDOW-OUTPUT, and when OUTPUT-NAME names no output only
+because connector names are not yet known, record it in
+*PENDING-WINDOW-OUTPUTS* so a later manage pass moves WIN there. WIN
+takes the fallback output meanwhile."
+  (restore-window-output win output-name)
+  (if (and (stringp output-name)
+           (null (find-output-by-connector output-name))
+           (output-names-pending-p))
+      (setf (gethash win *pending-window-outputs*) (cons output-name 0))
+      (remhash win *pending-window-outputs*)))
+
+(defun resolve-pending-window-outputs ()
+  "Manage pass: move each window in *PENDING-WINDOW-OUTPUTS* onto its
+remembered output once the connector name resolves. Drop an entry
+whose window is gone; drop and log one whose output is still absent
+once every output is named, or after *OUTPUT-NAME-PASS-LIMIT* passes."
+  (maphash
+   (lambda (win pending)
+     (destructuring-bind (name . passes) pending
+       (cond ((not (gethash (window-proxy win) *windows*))
+              (remhash win *pending-window-outputs*))
+             ((find-output-by-connector name)
+              (remhash win *pending-window-outputs*)
+              (restore-window-output win name)
+              (request-manage-dirty)
+              (format t "~&; Rhizome: restored output ~A for ~A~%"
+                      name (window-identifier win)))
+             ((or (not (output-names-pending-p))
+                  (>= passes *output-name-pass-limit*))
+              (remhash win *pending-window-outputs*)
+              (format t "~&; Rhizome: no output ~A for ~A after ~D passes~%"
+                      name (window-identifier win) passes))
+             (t
+              (setf (gethash win *pending-window-outputs*)
+                    (cons name (1+ passes)))))))
+   *pending-window-outputs*))
+
 (defun restore-window-state (win)
   "Restore WIN's remembered placement, if any. Runs before config
 rules so explicit rules override what was remembered. The output
@@ -434,7 +478,7 @@ takeover/relogin clustering bug."
           (setf (window-minimized-p win) nil)
           ;; Stamp the output so the manage pass adopts the window
           ;; onto ITS remembered output and workspace
-          (restore-window-output win (getf state :output)))
+          (restore-window-output-or-defer win (getf state :output)))
         (request-manage-dirty)
         (format t "~&; Rhizome: restored placement for ~A (workspace ~A)~%"
                 (window-identifier win) (getf state :workspace))))))
