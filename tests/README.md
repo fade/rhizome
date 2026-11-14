@@ -42,6 +42,10 @@ stubbed river requests. Run with:
   proposes both halves their size, and a window whose frame left the tree
   (a layout switch while minimized, removing a split, expose) is adopted
   again with a log line; a new window never follows a stale frame.
+- `unfloat-placement.lisp` - where a float lands when it returns to the
+  tiling: the empty frame under its centre, else the empty frame nearest
+  its centre, on its own output; with no empty frame the focused frame
+  splits as for a new window.
 - `placement-policy.lisp` - frame placement policy: by default a split
   fills its new half with the most recently focused hidden window and a
   new window enters the focused frame; `:new-frame :empty`, the

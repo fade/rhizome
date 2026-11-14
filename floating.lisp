@@ -69,13 +69,18 @@ and maximize ride this)."
         (request-manage-dirty))))
 
 (defun unfloat-window (win)
-  "Return WIN to the tiling."
+  "Return WIN to the tiling. WIN enters an empty frame of its
+workspace on its output: the one under its centre, else the one
+nearest its centre (see retile-empty-frame). With no empty frame the
+next manage pass places it as a new window, in the frame the
+placement policy picks."
   (unless (window-floating-p win)
     (return-from unfloat-window))
   (setf (window-floating-p win) nil
         ;; Manual unfloat supersedes any maximize state
         (window-maximized-p win) nil
         (window-maximize-prev win) nil)
+  (place-retiled-window win)
   ;; Glide back to wherever the tiling places it
   (when (animations-enabled-p)
     (animation-start win :from-x (window-x win)

@@ -218,3 +218,68 @@ workspace, or an error, leaves FRAME empty."
                (eql (window-workspace win) workspace))
       (frame-remove-window win)
       (frame-push-window win frame))))
+
+;;; --- A float returning to the tiling ---
+;;;
+;;; A re-tiled float is not a new window: it sits where it was put.
+;;; It enters an empty frame near that spot; only a workspace with no
+;;; empty frame falls back to the new-window policy and its auto-split.
+
+(defun frame-point-distance (frame px py)
+  "Squared distance from the output-relative point PX PY to FRAME's
+rectangle; 0 when the point lies inside it."
+  (flet ((gap (p lo size)
+           (cond ((< p lo) (- lo p))
+                 ((>= p (+ lo size)) (- p (+ lo size -1)))
+                 (t 0))))
+    (let ((dx (gap px (frame-x frame) (frame-width frame)))
+          (dy (gap py (frame-y frame) (frame-height frame))))
+      (+ (* dx dx) (* dy dy)))))
+
+(defun retile-empty-frame (win)
+  "The empty leaf frame floating WIN enters on return to the tiling,
+or NIL. Candidates are the empty leaves of WIN's workspace on WIN's
+output. The leaf under the float's centre wins, else the leaf nearest
+the centre; ties go to tree order. NIL when WIN has no output, its
+workspace scrolls or floats every window, or no leaf is empty."
+  (let ((output (window-output win))
+        (workspace (window-workspace win)))
+    (when (and output workspace
+               (not (scroll-workspace-p output workspace))
+               (not (floating-workspace-p output workspace)))
+      (let* ((w (if (plusp (window-width win))
+                    (window-width win)
+                    (or (window-float-width win) 0)))
+             (h (if (plusp (window-height win))
+                    (window-height win)
+                    (or (window-float-height win) 0)))
+             (cx (- (+ (or (window-float-x win) (window-x win) 0)
+                       (floor w 2))
+                    (output-x output)))
+             (cy (- (+ (or (window-float-y win) (window-y win) 0)
+                       (floor h 2))
+                    (output-y output)
+                    (bar-reserved-height)))
+             (best nil)
+             (best-distance nil))
+        (dolist (leaf (frame-leaves (frame-tree-for output workspace)))
+          (when (null (frame-windows leaf))
+            (let ((d (frame-point-distance leaf cx cy)))
+              (when (or (null best-distance) (< d best-distance))
+                (setf best leaf
+                      best-distance d)))))
+        best))))
+
+(defun place-retiled-window (win)
+  "Put WIN, a float returning to the tiling, in the frame
+retile-empty-frame picks and make that frame current. Returns the
+frame, or NIL to leave WIN frameless for the manage pass, which
+places it as a new window."
+  (let ((frame (retile-empty-frame win)))
+    (when frame
+      (frame-remove-window win)
+      (frame-push-window win frame)
+      (setf (gethash (frame-key (window-output win) (window-workspace win))
+                     *current-frames*)
+            frame))
+    frame))
