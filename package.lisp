@@ -243,6 +243,7 @@
    #:config-pathname
    ;; Bar
    #:run-bar
+   #:bar-switch-workspace
    #:start-bar
    #:stop-bar
    #:toggle-bar

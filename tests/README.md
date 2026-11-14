@@ -97,6 +97,14 @@ stubbed river requests. Run with:
   an exclusive zone at least as tall as the bar. A configure that
   leaves the :bar settings alone keeps the bar, and two concurrent
   starts launch one process.
+- `bar-per-output.lisp` - one bar per output: the WM snapshot carries
+  each output's workspace, layout, window count, occupancy, and bar
+  flags; `(:bar :outputs ...)` picks the outputs and the primary bar;
+  each output reserves the strip only when it carries a bar. The bar
+  process keeps one surface per wl_output, follows outputs added and
+  removed, survives the compositor closing one bar, renders each
+  output's own view, keeps the tray on the primary bar, and routes a
+  workspace click to its own output.
 - `session-icons.lisp` — session management (lock command building,
   swayidle arming, logout confirm flow) and the bar icons module
   (icon discovery, 16x16 scaling, caching, per-entry actions).

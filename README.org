@@ -655,6 +655,29 @@ exclusive zone, the WM reserves the bar's space itself in its layout math.
 (rhizome:reload-config)                             ; reset + reload user file
 #+end_src
 
+*** One bar per monitor
+
+Each output gets its own bar, as each head gets its own mode-line in
+StumpWM. A bar shows its own output's workspace (=:workspaces=), layout
+(=:layout=) and window count (=:windows=); a click on a workspace number
+switches that output. Bars follow monitors as you plug and unplug them.
+
+The tray stays on one bar, the primary: the leftmost output that
+carries a bar. The other modules (clock, battery, volume, icons, and
+the rest) appear on every bar unless you keep them to the primary bar.
+
+#+begin_src lisp
+(rhizome:configure '(:bar (:outputs :all)))          ; a bar on every output (default)
+(rhizome:configure '(:bar (:outputs :primary)))      ; the leftmost output only
+(rhizome:configure '(:bar (:outputs (0 2))))         ; outputs 0 and 2, left to right
+(rhizome:configure '(:bar (:global-modules :all)))   ; global modules on every bar (default)
+(rhizome:configure '(:bar (:global-modules :primary))) ; other bars: workspaces, layout, windows
+#+end_src
+
+An output without a bar reserves no space for one, so its windows use
+its full height. =:outputs= takes effect without restarting the bar
+process; =:global-modules= restarts it.
+
 Bar modules: =:workspaces= (numbers — active underlined in accent,
 occupied in foreground, empty muted, with per-number gaps),
 =:layout= (current layout), =:windows= (window count), =:focused=

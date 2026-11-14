@@ -131,6 +131,7 @@
           (lambda () (list :bar-hidden hidden)))
     (unwind-protect
          (let ((state (make-hash-table)))
+           (bar-add-head state 10 :fake-output)
            (bar-sync-visibility state)
            (bh-ok "shown, no surface: opens one" (list opened closed) '(1 0))
            (bar-sync-visibility state)
