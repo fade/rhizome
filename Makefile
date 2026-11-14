@@ -26,7 +26,7 @@ SUITES    := animations decorations surface window-rules floating \
              client-fullscreen multi-head frame-adoption \
              bar-per-output prefix-capture-output display-layout \
              mouse-focus config-merge border-colours \
-             display-brightness
+             display-brightness frame-outline
 
 .PHONY: all build test install docs clean help
 
