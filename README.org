@@ -1241,6 +1241,153 @@ the [[Protocol coverage audit][protocol audit]] above.
 From the REPL: =(rhizome:float-window win)=, =(rhizome:unfloat-window win)=,
 =(rhizome:toggle-float win)=, =(rhizome:toggle-maximize win)=.
 
+* Modules
+
+A module is an ASDF system that extends rhizome from its own
+directory. Rhizome loads no module unless the config file or the REPL
+asks for one.
+
+** Directory layout
+
+Each module has its own directory under =~/.config/rhizome/modules/=
+(the =modules/= directory beside =config.lisp=), with its system
+definition at the root of that directory:
+
+#+begin_example
+~/.config/rhizome/modules/
+  empty-first/
+    empty-first.asd
+    empty-first.lisp
+#+end_example
+
+The directory name, the =.asd= file name, and the system name are the
+same.
+
+** Loading
+
+#+begin_src lisp
+(rhizome:load-module "empty-first")
+#+end_src
+
+=load-module= adds the module's directory to =asdf:*central-registry*=
+for the running session only (no global ASDF configuration changes),
+then loads the system with =ql:quickload= when Quicklisp is present, or
+=asdf:load-system= otherwise. It returns the module name.
+
+- A second call with unchanged sources loads nothing and prints
+  nothing.
+- After a source file changes, the next call recompiles and loads the
+  changed files, so a newer version replaces the running one.
+- A module that does not exist signals =rhizome:module-not-found=; the
+  report names the =.asd= path searched.
+- =:directory= loads from another directory:
+  =(rhizome:load-module "empty-first" :directory #p"/tmp/mods/")=.
+
+Call it from =config.lisp= at startup, or live from the REPL, the eval
+prompt, or =rhizome-cmd eval=.
+
+** A one-file module
+
+=empty-first.asd=:
+
+#+begin_src lisp
+(asdf:defsystem "empty-first"
+  :components ((:file "empty-first")))
+#+end_src
+
+=empty-first.lisp=:
+
+#+begin_src lisp
+(defpackage #:empty-first
+  (:use #:cl)
+  (:export #:install))
+
+(in-package #:empty-first)
+
+(defvar *placed* 0
+  "Windows this policy has placed in an empty frame.")
+
+(rhizome:define-placement-policy :empty-first empty-first-placement ()
+  ()
+  (:documentation "New windows enter the first empty frame, else the
+focused frame. A split leaves its new half empty."))
+
+(defmethod rhizome:placement-new-frame-window
+    ((policy empty-first-placement) output workspace frame history)
+  (declare (ignore output workspace frame history))
+  nil)
+
+(defmethod rhizome:placement-new-window-frame
+    ((policy empty-first-placement) output workspace window history)
+  (declare (ignore window history))
+  (let ((leaf (find-if (lambda (leaf) (null (rhizome:frame-windows leaf)))
+                       (rhizome:frame-leaves
+                        (rhizome:frame-tree-for output workspace)))))
+    (when leaf (incf *placed*))
+    leaf))
+
+(defun install ()
+  "Select the policy and bind s-F9 to report how many windows it placed."
+  (rhizome:configure '(:tiling (:placement (:policy :empty-first))))
+  (rhizome:define-key rhizome:*top-map* "s-F9"
+    (lambda () (rhizome:message "empty-first placed ~D windows" *placed*))))
+#+end_src
+
+=config.lisp=:
+
+#+begin_src lisp
+(rhizome:load-module "empty-first")
+(empty-first:install)
+#+end_src
+
+** Registration points
+
+A module extends rhizome through its exported interface:
+
+- placement policies: =define-placement-policy=, with methods on
+  =placement-new-frame-window= and =placement-new-window-frame=;
+- keymaps: =define-key=, =undefine-key=, =make-keymap=, =*top-map*=,
+  =*prefix-map*=, =define-prefix-key=;
+- hooks: =add-hook= and =remove-hook=;
+- window rules: the =:window-rules= list, through =configure=.
+
+A module does not redefine rhizome's own functions. When a module needs
+a hook point that does not exist, open an issue that describes it.
+
+** Writing a module
+
+- Hold state in =defvar=, not =defparameter=: a reload of a newer
+  version then keeps the running state.
+- Bind keys, add window rules, and set configuration in a function that
+  =config.lisp= calls after =load-module=, as =install= does above.
+  =reload-config= resets the configuration and the user keymaps and
+  runs =config.lisp= again, and the repeated =load-module= loads
+  nothing, so top-level bindings in the module would be lost.
+- =configure= replaces the whole =:window-rules= list. To add a rule,
+  append to the current list:
+  =(rhizome:configure `(:window-rules ,(append (getf rhizome:*config* :window-rules) (list rule))))=.
+- Pass =add-hook= a function name rather than a lambda: a reload then
+  replaces the handler instead of adding a second one.
+- Leave =rhizome= out of the module's =:depends-on=. Rhizome is already
+  loaded in the process, and listing it lets ASDF recompile the window
+  manager inside the running session.
+
+** Module code runs inside the window manager
+
+A module runs in the window manager process, on its event loop, with
+everything that implies:
+
+- An error at load time reaches the caller of =load-module=; in
+  =config.lisp= it is logged and stops the rest of that file.
+- Code that blocks (=sleep=, a slow network or disk call) stalls every
+  window until it returns. Start long work on its own thread.
+- River's window management protocol rules apply: window management
+  requests are valid only during a manage or render sequence. Change
+  rhizome's state and call =request-manage-dirty=; rhizome sends the
+  requests in the next manage sequence.
+- A module has the full access of the window manager process. Load only
+  modules you trust.
+
 * Project structure
 
 #+begin_example
@@ -1255,6 +1402,7 @@ rhizome/
   prefix.lisp                         — Prefix key engine (Ctrl+T chains)
   message.lisp                        — Transient on-screen messages
   hooks.lisp                          — Event hooks (add-hook / run-hook)
+  modules.lisp                        - User modules (load-module)
   eval-prompt.lisp                    — Live eval prompt (MOD+;)
   bar.lisp                            — Configurable status bar / mode-line (own process)
   wm-protocol.lisp                    — Manage/render sequence loop, Wayland connection, registry

@@ -28,7 +28,7 @@ SUITES    := animations decorations surface window-rules floating \
              mouse-focus config-merge border-colours \
              display-brightness frame-outline titlebars \
              unfloat-placement float-centring fselect focus-empty-frames \
-             bindings-overridable
+             bindings-overridable modules
 
 .PHONY: all build test install docs clean help
 

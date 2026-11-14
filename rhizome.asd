@@ -13,6 +13,7 @@
    (:file "package" :depends-on ("river-protocol"))
    (:file "config" :depends-on ("package"))
    (:file "hooks" :depends-on ("package"))
+   (:file "modules" :depends-on ("package" "config"))
    (:file "surface" :depends-on ("package"))
    (:file "session" :depends-on ("package" "config" "hooks"))
    (:file "wm-protocol" :depends-on ("package" "config"))
