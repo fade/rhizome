@@ -101,6 +101,7 @@
                      *display-serial* 7
                      *display-layout-pending* nil
                      *display-head-set* nil
+                     *display-layout-absent-keys* nil
                      requests '()
                      configs '())
                (configure (list :displays (list :layout layout))))
@@ -200,6 +201,28 @@
       (try "a head placed against an absent head keeps its position"
            (lambda () (list (quietly #'display-apply-layout) (sent-p)))
            '(:unchanged nil))
+
+      ;; An absent head is logged when the layout resolves, once
+      (flet ((absent-lines ()
+               (remove-if-not
+                (lambda (line) (search "no head matches" line))
+                (uiop:split-string
+                 (with-output-to-string (*standard-output*)
+                   (display-apply-layout))
+                 :separator '(#\Newline)))))
+        (reset '(("HDMI-A-9" :left-of "DVI-D-1") ("DVI-D-1" :primary t)))
+        (ghost)
+        (try "a head named in the layout but absent is logged"
+             #'absent-lines
+             '("; Rhizome: display layout: no head matches \"HDMI-A-9\""))
+        (try "a second identical apply does not log it again"
+             #'absent-lines
+             '())
+        (reset '(("HDMI-A-1" :left-of "DP-7")))
+        (ghost)
+        (try "an absent head named as a relation target is logged"
+             #'absent-lines
+             '("; Rhizome: display layout: no head matches \"DP-7\"")))
 
       ;; A head present but not named
       (reset '(("HDMI-A-1" :left-of "DVI-D-1") ("DVI-D-1" :primary t)))

@@ -100,6 +100,33 @@ the result back to the hash."
               collect state)
         #'string< :key (lambda (state) (getf state :name))))
 
+(defun output-connector-name (output)
+  "The connector name (\"HDMI-A-1\") of the enabled head showing
+OUTPUT, or NIL when no head matches. A head matches when its position
+equals OUTPUT's and, where both sizes are known, its logical size
+does too. Unlike the wl_output global name, the connector name names
+the same head after a river restart."
+  (when output
+    (let ((x (output-x output)) (y (output-y output))
+          (width (output-width output)) (height (output-height output)))
+      (flet ((matches-p (state)
+               (and (getf state :enabled)
+                    (equal (getf state :position) (cons x y))
+                    (multiple-value-bind (w h)
+                        (display-layout-size (getf state :current-mode)
+                                             (getf state :scale))
+                      (or (zerop w) (zerop width)
+                          (and (= w width) (= h height)))))))
+        (getf (find-if #'matches-p (display-heads)) :name)))))
+
+(defun find-output-by-connector (name)
+  "The registered output whose connector name is NAME, or NIL. A NAME
+that is not a string, such as a numeric wl_output name from an older
+saved file, matches nothing."
+  (and (stringp name)
+       (find name (all-outputs) :key #'output-connector-name
+                                :test #'equal)))
+
 (defun display-mode-label (mode)
   "Human label for a mode proxy: \"1920x1080 @ 60Hz\"."
   (let ((info (and mode (gethash mode *display-modes*))))
@@ -418,21 +445,52 @@ disabled head stays disabled. Log river's answer and clear
     (rwm:zwlr-output-configuration-v1.apply config)
     (setf *display-layout-pending* t)))
 
+(defvar *display-layout-absent-keys* nil
+  "The layout keys that matched no head when absent heads were last
+logged, in spec order.")
+
+(defun display-layout-absent-keys (specs states)
+  "The keys SPECS names, as a head or as a relation target, that match
+no state in STATES (see DISPLAY-LAYOUT-MATCH). Spec order, no
+duplicates."
+  (let ((keys '()))
+    (dolist (spec specs)
+      (when (consp spec)
+        (pushnew (first spec) keys :test #'equal)
+        (loop for (rel target) on (rest spec) by #'cddr
+              when (member rel '(:left-of :right-of :above :below))
+                do (pushnew target keys :test #'equal))))
+    (remove-if (lambda (key) (display-layout-match key states))
+               (nreverse keys))))
+
+(defun display-note-absent-heads (specs states)
+  "Log one line for each key in SPECS that matches no head in STATES.
+Log only when that set of keys differs from the one last logged, so an
+unchanged layout applied again stays quiet."
+  (let ((absent (display-layout-absent-keys specs states)))
+    (unless (equal absent *display-layout-absent-keys*)
+      (setf *display-layout-absent-keys* absent)
+      (dolist (key absent)
+        (format t "~&; Rhizome: display layout: no head matches ~S~%" key)))))
+
 (defun display-apply-layout (&optional (specs (config-getf '(:displays) :layout)))
   "Lay out the heads from SPECS, by default (:displays :layout).
 Return :applied when a configuration was sent, :unchanged when the
 layout already holds, :pending while an earlier layout awaits river's
 answer, :no-layout when SPECS is empty, or :no-manager before the
-output manager is bound."
+output manager is bound. Heads named in SPECS that match no head are
+logged; see DISPLAY-NOTE-ABSENT-HEADS."
   (cond ((null specs) :no-layout)
         ((null *output-manager*) :no-manager)
         (*display-layout-pending* :pending)
         (t
-         (let ((plan (display-resolve-layout specs (display-heads))))
-           (if (display-layout-holds-p plan)
-               :unchanged
-               (progn (display-send-layout plan)
-                      :applied))))))
+         (let ((heads (display-heads)))
+           (display-note-absent-heads specs heads)
+           (let ((plan (display-resolve-layout specs heads)))
+             (if (display-layout-holds-p plan)
+                 :unchanged
+                 (progn (display-send-layout plan)
+                        :applied)))))))
 
 (defun display-layout-on-done ()
   "Apply the configured layout when the head set differs from the one

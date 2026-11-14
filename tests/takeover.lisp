@@ -48,7 +48,14 @@
            (*workspace-count* 4)
            (out (make-instance 'rhizome-output :proxy :tk-out
                                :width 800 :height 600)))
-      (setf (output-wl-output-name out) "DP-1")
+      (setf (output-wl-output-name out) 61
+            *display-modes* (make-hash-table :test 'equal)
+            *display-heads* (make-hash-table :test 'equal)
+            (gethash :tk-mode *display-modes*)
+            (list :width 800 :height 600 :refresh 60000)
+            (gethash :tk-head *display-heads*)
+            (list :head :tk-head :name "DP-1" :enabled t
+                  :position (cons 0 0) :current-mode :tk-mode :scale 1))
       (reset)
       (setf (gethash :tk-out *outputs*) out
             (gethash out *output-workspace*) 3)
@@ -134,6 +141,237 @@
       (ok "consume clears the state and deletes the file"
           (list *takeover-state* (probe-file *takeover-state-path*))
           '(nil nil)))
+
+    ;; --- two heads: each window returns to its own output ---
+    (let ((*takeover-state-path* #P"/tmp/rhizome-test-takeover-heads.sexp")
+          (*workspace-count* 4)
+          (*selected-output* nil))
+      (labels ((head (proxy name x &optional (wl-name (+ 59 (floor x 1920))))
+                 ;; A river output named by its numeric wl_output
+                 ;; global, and the output-manager head carrying its
+                 ;; connector name at the same position and size
+                 (let ((out (make-instance 'rhizome-output :proxy proxy
+                                           :x x :y 0
+                                           :width 1920 :height 1080))
+                       (mode (list proxy :mode))
+                       (display-head (list proxy :head)))
+                   (setf (output-wl-output-name out) wl-name
+                         (gethash proxy *outputs*) out
+                         (gethash out *output-workspace*) 1
+                         (gethash mode *display-modes*)
+                         (list :width 1920 :height 1080 :refresh 60000)
+                         (gethash display-head *display-heads*)
+                         (list :head display-head :name name :enabled t
+                               :position (cons x 0)
+                               :current-mode mode :scale 1))
+                   out))
+               (fresh-wm ()
+                 (reset)
+                 (setf *outputs* (make-hash-table)
+                       *display-heads* (make-hash-table :test 'equal)
+                       *display-modes* (make-hash-table :test 'equal)
+                       *frame-trees* (make-hash-table :test 'equal)
+                       *current-frames* (make-hash-table :test 'equal)
+                       *seats* (make-hash-table)
+                       *selected-output* nil))
+               (new-window (proxy id number)
+                 (let ((win (make-instance 'rhizome-window :proxy proxy)))
+                   (setf (gethash proxy *windows*) win
+                         (window-identifier win) id
+                         (gethash win *window-number-map*) number)
+                   win))
+               (tree-windows (out ws)
+                 (loop for leaf in (frame-leaves (frame-tree-for out ws))
+                       append (frame-windows leaf)))
+               (entry (id)
+                 (cdr (assoc id (getf *takeover-state* :windows)
+                             :test #'equal))))
+        ;; The outgoing WM: HDMI registered first, firefox on HDMI,
+        ;; kitty on DVI, both on workspace 1 in their head's tree
+        (fresh-wm)
+        (let* ((hdmi (head :old-hdmi "HDMI-A-1" 0))
+               (dvi (head :old-dvi "DVI-D-1" 1920))
+               (firefox (new-window :old-ff "firefox-id" 1))
+               (kitty (new-window :old-kitty "kitty-id" 2)))
+          (setf (window-output firefox) hdmi
+                (window-output kitty) dvi
+                (gethash firefox *window-workspace*) 1
+                (gethash kitty *window-workspace*) 1)
+          (frame-push-window firefox (frame-tree-for hdmi 1))
+          (frame-push-window kitty (frame-tree-for dvi 1))
+          (ignore-errors (delete-file *takeover-state-path*))
+          (let ((*standard-output* (make-broadcast-stream)))
+            (write-takeover-state)))
+        ;; The successor: DVI registers first this time, so the
+        ;; first output is the wrong head for firefox
+        (fresh-wm)
+        (let* ((dvi (head :new-dvi "DVI-D-1" 1920))
+               (hdmi (head :new-hdmi "HDMI-A-1" 0))
+               (firefox (new-window :new-ff "firefox-id" 5))
+               (kitty (new-window :new-kitty "kitty-id" 6)))
+          (let ((*standard-output* (make-broadcast-stream)))
+            (load-takeover-state))
+          (ok "each window entry records its output by connector name"
+              (list (getf (entry "firefox-id") :output)
+                    (getf (entry "kitty-id") :output))
+              '("HDMI-A-1" "DVI-D-1"))
+          (ok "output workspaces and trees are keyed by connector name"
+              (list (mapcar #'car (getf *takeover-state* :outputs))
+                    (mapcar #'caar (getf *takeover-state* :trees)))
+              '(("HDMI-A-1" "DVI-D-1") ("HDMI-A-1" "DVI-D-1")))
+          (ok "the first output is DVI in the successor"
+              (eq (first (all-outputs)) dvi) t)
+          ;; firefox arrived on DVI (an arrival output, or a stamp
+          ;; from window-state): the recorded output still wins
+          (setf (window-output firefox) dvi)
+          (let ((*standard-output* (make-broadcast-stream)))
+            (restore-takeover-placement firefox)
+            (restore-takeover-placement kitty))
+          (ok "firefox returns to HDMI"
+              (eq (window-output firefox) hdmi) t)
+          (ok "kitty returns to DVI"
+              (eq (window-output kitty) dvi) t)
+          (ok "both keep workspace 1"
+              (list (window-workspace firefox) (window-workspace kitty))
+              '(1 1))
+          ;; The settled moment: each tree takes its own head's window
+          (let ((*standard-output* (make-broadcast-stream)))
+            (apply-takeover-trees))
+          (ok "HDMI's workspace 1 tree holds firefox only"
+              (tree-windows hdmi 1) (list firefox))
+          (ok "DVI's workspace 1 tree holds kitty only"
+              (tree-windows dvi 1) (list kitty)))
+
+        ;; A full river restart between write and read: river hands
+        ;; out new wl_output global names, here swapped between the
+        ;; heads, and each window still lands on its own head
+        (let ((*takeover-state-path*
+                #P"/tmp/rhizome-test-takeover-restart.sexp"))
+          (fresh-wm)
+          (let* ((hdmi (head :pre-hdmi "HDMI-A-1" 0 59))
+                 (dvi (head :pre-dvi "DVI-D-1" 1920 60))
+                 (firefox (new-window :pre-ff "firefox-id" 1))
+                 (kitty (new-window :pre-kitty "kitty-id" 2)))
+            (setf (window-output firefox) hdmi
+                  (window-output kitty) dvi
+                  (gethash firefox *window-workspace*) 1
+                  (gethash kitty *window-workspace*) 1
+                  (gethash dvi *output-workspace*) 3)
+            (frame-push-window firefox (frame-tree-for hdmi 1))
+            (frame-push-window kitty (frame-tree-for dvi 1))
+            (ignore-errors (delete-file *takeover-state-path*))
+            (let ((*standard-output* (make-broadcast-stream)))
+              (write-takeover-state)))
+          (fresh-wm)
+          (let* ((hdmi (head :post-hdmi "HDMI-A-1" 0 60))
+                 (dvi (head :post-dvi "DVI-D-1" 1920 59))
+                 (firefox (new-window :post-ff "firefox-id" 7))
+                 (kitty (new-window :post-kitty "kitty-id" 8)))
+            (let ((*standard-output* (make-broadcast-stream)))
+              (load-takeover-state)
+              (takeover-restore-output-workspaces)
+              (restore-takeover-placement firefox)
+              (restore-takeover-placement kitty))
+            (ok "after a river restart firefox lands on HDMI and kitty on DVI"
+                (list (eq (window-output firefox) hdmi)
+                      (eq (window-output kitty) dvi))
+                '(t t))
+            (ok "after a river restart DVI shows its own workspace"
+                (list (gethash hdmi *output-workspace*)
+                      (gethash dvi *output-workspace*))
+                '(1 3))
+            (let ((*standard-output* (make-broadcast-stream)))
+              (apply-takeover-trees))
+            (ok "after a river restart each head's tree holds its own window"
+                (list (tree-windows hdmi 1) (tree-windows dvi 1))
+                (list (list firefox) (list kitty))))
+          (ignore-errors (delete-file *takeover-state-path*)))
+
+        ;; A window that re-registered before its output was known
+        ;; moves to that output when the trees are applied
+        (fresh-wm)
+        (let* ((dvi (head :late-dvi "DVI-D-1" 1920))
+               (hdmi (head :late-hdmi "HDMI-A-1" 0))
+               (firefox (new-window :late-ff "firefox-id" 3)))
+          (setf *takeover-state*
+                (list :windows '(("firefox-id" :workspace 1 :number 1
+                                  :output "HDMI-A-1"))
+                      :trees '((("HDMI-A-1" . 1)
+                                . (:frame (:rect 0 0 1920 1080) 1))))
+                (window-output firefox) dvi
+                (gethash firefox *window-workspace*) 1)
+          (frame-push-window firefox (frame-tree-for dvi 1))
+          (let ((*standard-output* (make-broadcast-stream)))
+            (apply-takeover-trees))
+          (ok "the tree restore moves a window onto its recorded output"
+              (list (eq (window-output firefox) hdmi)
+                    (tree-windows hdmi 1)
+                    (tree-windows dvi 1))
+              (list t (list firefox) nil)))
+
+        ;; An old-format file (no :output key) and a recorded output
+        ;; that is gone both fall back to the current output
+        (fresh-wm)
+        (let* ((dvi (head :fb-dvi "DVI-D-1" 1920))
+               (hdmi (head :fb-hdmi "HDMI-A-1" 0))
+               (old (new-window :fb-old "old-format-id" 1))
+               (gone (new-window :fb-gone "gone-output-id" 2))
+               (numeric (new-window :fb-numeric "numeric-id" 3)))
+          (setf *selected-output* hdmi
+                *takeover-state*
+                (list :windows '(("old-format-id" :workspace 2 :number 1)
+                                 ("gone-output-id" :workspace 3 :number 2
+                                  :output "DP-9")
+                                 ("numeric-id" :workspace 4 :number 3
+                                  :output 60))))
+          (let ((*standard-output* (make-broadcast-stream)))
+            (restore-takeover-placement old)
+            (restore-takeover-placement gone)
+            (restore-takeover-placement numeric))
+          (ok "a numeric output key from an older file is treated as absent"
+              (list (eq (window-output numeric) hdmi)
+                    (eq (window-output numeric) dvi)
+                    (window-workspace numeric))
+              '(t nil 4))
+          (ok "an old-format entry lands on the current output"
+              (list (eq (window-output old) hdmi) (window-workspace old))
+              '(t 2))
+          (ok "an absent recorded output falls back to the current output"
+              (list (eq (window-output gone) hdmi) (window-workspace gone))
+              '(t 3)))
+
+        ;; window-state.sexp: the remembered output comes back too
+        (fresh-wm)
+        (let* ((*window-state-path* #P"/tmp/rhizome-test-window-state.sexp")
+               (*window-state* (make-hash-table :test 'equal))
+               (dvi (head :ws-dvi "DVI-D-1" 1920))
+               (hdmi (head :ws-hdmi "HDMI-A-1" 0))
+               (closing (new-window :ws-closing "remembered-id" 1)))
+          (setf (window-output closing) hdmi
+                (gethash closing *window-workspace*) 2)
+          (let ((*standard-output* (make-broadcast-stream)))
+            (remember-window-state closing))
+          (ok "window-state records the output by connector name"
+              (getf (gethash "remembered-id" *window-state*) :output)
+              "HDMI-A-1")
+          (let ((again (new-window :ws-again "remembered-id" 2))
+                (legacy (new-window :ws-legacy "legacy-id" 3)))
+            (setf (gethash "legacy-id" *window-state*) '(:workspace 3)
+                  *selected-output* hdmi)
+            (let ((*standard-output* (make-broadcast-stream)))
+              (restore-window-state again)
+              (restore-window-state legacy))
+            (ok "window-state restores the remembered output"
+                (list (eq (window-output again) hdmi)
+                      (window-workspace again))
+                '(t 2))
+            (ok "a window-state entry without an output takes the current output"
+                (list (eq (window-output legacy) hdmi)
+                      (eq (window-output legacy) dvi))
+                '(t nil))))
+        (ignore-errors (delete-file *takeover-state-path*))
+        (ignore-errors
+          (delete-file #P"/tmp/rhizome-test-window-state.sexp"))))
 
     (format t "~&=== ~D passed, ~D failed ===~%" pass fail)
     (uiop:quit (if (zerop fail) 0 1))))
