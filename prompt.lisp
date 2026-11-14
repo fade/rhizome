@@ -200,7 +200,8 @@ takes free text and Enter calls ON-COMPLETE with the non-empty query."
       (setf (gethash :surface state) surface)
       (let ((layer-surface
               (rwm:zwlr-layer-shell-v1.get-layer-surface
-                *layer-shell* surface nil :top "rhizome-prompt")))
+                *layer-shell* surface (layer-surface-output)
+                :top "rhizome-prompt")))
         (setf (gethash :layer-surface state) layer-surface)
         (push (lambda (event-name &rest args)
                 (case event-name
