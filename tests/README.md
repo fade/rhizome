@@ -161,3 +161,9 @@ stubbed river requests. Run with:
   the first is configured or during a resize (one surface, one
   buffer), and reopening an overlay over a state that still holds a
   buffer.
+- `frame-outline.lisp` - the focused-frame outline: which frame and
+  output carry it (empty or occupied frames, after frame focus moves,
+  splits and removals), when it hides (fullscreen, scroll and floating
+  workspaces, switched off), the theme settings, the ring pixels, and
+  the shell surface lifecycle (one per output, redraw only on change,
+  destroyed with its output).
