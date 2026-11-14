@@ -47,6 +47,11 @@ stubbed river requests. Run with:
   the original half, with or without a focused window, so a second
   split divides that half again; the placement policy still fills the
   new half.
+- `frame-adoption.lisp` - every tiled window stays in a leaf of its
+  workspace's tree: the manage pass that splits a frame for a new window
+  proposes both halves their size, and a window whose frame left the tree
+  (a layout switch while minimized, removing a split, expose) is adopted
+  again with a log line; a new window never follows a stale frame.
 - `parity.lisp` — Alt+drag pointer bindings (drag floats tiled
   windows), the C-t h help system, describe-key, move-window-to-frame,
   and `:output` window rules.
