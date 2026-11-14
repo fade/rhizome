@@ -830,6 +830,8 @@ move the float. Tiled windows never get one, and neither does a float
 that has a parent window (a dialog or file picker), has a fixed size,
 only supports client-side decoration, or is fullscreen or maximized.
 Under =:client= decorations no float gets one.
+A float that carries a titlebar never sits with its strip under the
+bar: rhizome moves it down until the whole strip is in the usable area.
 
 #+begin_src lisp
 (rhizome:configure

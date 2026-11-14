@@ -168,5 +168,6 @@ stubbed river requests. Run with:
   when titlebars are off or decorations are left to clients), the
   strip's height, geometry, colours and title fitting, redraws only when
   the title, size, focus or colours change, a new buffer on any size
-  change, teardown when the window tiles, goes fullscreen or closes, and
-  a press on the strip starting a move.
+  change, teardown when the window tiles, goes fullscreen or closes,
+  a press on the strip starting a move, and a float with a strip kept
+  below the bar.

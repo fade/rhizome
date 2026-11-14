@@ -176,7 +176,10 @@ the WM is free to exceed but usually shouldn't."
 
 (defun float-clamp-position (win)
   "Keep WIN's float position reachable: at least a ~30px strip of the
-window stays on its output, so a float can never be lost off-screen."
+window stays on its output, so a float can never be lost off-screen.
+A float that carries a titlebar keeps the whole strip below the bar:
+its top edge is at least the strip height plus the border below the
+usable area's top."
   (let* ((out (window-output win))
          (w (or (window-float-width win) (window-width win) 100))
          (h (or (window-float-height win) (window-height win) 100)))
@@ -188,7 +191,13 @@ window stays on its output, so a float can never be lost off-screen."
                    (+ ox ow -30))
               (window-float-y win)
               (min (max (window-float-y win) (- oy (- h 30)))
-                   (+ oy oh -30)))))))
+                   (+ oy oh -30)))
+        ;; The focused border width (2) for both focus states, so a
+        ;; focus change never moves a float
+        (when (window-titlebar-p win)
+          (setf (window-float-y win)
+                (max (window-float-y win)
+                     (+ oy (bar-reserved-height) (titlebar-height) 2))))))))
 
 (defun float-clamp-dim (win size dimension)
   "Clamp SIZE (a :width or :height) to WIN's min/max size hints and
