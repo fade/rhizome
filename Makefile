@@ -22,7 +22,8 @@ SUITES    := animations decorations surface window-rules floating \
              repl-server-config repl-server-port keymap-layers key-sequences \
              key-grabs key-names placement-policy split-focus shm-buffers \
              pull-hidden bar-hide \
-             server-side-decorations
+             server-side-decorations \
+             client-fullscreen
 
 .PHONY: all build test install docs clean help
 
