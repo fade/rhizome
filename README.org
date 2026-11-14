@@ -637,6 +637,64 @@ River reports no event for a click on an empty desktop, so clicking
 an empty monitor does not select it; use =focus-next-output=, or let
 the pointer decide while no window has focus.
 
+*** Output layout
+
+River places outputs in its own order, which need not match your desk.
+Declare where each output sits with =(:displays (:layout ...))=. On the
+host this was written for, HDMI-A-1 sits to the left of DVI-D-1:
+
+#+begin_src lisp
+(rhizome:configure
+ '(:displays (:layout (("HDMI-A-1" :left-of "DVI-D-1")
+                       ("DVI-D-1" :primary t)))))
+#+end_src
+
+That is the equivalent of =xrandr --output DVI-D-0 --auto --primary;
+xrandr --output HDMI-0 --auto --left-of DVI-D-0= under StumpWM. Each
+entry is a key followed by options:
+
+| Option                     | Effect                                                 |
+|----------------------------+--------------------------------------------------------|
+| =:primary t=               | anchor relative placement at 0,0                       |
+| =:left-of KEY=             | place this output's right edge against KEY's left edge |
+| =:right-of KEY=            | place this output's left edge against KEY's right edge |
+| =:above KEY=, =:below KEY= | place it above or below KEY                            |
+| =:position (X Y)=          | an explicit position                                   |
+| =:mode "WxH@HZ"=           | a mode, such as ="1920x1200@60"=; the refresh is optional |
+| =:scale N=                 | a scale, such as =1.5=                                 |
+
+A key matches an output's connector name (=HDMI-A-1=), or failing that
+a part of its description, ignoring case, so a layout written for a
+docked laptop can name the monitor (="DELL U2412M"=) rather than the
+port it is plugged into. Relative placement uses each output's current
+mode, or the =:mode= you give, divided by its scale, and aligns top
+edges for left and right, left edges for above and below. Positions are
+then shifted so the leftmost and topmost output sits at 0,0. An output
+placed against one the layout does not name is placed against that
+output's current position and is not shifted.
+
+"Primary" only names the anchor for relative placement. River has no
+primary output, and nothing else treats this output differently.
+
+Explicit positions work too:
+
+#+begin_src lisp
+(rhizome:configure
+ '(:displays (:layout (("HDMI-A-1" :position (0 0))
+                       ("DVI-D-1" :position (1920 0))))))
+#+end_src
+
+The layout is applied when rhizome starts, whenever an output is
+plugged in or removed, and when you configure or reload the config. It
+is sent only when it differs from the current layout, and the log gets
+one line per apply, such as
+=; Rhizome: display layout applied: HDMI-A-1 0,0 DVI-D-1 1920,0=, or a
+line saying the compositor rejected it. An output the layout names but
+which is absent is skipped; an output it does not name keeps its
+position. Run =display-layout= from the command palette, or
+=rhizome-cmd display-layout=, to apply it again after placing outputs
+by hand.
+
 ** Status bar
 
 A configurable status bar / mode-line, rendered in CL via layer-shell. Runs as

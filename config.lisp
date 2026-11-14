@@ -153,6 +153,15 @@ Returns (values value found-p)."
                :selection-background "#503278"
                :selected-color "#f0e6ff"
                :entry-color "#aa96c8")
+    :displays (:layout ()
+               ;; Output positions, applied at startup, on hotplug
+               ;; and on configure. Specs match a connector name or a
+               ;; description substring; :primary only anchors
+               ;; relative placement (river has no primary output):
+               ;; (("HDMI-A-1" :left-of "DVI-D-1") ("DVI-D-1" :primary t))
+               ;; (("HDMI-A-1" :position (0 0)) ("DVI-D-1" :position (1920 0)))
+               ;; Per head, also :mode "1920x1200@60" and :scale 1.5.
+               )
     :ipc (:enabled t)
     ;; Slynk REPL server on 127.0.0.1 (M-x sly-connect). A :swank
     ;; group in user config is still read when :slynk is left at
@@ -214,7 +223,11 @@ user config would otherwise spawn bars — see *bar-process-mode*)."
     (when (fboundp 'font-apply-config)
       (funcall (symbol-function 'font-apply-config)))
     (when (fboundp 'output-apply-config)
-      (funcall (symbol-function 'output-apply-config)))))
+      (funcall (symbol-function 'output-apply-config)))
+    (when (fboundp 'display-apply-layout)
+      (handler-case (funcall (symbol-function 'display-apply-layout))
+        (error (e)
+          (format t "~&; Rhizome: display layout failed: ~A~%" e))))))
 
 (defun config-pathname ()
   "Pathname of the user config file."
