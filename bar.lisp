@@ -48,6 +48,114 @@ read from the snapshot file. Refreshed at most once per tick."
                       (error () nil))
                     *wm-snapshot*))))
 
+;;; --- Heads: one bar per output ---
+;;;
+;;; The bar process binds every wl_output. Each one becomes a HEAD, a
+;;; hash table holding that output's layer surface, shm buffer and
+;;; click regions (:global-name :output :root :surface :layer-surface
+;;; :shm-fd :shm-ptr :shm-size :wl-pool :wl-buffer :width :height
+;;; :mapped :hitboxes :last-content :closed-at). The root state keeps
+;;; the shared globals and the heads under :heads, keyed by the
+;;; wl_output global name. The WM snapshot's :outputs entries carry
+;;; the same name under :wl-output.
+
+(defparameter *bar-output-view* nil
+  "The snapshot entry of the output whose bar is rendering, or NIL.")
+
+(defparameter *bar-head-primary* t
+  "True while rendering the primary bar, the one holding the tray.")
+
+(defparameter *bar-pointer-head* nil
+  "The head whose surface holds the pointer, or NIL.")
+
+(defparameter *bar-per-output-modules* '(:workspaces :layout :windows)
+  "Modules that describe one output. Under (:bar :global-modules
+:primary) these are the only modules on bars other than the primary.")
+
+(defparameter *bar-reopen-delay* 5
+  "Seconds a head whose surface the compositor closed stays closed.")
+
+(defun bar-view ()
+  "The snapshot as the rendering bar sees it: its output's entry
+shadows the global keys."
+  (append *bar-output-view* (bar-snapshot)))
+
+(defun bar-output-entry (snapshot name)
+  "SNAPSHOT's :outputs entry for wl_output global NAME, or NIL."
+  (find name (getf snapshot :outputs)
+        :key (lambda (entry) (getf entry :wl-output))
+        :test #'eql))
+
+(defun bar-heads (state)
+  "STATE's heads in wl_output global-name order."
+  (let ((heads (gethash :heads state)))
+    (when heads
+      (sort (loop for head being the hash-values of heads collect head)
+            #'< :key (lambda (head) (gethash :global-name head))))))
+
+(defun bar-head (state name)
+  "STATE's head for wl_output global NAME, or NIL."
+  (let ((heads (gethash :heads state)))
+    (and heads (values (gethash name heads)))))
+
+(defun bar-add-head (state name output)
+  "Record a head in STATE for wl_output global NAME bound as OUTPUT.
+Returns the head."
+  (let ((heads (or (gethash :heads state)
+                   (setf (gethash :heads state) (make-hash-table))))
+        (head (make-hash-table)))
+    (setf (gethash :global-name head) name
+          (gethash :output head) output
+          (gethash :root head) state
+          (gethash name heads) head)))
+
+(defun bar-forget-output (state name)
+  "Drop the head for wl_output global NAME from STATE, closing its
+surface. No effect for an unknown NAME."
+  (let ((head (bar-head state name)))
+    (when head
+      (when (gethash :surface head)
+        (bar-close-surface head))
+      (when (eq head *bar-pointer-head*)
+        (setf *bar-pointer-head* nil))
+      (remhash name (gethash :heads state)))))
+
+(defun bar-head-primary-p (head)
+  "True when HEAD's bar holds the tray: the snapshot marks its output
+:primary, or, with a snapshot that lists no outputs, HEAD is the first
+head."
+  (let ((snapshot (bar-snapshot))
+        (root (gethash :root head)))
+    (if (eq (getf snapshot :outputs :absent) :absent)
+        (or (null root) (eq head (first (bar-heads root))))
+        (getf (bar-output-entry snapshot (gethash :global-name head))
+              :primary))))
+
+(defun bar-head-wanted-p (head snapshot)
+  "True when HEAD should show a bar under SNAPSHOT: the bar is not
+hidden, the snapshot marks HEAD's output :bar (every head when the
+snapshot lists no outputs), and the compositor has not closed HEAD's
+surface within *bar-reopen-delay* seconds."
+  (let ((closed-at (gethash :closed-at head))
+        (outputs (getf snapshot :outputs :absent)))
+    (and (not (getf snapshot :bar-hidden))
+         (or (eq outputs :absent)
+             (getf (bar-output-entry snapshot (gethash :global-name head))
+                   :bar))
+         (or (null closed-at)
+             (>= (- (get-universal-time) closed-at) *bar-reopen-delay*))
+         t)))
+
+(defmacro with-bar-head ((head) &body body)
+  "Run BODY as HEAD's bar: bar-view sees HEAD's output entry and
+bar-head-segment-modules applies HEAD's primary status."
+  (let ((h (gensym "HEAD")))
+    `(let* ((,h ,head)
+            (*bar-output-view* (bar-output-entry (bar-snapshot)
+                                                 (gethash :global-name ,h)))
+            (*bar-head-primary* (bar-head-primary-p ,h)))
+       ,@body)))
+
 ;;; --- Pointer state (module click/scroll support) ---
 
 (defparameter *bar-pointer-x* nil
@@ -152,12 +260,15 @@ x-threading for every module after it — the bar vanishes (the
   (+ x *bar-module-gap*))
 
 (defun bar-module-layout ()
-  (let ((layout (getf (bar-snapshot) :layout)))
+  "The layout name of the bar's output."
+  (let ((layout (getf (bar-view) :layout)))
     (when layout (string-downcase (symbol-name layout)))))
 
 (defun bar-module-windows ()
-  (let ((count (getf (bar-snapshot) :windows)))
-    (when (plusp count)
+  "The window count of the bar's output's current workspace, e.g.
+\"2 wins\"; empty at zero."
+  (let ((count (getf (bar-view) :windows)))
+    (when (and count (plusp count))
       (format nil "~D win~:P" count))))
 
 (defun bar-module-focused ()
@@ -175,12 +286,11 @@ use it."
       ""))
 
 (defun bar-module-workspaces ()
-  "Workspace numbers with breathing room: the active workspace in
-the accent color, underlined; occupied workspaces in the
-foreground color; empty ones muted. Occupancy comes from the WM
-snapshot's :occupied list (workspace numbers with visible
-windows)."
-  (let* ((snapshot (bar-snapshot))
+  "Workspace numbers of the bar's output with breathing room: the
+active workspace in the accent color on a pill; occupied workspaces
+in the foreground color; empty ones muted. Occupancy comes from the
+output's :occupied list (workspace numbers with visible windows)."
+  (let* ((snapshot (bar-view))
          (current (getf snapshot :workspace 1))
          (count (getf snapshot :workspace-count 9))
          (occupied (getf snapshot :occupied))
@@ -381,6 +491,20 @@ telltale."
 (defun bar-segment-modules (position)
   "The configured module list for :left, :center or :right."
   (config-getf '(:bar :modules) position :default nil))
+
+(defun bar-head-segment-modules (position)
+  "The modules the rendering bar draws in POSITION. The primary bar
+draws them all. Another bar never draws the tray, and under
+(:bar :global-modules :primary) draws only *bar-per-output-modules*."
+  (let ((modules (bar-segment-modules position)))
+    (if *bar-head-primary*
+        modules
+        (let ((global (config-getf '(:bar) :global-modules :default :all)))
+          (remove-if-not (lambda (module)
+                           (and (not (tray-module-p module))
+                                (or (eq global :all)
+                                    (member module *bar-per-output-modules*))))
+                         modules)))))
 
 (defun bar-segment-width (modules)
   "Total pixel width of a module list, including inter-module gaps
@@ -793,22 +917,22 @@ after it."
                                         :border-b rdb))
               ;; margin 0: the classic full-strip bar
               (bar-clear ptr width height br bg bb)))
-        (let ((y (floor (- height (font-line-height)) 2)))
-          (setf *bar-hitboxes* nil)
+        (let ((y (floor (- height (font-line-height)) 2))
+              (*bar-hitboxes* nil))
           ;; Left segment
           (let ((x padding))
-            (dolist (module (bar-segment-modules :left))
+            (dolist (module (bar-head-segment-modules :left))
               (setf x (bar-draw-segment-item ptr width height x y module
                                             fr fg fb br bg bb))))
           ;; Center segment
-          (let* ((modules (bar-segment-modules :center))
+          (let* ((modules (bar-head-segment-modules :center))
                  (total (bar-segment-width modules))
                  (x (floor (- width total) 2)))
             (dolist (module modules)
               (setf x (bar-draw-segment-item ptr width height x y module
                                             fr fg fb br bg bb))))
           ;; Right segment
-          (let* ((modules (bar-segment-modules :right))
+          (let* ((modules (bar-head-segment-modules :right))
                  (total (bar-segment-width modules))
                  (x (- width padding total)))
             (dolist (module modules)
@@ -816,6 +940,7 @@ after it."
                                             fr fg fb br bg bb))))
           ;; Hover: a subtle rounded accent fill under the pointer
           (when (and *bar-pointer-x*
+                     (or (null *bar-pointer-head*) (eq state *bar-pointer-head*))
                      (>= *bar-pointer-x* 0) (< *bar-pointer-x* width))
             (multiple-value-bind (ar ag ab)
                 (parse-hex-color (config-getf '(:bar) :accent
@@ -826,7 +951,8 @@ after it."
                   (fill-rounded-rect ptr width height
                                      (second hb) 2
                                      (- (third hb) (second hb)) (- height 4)
-                                     ar ag ab :alpha 35 :radius 4))))))))
+                                     ar ag ab :alpha 35 :radius 4)))))
+          (setf (gethash :hitboxes state) *bar-hitboxes*))))
     (wl:wl-surface.attach (gethash :surface state) (gethash :wl-buffer state) 0 0)
     (wl:wl-surface.damage (gethash :surface state) 0 0 width height)
     (wl:wl-surface.commit (gethash :surface state))))
@@ -839,9 +965,11 @@ visual glitches and double commits — that the font engine turned
 fatal (a freetype face corrupts under concurrent FT_Load_Char, see
 font.lisp's *font-lock*).")
 
-(defun bar-render (state)
+(defun bar-render (head)
+  "Render and commit HEAD's bar, as that head (see with-bar-head)."
   (bt:with-lock-held (*bar-render-lock*)
-    (%bar-render state)))
+    (with-bar-head (head)
+      (%bar-render head))))
 
 ;;; --- Shm buffer management ---
 
@@ -910,18 +1038,16 @@ Return T, or NIL when the shm file or mapping cannot be created."
 ;;; --- Connection lifecycle ---
 
 (defun bar-bind-global (state registry name interface version)
-  "Bind a registry global for the bar."
+  "Bind a registry global for the bar. Every wl_output becomes a head
+(see bar-add-head)."
   (let ((iface-class (wl:find-interface-named interface)))
     (when iface-class
       (cond
         ((string= interface "wl_compositor")
-         ;; Cap at version 5, mirroring the WM's bind: wl_surface v6
-         ;; added preferred_buffer_scale/transform events our wayflan
-         ;; bindings cannot demarshal — one such event desyncs the
-         ;; bar's whole event stream ("Malformed Wayland message",
-         ;; destroyed proxies, a dead bar). This was the WM-side fix
-         ;; (wm-protocol.lisp) that the bar's own connection never
-         ;; got.
+         ;; Cap at version 5: wl_surface v6 adds
+         ;; preferred_buffer_scale/transform events the wayflan
+         ;; bindings cannot demarshal, and one such event desyncs the
+         ;; connection's whole event stream.
          (let ((v (min version 5)))
            (setf (gethash :compositor state)
                  (wl:wl-registry.bind registry name iface-class v))))
@@ -931,10 +1057,11 @@ Return T, or NIL when the shm file or mapping cannot be created."
         ((string= interface "zwlr_layer_shell_v1")
          (setf (gethash :layer-shell state)
                (wl:wl-registry.bind registry name iface-class version)))
-        ((and (string= interface "wl_output")
-              (null (gethash :output state)))
-         (setf (gethash :output state)
-               (wl:wl-registry.bind registry name iface-class version)))
+        ((string= interface "wl_output")
+         (unless (bar-head state name)
+           (bar-add-head state name
+                         (wl:wl-registry.bind registry name iface-class
+                                              version))))
         ((and (string= interface "wl_seat")
               (null (gethash :seat state)))
          (setf (gethash :seat state)
@@ -956,11 +1083,12 @@ Return T, or NIL when the shm file or mapping cannot be created."
            (bar-render state)
            (setf (gethash :mapped state) t)))))
     (:closed
-     ;; River closed our layer surface. This is how the bar dies
-     ;; silently — say so before *bar-running* stops the loop (the
-     ;; WM's supervisor will restart us within 15s).
-     (format t "~&; Rhizome: bar: layer surface closed by compositor, exiting~%")
-     (setf *bar-running* nil))))
+     ;; Only this head's bar goes; the others keep running. The head
+     ;; reopens after *bar-reopen-delay* while its output remains.
+     (format t "~&; Rhizome: bar: compositor closed the bar on wl_output ~A~%"
+             (gethash :global-name state))
+     (bar-close-surface state)
+     (setf (gethash :closed-at state) (get-universal-time)))))
 
 ;;; --- Change detection ---
 ;;;
@@ -968,33 +1096,44 @@ Return T, or NIL when the shm file or mapping cannot be created."
 ;;; module values) at the configured :interval and only re-renders the
 ;;; buffer when something actually changed, so a fast poll is cheap.
 
-(defparameter *bar-last-content* nil
-  "Printed representation of the last rendered content.")
-
-(defun bar-content-changed-p ()
-  "Whether any configured module's rendered parts changed since the
-last commit. Re-renders are skipped when nothing changed."
-  (let* ((modules (append (bar-segment-modules :left)
-                           (bar-segment-modules :center)
-                           (bar-segment-modules :right)))
-         (sig (with-output-to-string (s)
-                (dolist (module modules)
-                  (princ module s)
-                  (princ " = " s)
-                  (prin1 (bar-module-parts module) s)
-                  (terpri s)))))
-    (unless (equal sig *bar-last-content*)
-      (setf *bar-last-content* sig)
-      t)))
+(defun bar-content-changed-p (head)
+  "True when a module HEAD's bar draws rendered differently since
+HEAD's last check. Records the new content on HEAD."
+  (with-bar-head (head)
+    (let* ((modules (append (bar-head-segment-modules :left)
+                            (bar-head-segment-modules :center)
+                            (bar-head-segment-modules :right)))
+           (sig (with-output-to-string (s)
+                  (dolist (module modules)
+                    (princ module s)
+                    (princ " = " s)
+                    (prin1 (bar-module-parts module) s)
+                    (terpri s)))))
+      (unless (equal sig (gethash :last-content head))
+        (setf (gethash :last-content head) sig)
+        t))))
 
 ;;; --- Pointer handling (clickable modules) ---
 
+(defun bar-hit-at (x)
+  "The hitbox (module start-x end-x) containing X on the pointer's
+bar, or NIL. Without a pointer head, *bar-hitboxes* is searched."
+  (find-if (lambda (hb)
+             (and (<= (second hb) x)
+                  (< x (third hb))))
+           (if *bar-pointer-head*
+               (gethash :hitboxes *bar-pointer-head*)
+               *bar-hitboxes*)))
+
+(defun bar-pointer-entry ()
+  "The snapshot entry of the output under the pointer's bar, or NIL."
+  (when *bar-pointer-head*
+    (bar-output-entry (bar-snapshot)
+                      (gethash :global-name *bar-pointer-head*))))
+
 (defun bar-module-at (x)
-  "The module whose rendered area contains X, or NIL."
-  (let ((hit (find-if (lambda (hb)
-                        (and (<= (second hb) x)
-                             (< x (third hb))))
-                      *bar-hitboxes*)))
+  "The module whose rendered area on the pointer's bar contains X, or NIL."
+  (let ((hit (bar-hit-at x)))
     (when hit (first hit))))
 
 (defun bar-run-command (command)
@@ -1015,10 +1154,7 @@ entries carry their actions inline."
 
 (defun bar-handle-click (x)
   "Handle a left click at X: run the module's :on-click command."
-  (let* ((hit (find-if (lambda (hb)
-                         (and (<= (second hb) x)
-                              (< x (third hb))))
-                       *bar-hitboxes*))
+  (let* ((hit (bar-hit-at x))
          (module (first hit)))
     (when module
       (cond
@@ -1028,11 +1164,15 @@ entries carry their actions inline."
          (tray-click module))
         ;; Workspace numbers: switch to the clicked workspace via IPC
         ((eq module :workspaces)
-         (let ((workspace (1+ (floor (- x (second hit)) 8))))
+         (let ((workspace (1+ (floor (- x (second hit)) 8)))
+               (output (getf (bar-pointer-entry) :wl-output)))
            (when (<= 1 workspace (getf (bar-snapshot) :workspace-count 9))
              (format t "~&; Rhizome: bar: click workspace ~D~%" workspace)
              (bar-run-command
-               (format nil "rhizome-cmd switch-workspace ~D" workspace)))))
+               (if output
+                   (format nil "rhizome-cmd \"(rhizome:bar-switch-workspace ~D ~D)\""
+                           workspace output)
+                   (format nil "rhizome-cmd switch-workspace ~D" workspace))))))
         (t
          (format t "~&; Rhizome: bar: click on ~A~%" module)
          (let ((command (bar-module-action module :on-click)))
@@ -1043,10 +1183,7 @@ entries carry their actions inline."
   "Handle a right click at X: a tray item opens its dbusmenu via
 the WM's prompt machinery (IPC round-trip: the menu data lives
 here, the prompt surfaces live there)."
-  (let* ((hit (find-if (lambda (hb)
-                         (and (<= (second hb) x)
-                              (< x (third hb))))
-                       *bar-hitboxes*))
+  (let* ((hit (bar-hit-at x))
          (module (first hit)))
     (when (and (listp module) (getf module :name) (getf module :menu))
       (format t "~&; Rhizome: bar: tray menu ~A~%" (getf module :name))
@@ -1075,18 +1212,26 @@ here, the prompt surfaces live there)."
       (command
        (bar-run-command command)))))
 
+(defun bar-head-for-surface (args)
+  "The head of *bar-state* whose wl_surface appears in ARGS, or NIL."
+  (when *bar-state*
+    (find-if (lambda (head)
+               (let ((surface (gethash :surface head)))
+                 (and surface (member surface args :test #'eq))))
+             (bar-heads *bar-state*))))
+
 (defun bar-pointer-event (event-name args)
   "Handle wl_pointer events on the bar surface."
   (handler-case
       (case event-name
         (:enter
-         (destructuring-bind (surface x y) args
-           (declare (ignore surface y))
-           (setf *bar-pointer-x* x)))
+         ;; (serial surface x y): x is second to last; the surface
+         ;; names the head
+         (setf *bar-pointer-head* (bar-head-for-surface args)
+               *bar-pointer-x* (nth (- (length args) 2) args)))
         (:leave
-         (destructuring-bind (surface) args
-           (declare (ignore surface))
-           (setf *bar-pointer-x* nil)))
+         (setf *bar-pointer-head* nil
+               *bar-pointer-x* nil))
         (:motion
          (destructuring-bind (time x y) args
            (declare (ignore time y))
@@ -1171,20 +1316,27 @@ drops the bar's exclusive zone with the surface."
   (setf (gethash :layer-surface state) nil
         (gethash :surface state) nil
         (gethash :mapped state) nil
-        *bar-last-content* nil))
+        (gethash :last-content state) nil))
 
 (defun bar-sync-visibility (state)
-  "Open or close the bar's surface to match :bar-hidden in the WM
-snapshot."
-  (let ((hidden (getf (bar-snapshot) :bar-hidden)))
-    (cond ((and hidden (gethash :surface state))
-           (bar-close-surface state))
-          ((and (not hidden) (null (gethash :surface state)))
-           (bar-open-surface state)))))
+  "Open or close each head's surface in STATE to match the WM
+snapshot (see bar-head-wanted-p). A head about to open takes the
+shared compositor, shm and layer-shell globals from STATE."
+  (let ((snapshot (bar-snapshot)))
+    (dolist (head (bar-heads state))
+      (let ((want (bar-head-wanted-p head snapshot))
+            (surface (gethash :surface head)))
+        (cond ((and surface (not want))
+               (bar-close-surface head))
+              ((and want (null surface))
+               (dolist (key '(:compositor :shm :layer-shell))
+                 (setf (gethash key head) (gethash key state)))
+               (bar-open-surface head)))))))
 
 (defun bar-run-loop (state)
   "Open the bar's Wayland connection and drive its tick loop. Each
-tick opens or closes the bar's surface to follow the WM snapshot."
+tick opens or closes each head's surface to follow the WM snapshot
+and re-renders the heads whose content changed."
   (flet ((safe-roundtrip (display)
            ;; Wayflan raises on events it cannot decode (e.g. wl_shm
            ;; advertises non-standard fourcc formats); skip and carry on.
@@ -1196,16 +1348,23 @@ tick opens or closes the bar's surface to follow the WM snapshot."
            (handler-case
                (wl:wl-display-dispatch-event display)
              (error (e)
-               (format t "~&; Rhizome: bar: ignored event error: ~A~%" e)))))
+               (format t "~&; Rhizome: bar: ignored event error: ~A~%" e))))
+         (settled-p ()
+           (every (lambda (head)
+                    (or (gethash :mapped head)
+                        (null (gethash :surface head))))
+                  (bar-heads state))))
     (handler-case
         (wl:with-open-display (display)
           (setf (gethash :display state) display)
-          (setf (gethash :height state) (config-getf '(:bar) :height :default 28))
           (let ((registry (wl:wl-display.get-registry display)))
             (push (lambda (event-name &rest args)
-                    (when (eq event-name :global)
-                      (destructuring-bind (name interface version) args
-                        (bar-bind-global state registry name interface version))))
+                    (case event-name
+                      (:global
+                       (destructuring-bind (name interface version) args
+                         (bar-bind-global state registry name interface version)))
+                      ((:global-remove :global_remove)
+                       (bar-forget-output state (first args)))))
                   (wl:wl-proxy-hooks registry))
             (safe-roundtrip display)
             (unless (and (gethash :compositor state)
@@ -1217,9 +1376,7 @@ tick opens or closes the bar's surface to follow the WM snapshot."
             (bar-setup-pointer state)
             (bar-sync-visibility state)
             (loop for i below 100
-                  until (or (gethash :mapped state)
-                            (null (gethash :surface state))
-                            (not *bar-running*))
+                  until (or (settled-p) (not *bar-running*))
                   do (safe-roundtrip display)
                      (sleep 0.05))
             (loop while *bar-running*
@@ -1228,18 +1385,21 @@ tick opens or closes the bar's surface to follow the WM snapshot."
                        (tray-drain)
                        (when (/= tray-was *tray-changed*)
                          ;; new/removed items: invalidate content
-                         (setf *bar-last-content* nil)))
-                     (when (and (gethash :mapped state)
-                                (or (bar-content-changed-p)
-                                    (/= *tray-render-stamp*
-                                        *tray-changed*)))
-                       (setf *tray-render-stamp* *tray-changed*)
-                       (bar-render state))
+                         (dolist (head (bar-heads state))
+                           (setf (gethash :last-content head) nil))))
+                     (let ((tray-dirty (/= *tray-render-stamp* *tray-changed*)))
+                       (dolist (head (bar-heads state))
+                         (when (and (gethash :mapped head)
+                                    (or (bar-content-changed-p head)
+                                        tray-dirty))
+                           (bar-render head)))
+                       (setf *tray-render-stamp* *tray-changed*))
                      (loop while (and *bar-running*
                                       (wl:wl-display-listen display))
                            do (safe-dispatch display))
                      (sleep (config-getf '(:bar) :interval :default 0.15)))
-            (bar-destroy-shm state)))
+            (dolist (head (bar-heads state))
+              (bar-destroy-shm head))))
       (error (e)
         (format t "~&; Rhizome: bar thread error: ~A~%" e)))))
 
@@ -1295,9 +1455,11 @@ thread and the main thread both call it.")
            (uiop:process-alive-p *bar-process*))))
 
 (defun bar-settings ()
-  "The :bar config group without :enabled."
+  "The :bar config group without :enabled and :outputs: the bar
+process follows both from the WM snapshot, so neither needs a restart."
   (let ((group (copy-list (config-get '(:bar)))))
     (remf group :enabled)
+    (remf group :outputs)
     group))
 
 (defun bar-log-path ()
@@ -1364,27 +1526,62 @@ left by past incidents); WM process only."
   "Maps each output to the height of its non-exclusive area, as river
 last reported it.")
 
-(defun bar-zone-shown-p ()
-  "True when river reports an exclusive zone at least as tall as the
-bar on some output, or has reported no area at all."
-  (let ((bar-height (config-getf '(:bar) :height :default 28)))
-    (or (zerop (hash-table-count *bar-non-exclusive-heights*))
-        (loop for out being the hash-keys of *bar-non-exclusive-heights*
-                using (hash-value height)
-              thereis (>= (- (output-height out) height) bar-height)))))
+(defun bar-output-selected-p (output)
+  "True when the config puts a bar on OUTPUT. (:bar :outputs) is :all
+(the default), :primary (the leftmost output), or a list of 0-based
+indices into the outputs in left-to-right order. NIL while the bar is
+disabled."
+  (and (config-getf '(:bar) :enabled :default t)
+       (let ((spec (config-getf '(:bar) :outputs :default :all))
+             (sorted (all-outputs-sorted)))
+         (cond ((eq spec :primary) (eq output (first sorted)))
+               ((consp spec)
+                (let ((index (position output sorted :test #'eq)))
+                  (and index (member index spec) t)))
+               (t t)))))
 
-(defun bar-reserved-height ()
-  "Vertical pixels the layout must leave for the bar: margin above +
-height + margin below, so windows tile with the same gap under the
-floating bar as above it. 0 when the bar is disabled, or when river
-reports output areas but no exclusive zone at least as tall as the bar
-(hidden or still starting). The WM reserves this itself in its
-layout math because it positions windows explicitly."
+(defun bar-primary-output ()
+  "The leftmost output carrying a bar: its bar holds the tray. NIL
+when no output carries one."
+  (find-if #'bar-output-selected-p (all-outputs-sorted)))
+
+(defun bar-zone-shown-p (&optional output)
+  "True when river reports an exclusive zone at least as tall as the
+bar on OUTPUT, or has reported no area for OUTPUT. Without OUTPUT:
+on some output, or no area reported at all."
+  (let ((bar-height (config-getf '(:bar) :height :default 28)))
+    (if output
+        (let ((height (gethash output *bar-non-exclusive-heights*)))
+          (or (null height)
+              (>= (- (output-height output) height) bar-height)))
+        (or (zerop (hash-table-count *bar-non-exclusive-heights*))
+            (loop for out being the hash-keys of *bar-non-exclusive-heights*
+                    using (hash-value height)
+                  thereis (>= (- (output-height out) height) bar-height))))))
+
+(defun bar-reserved-height (&optional output)
+  "Vertical pixels the layout leaves for the bar on OUTPUT: margin
+above + height + margin below, so windows tile with the same gap under
+the floating bar as above it. 0 when OUTPUT carries no bar (see
+bar-output-selected-p), or when river reports an area for OUTPUT but
+no exclusive zone at least as tall as the bar (hidden or still
+starting). Without OUTPUT, the same test applies to any output. The
+WM reserves this itself because it positions windows explicitly."
   (if (and (config-getf '(:bar) :enabled :default t)
-           (bar-zone-shown-p))
+           (if output
+               (and (bar-output-selected-p output)
+                    (bar-zone-shown-p output))
+               (bar-zone-shown-p)))
       (+ (* 2 (config-getf '(:bar) :margin :default 8))
          (config-getf '(:bar) :height :default 28))
       0))
+
+(defun bar-reservation (&optional output)
+  "The reserved bar space of every output, of OUTPUT, and the
+output-free value, as one list to compare across a change."
+  (list* (bar-reserved-height)
+         (and output (bar-reserved-height output))
+         (mapcar #'bar-reserved-height (all-outputs))))
 
 (defun bar-retile ()
   "Rescale every output's frame trees to the current reserved bar
@@ -1398,11 +1595,11 @@ space and request a manage sequence."
   "Record river's non-exclusive area HEIGHT for OUTPUT, or forget
 OUTPUT when HEIGHT is NIL. Re-tile when the reserved bar space
 changes."
-  (let ((before (bar-reserved-height)))
+  (let ((before (bar-reservation output)))
     (if height
         (setf (gethash output *bar-non-exclusive-heights*) height)
         (remhash output *bar-non-exclusive-heights*))
-    (unless (eql before (bar-reserved-height))
+    (unless (equal before (bar-reservation output))
       (bar-retile))))
 
 (defun toggle-bar ()
@@ -1455,7 +1652,7 @@ pkill would reap the user's live bar."
     (return-from bar-apply-config))
   (when *bar-process-mode*
     (return-from bar-apply-config))
-  (let ((before (bar-reserved-height)))
+  (let ((before (bar-reservation)))
     (cond
       ((not (config-getf '(:bar) :enabled :default t)))
       ((not (bar-alive-p))
@@ -1467,5 +1664,15 @@ pkill would reap the user's live bar."
        (start-bar)))
     (when *wm-proxy*
       (update-wm-snapshot))
-    (unless (eql before (bar-reserved-height))
+    (unless (equal before (bar-reservation))
       (bar-retile))))
+
+(defun bar-switch-workspace (workspace &optional wl-output-name)
+  "Switch the output whose wl_output global name is WL-OUTPUT-NAME to
+WORKSPACE; the current output when no output has that name. The bar
+sends this when a workspace number is clicked on an output's bar."
+  (let ((output (or (and wl-output-name
+                         (find-output-by-wl-name wl-output-name))
+                    (current-output))))
+    (when output
+      (switch-workspace workspace output))))

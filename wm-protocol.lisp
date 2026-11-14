@@ -94,34 +94,64 @@ cycle (which would fight the user for focus).")
 manage pass so every output's pass agrees on it. NIL outside a pass:
 find-output-for-window then asks current-output.")
 
+(defun output-snapshot (output current primary)
+  "The bar's view of OUTPUT as a plist.
+:wl-output is the wl_output global name the bar matches its heads by.
+:workspace, :layout, :windows and :occupied describe what OUTPUT shows.
+:current is true when OUTPUT is CURRENT.
+:bar is true when OUTPUT carries a bar.
+:primary is true when OUTPUT is PRIMARY, the bar holding the tray."
+  (let ((workspace (current-workspace output))
+        (occupied nil))
+    (dolist (win (windows-on-output output))
+      (let ((ws (window-workspace win)))
+        (when (and ws (not (window-minimized-p win)))
+          (pushnew ws occupied))))
+    (list :wl-output (output-wl-output-name output)
+          :x (output-x output)
+          :workspace workspace
+          :layout (output-current-layout output)
+          :windows (length (windows-on-workspace output workspace))
+          :occupied (sort occupied #'<)
+          :current (eq output current)
+          :bar (bar-output-selected-p output)
+          :primary (eq output primary))))
+
 (defun update-wm-snapshot ()
-  "Refresh the snapshot read by the bar thread. Called from the WM
+  "Refresh the snapshot read by the bar process. Called from the WM
 thread during manage and render sequences. Writes only when the
-snapshot actually changed: rewriting the file on every render pass
-kept the bar re-reading and re-committing its surface, which river
-answered with another sequence — a self-sustaining churn."
-  (let ((snapshot
-          (list :layout (let ((outs (all-outputs)))
-                          (when outs (output-current-layout (first outs))))
-                :windows (hash-table-count *windows*)
-                :workspace (let ((outs (all-outputs)))
-                             (when outs (current-workspace (first outs))))
-                :workspace-count *workspace-count*
-                :bar-hidden (not (config-getf '(:bar) :enabled :default t))
-                :occupied (let ((occ nil))
-                            (dolist (win (all-windows))
-                              (let ((ws (window-workspace win)))
-                                (when (and ws (not (window-minimized-p win)))
-                                  (pushnew ws occ))))
-                            (sort occ #'<))
-                :focused (let ((focused (find-if #'window-focused-p (all-windows))))
-                           (when focused (window-title focused)))
-                :recording (or (some (lambda (win)
-                                       (plusp (window-capture-sessions win)))
-                                     (all-windows))
-                               (some (lambda (out)
-                                       (plusp (output-capture-sessions out)))
-                                     (all-outputs))))))
+snapshot changed: a rewrite on every render pass makes the bar
+re-commit its surfaces, and river answers each commit with another
+sequence.
+:outputs holds one output-snapshot per output, left to right. The
+top-level :layout, :workspace and :windows mirror the current
+output's entry; :occupied spans every output."
+  (let* ((current (current-output))
+         (primary (bar-primary-output))
+         (outputs (mapcar (lambda (out) (output-snapshot out current primary))
+                          (all-outputs-sorted)))
+         (here (find-if (lambda (entry) (getf entry :current)) outputs))
+         (snapshot
+           (list :layout (getf here :layout)
+                 :windows (getf here :windows 0)
+                 :workspace (getf here :workspace)
+                 :workspace-count *workspace-count*
+                 :bar-hidden (not (config-getf '(:bar) :enabled :default t))
+                 :occupied (let ((occ nil))
+                             (dolist (win (all-windows))
+                               (let ((ws (window-workspace win)))
+                                 (when (and ws (not (window-minimized-p win)))
+                                   (pushnew ws occ))))
+                             (sort occ #'<))
+                 :outputs outputs
+                 :focused (let ((focused (find-if #'window-focused-p (all-windows))))
+                            (when focused (window-title focused)))
+                 :recording (or (some (lambda (win)
+                                        (plusp (window-capture-sessions win)))
+                                      (all-windows))
+                                (some (lambda (out)
+                                        (plusp (output-capture-sessions out)))
+                                      (all-outputs))))))
     (unless (equal snapshot *wm-snapshot*)
       (setf *wm-snapshot* snapshot)
       (bar-write-snapshot snapshot))))

@@ -23,7 +23,7 @@ SUITES    := animations decorations surface window-rules floating \
              key-grabs key-names placement-policy split-focus shm-buffers \
              pull-hidden bar-hide \
              server-side-decorations \
-             client-fullscreen multi-head
+             client-fullscreen multi-head bar-per-output
 
 .PHONY: all build test install docs clean help
 
