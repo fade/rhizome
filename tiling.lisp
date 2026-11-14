@@ -169,9 +169,10 @@ tiled window (Hyprland-style breathing room; 0 = flush)."
             (max 1 (- h (* 2 i))))))
 
 (defun apply-layout-for-output (output)
-  "Manage-sequence pass for OUTPUT: stamp new windows onto this
-output/workspace, let the frame tree propose dimensions, and let
-floats manage themselves."
+  "Manage-sequence pass for OUTPUT: float new dialogs, stamp new
+windows onto this output/workspace, let the frame tree propose
+dimensions, and let floats manage themselves."
+  (float-new-dialogs)
   (let* ((workspace (current-workspace output))
          (assigned (remove-if
                      (lambda (win)

@@ -1023,6 +1023,21 @@ be moved around freely. Rhizome handles these StumpWM-style as floats
   first, StumpWM-style; MOD+Right-drag resizes from the bottom-right.
 - Floats live on workspaces like everything else: switching hides and
   restores them with the rest.
+- A dialog (a window whose client names a parent window, such as a
+  file picker) floats when it maps. Where it first appears:
+  - The parent is tiled and its frame is at least the dialog's size in
+    both dimensions: centred on the parent's frame, on the parent's
+    output and workspace. When that workspace is not the one its
+    output shows, a notice names the dialog and its location as
+    =group:screen:frame= (workspace number, output counted from 1 left
+    to right, frame counted from 0 in layout order).
+  - Otherwise (the parent floats, is minimized, sits in no frame, or
+    its frame is smaller than the dialog in either dimension): centred
+    on the current frame of the output in use, and focus goes with it.
+  - A dialog that would overhang its output moves back onto the usable
+    area; one larger than the area starts at its top-left corner.
+- A float with no parent appears centred on the output it opens on.
+  Floating a window that is already on screen keeps it where it is.
 
 Toggle the focused window with =C-t f= or =rhizome-cmd toggle-float=;
 float apps automatically with a window rule:
@@ -1031,6 +1046,25 @@ float apps automatically with a window rule:
 (rhizome:configure
   '(:window-rules ((:match "gimp" :float t))))
 #+end_src
+
+A rule with =:float nil= keeps the matching app's dialogs tiled, and
+=:dialogs= sets the default for every app and the notice:
+
+#+begin_src lisp
+(rhizome:configure
+  '(:window-rules ((:match "inkscape" :float nil))
+    :dialogs (:float t :notify-seconds 10 :notify-color "#ff9e64")))
+#+end_src
+
+A desktop portal's file picker carries the portal's app-id, such as
+=xdg-desktop-portal-gtk=, not the app-id of the program that asked for
+it, so a rule for those pickers matches the portal.
+
+A dialog floats or tiles once, when it maps. A client that names the
+parent within two seconds of mapping, as a desktop portal's file
+picker does, still gets a floating dialog. River sends a window's
+parent when the client sets it, so after a WM restart a dialog that
+was already open counts as a window with no parent.
 
 Rules match =:key :app-id= (default), =:title=, =:any=, or
 =:identifier= (river v4's stable window IDs). Windows WITH an

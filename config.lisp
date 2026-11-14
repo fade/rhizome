@@ -93,6 +93,13 @@ Returns (values value found-p)."
               :network (:interval 10
                         :on-click "nm-connection-editor"))
     :window-rules ()
+    :dialogs (:float t
+              ;; A window whose client names a parent floats on map;
+              ;; a window rule with :float nil keeps one app's dialogs
+              ;; tiled. A dialog that opens on a hidden workspace
+              ;; shows a notice for :notify-seconds in :notify-color.
+              :notify-seconds 10
+              :notify-color "#ff9e64")
     :windows (:decorations :server
               ;; :server asks every client that supports it for
               ;; server-side decorations (no client titlebar; rhizome
