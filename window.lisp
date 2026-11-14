@@ -347,11 +347,17 @@ seat. focus_window is a window-management-state request: river 0.5
 TERMINATES the client for sending it outside a manage sequence,
 and switch-workspace (a keybinding path) is always outside one.")
 
-(defun focus-window (win seat)
+(defvar *raised-window* (find-if #'window-focused-p (all-windows))
+  "The window most recently raised, or NIL. focus-window raises the
+window it focuses unless told not to; float-render-decisions stacks
+this window above the other floats.")
+
+(defun focus-window (win seat &key (raise t))
   "Give keyboard focus to WIN on SEAT. The river request is queued
 and flushed during the next manage sequence (flush-focus-requests
 in the manage pass); the internal slots update immediately so
-borders/bars react at once."
+borders/bars react at once. With RAISE (the default) WIN also becomes
+*raised-window*, the float stacked on top; pointer focus passes NIL."
   (when (and (window-proxy win) (seat-proxy seat))
     ;; Clear focus on all other windows
     (dolist (w (all-windows))
@@ -364,6 +370,8 @@ borders/bars react at once."
     (push (cons win seat) *pending-focus-requests*)
     (setf (window-focused-p win) t
           (seat-focused-window seat) win)
+    (when raise
+      (setf *raised-window* win))
     (run-hook :focus-changed win)))
 
 (defvar *pending-pointer-warps* nil

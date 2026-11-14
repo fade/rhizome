@@ -301,6 +301,10 @@ handlers should make window management requests here."
   ;; which loads later — same forward reference as keybindings)
   (enable-pointer-bindings-if-needed)
 
+  ;; Mouse focus policy: under :sloppy the window the pointer moved
+  ;; into takes focus (seat.lisp)
+  (pointer-focus-manage-pass)
+
   ;; Focus requests queued by keybindings/interactions: focus_window
   ;; is manage-state, only legal inside a sequence
   (flush-focus-requests)
