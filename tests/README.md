@@ -184,3 +184,6 @@ stubbed river requests. Run with:
 - `server-side-decorations.lisp`: decoration_hint handling, use_ssd
   and use_csd sent only in the manage pass, the
   `(:windows :decorations)` key, and set_tiled edges for tiled windows.
+- `display-brightness.lisp` - display menu brightness argv: signed
+  steps use brightnessctl's relative N%+ / N%- syntax, absolute levels
+  plain N%.
