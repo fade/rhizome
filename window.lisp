@@ -62,11 +62,18 @@ fullscreen request, or NIL for no preference.")
   "The most recently registered window, for auto-focus.")
 
 (defvar *window-parents* (make-hash-table :test #'eq)
-  "WINDOW -> T for each window whose last parent event named a parent.")
+  "WINDOW -> the river_window_v1 proxy its last parent event named.")
 
 (defun window-has-parent-p (win)
   "True when WIN's client set a parent window (a dialog or transient)."
-  (values (gethash win *window-parents*)))
+  (and (gethash win *window-parents*) t))
+
+(defun window-parent (win)
+  "The managed window WIN's client named as its parent, or NIL when it
+named none or the parent is not managed."
+  (let ((proxy (gethash win *window-parents*)))
+    (when proxy
+      (gethash proxy *windows*))))
 
 (defun forget-window-parent (win)
   "Drop WIN's parent record."
@@ -299,7 +306,7 @@ Does nothing when WIN is NIL."
          ;; A null parent clears it
          (destructuring-bind (parent) args
            (if parent
-               (setf (gethash win *window-parents*) t)
+               (setf (gethash win *window-parents*) parent)
                (remhash win *window-parents*))
            (request-manage-dirty)))
 

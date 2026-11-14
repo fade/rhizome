@@ -957,6 +957,8 @@ move the float. Tiled windows never get one, and neither does a float
 that has a parent window (a dialog or file picker), has a fixed size,
 only supports client-side decoration, or is fullscreen or maximized.
 Under =:client= decorations no float gets one.
+A float that carries a titlebar never sits with its strip under the
+bar: rhizome moves it down until the whole strip is in the usable area.
 
 #+begin_src lisp
 (rhizome:configure
@@ -1178,6 +1180,11 @@ be moved around freely. Rhizome handles these StumpWM-style as floats
   first, StumpWM-style; MOD+Right-drag resizes from the bottom-right.
 - Floats live on workspaces like everything else: switching hides and
   restores them with the rest.
+- A new float appears centred on the frame holding the window that
+  opened it (its parent), or on that window itself when it floats, on
+  the parent's output. A float with no parent appears centred on the
+  output it opens on. Floating a window that is already on screen
+  keeps it where it is.
 
 Toggle the focused window with =C-t f= or =rhizome-cmd toggle-float=;
 float apps automatically with a window rule:

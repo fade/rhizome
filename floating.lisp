@@ -24,11 +24,17 @@
 (defparameter *float-min-size* 50
   "Smallest float dimension a user resize may produce.")
 
+(defvar *float-centre-pending* (make-hash-table :test #'eq)
+  "Floats not yet shown that the render pass centres once their size is
+known (WINDOW -> T).")
+
 ;;; --- Float state ---
 
 (defun float-window (win &key x y width height (animate t))
   "Make WIN float, keeping its current geometry by default (a window
-floated from its tiling position must not jump). Explicit :x :y
+floated from its tiling position must not jump). A window never shown
+and given no position is centred once its size is known; see
+float-centre-new. Explicit :x :y
 :width :height overrides place it precisely. Placing at an
 explicit position glides when the animation engine is on (expose
 and maximize ride this)."
@@ -45,6 +51,10 @@ and maximize ride this)."
                                  (window-app-id win) "window"))
         (request-manage-dirty))
       (progn
+        ;; Never shown and no explicit position: centre it once its
+        ;; size is known (float-centre-new)
+        (when (and (null x) (null y) (null (window-node win)))
+          (setf (gethash win *float-centre-pending*) t))
         (setf (window-floating-p win) t
               (window-float-x win) (or x (window-x win) 0)
               (window-float-y win) (or y (window-y win) 0)
@@ -76,6 +86,7 @@ next manage pass places it as a new window, in the frame the
 placement policy picks."
   (unless (window-floating-p win)
     (return-from unfloat-window))
+  (remhash win *float-centre-pending*)
   (setf (window-floating-p win) nil
         ;; Manual unfloat supersedes any maximize state
         (window-maximized-p win) nil
@@ -181,7 +192,10 @@ the WM is free to exceed but usually shouldn't."
 
 (defun float-clamp-position (win)
   "Keep WIN's float position reachable: at least a ~30px strip of the
-window stays on its output, so a float can never be lost off-screen."
+window stays on its output, so a float can never be lost off-screen.
+A float that carries a titlebar keeps the whole strip below the bar:
+its top edge is at least the strip height plus the border below the
+usable area's top."
   (let* ((out (window-output win))
          (w (or (window-float-width win) (window-width win) 100))
          (h (or (window-float-height win) (window-height win) 100)))
@@ -193,7 +207,13 @@ window stays on its output, so a float can never be lost off-screen."
                    (+ ox ow -30))
               (window-float-y win)
               (min (max (window-float-y win) (- oy (- h 30)))
-                   (+ oy oh -30)))))))
+                   (+ oy oh -30)))
+        ;; The focused border width (2) for both focus states, so a
+        ;; focus change never moves a float
+        (when (window-titlebar-p win)
+          (setf (window-float-y win)
+                (max (window-float-y win)
+                     (+ oy (bar-reserved-height out) (titlebar-height) 2))))))))
 
 (defun float-clamp-dim (win size dimension)
   "Clamp SIZE (a :width or :height) to WIN's min/max size hints and
@@ -208,6 +228,80 @@ the *float-min-size* floor. A hint of 0 means no preference."
     (when (and max (plusp max))
       (setf size (min size max)))
     size))
+
+;;; --- Where a new float first appears ---
+
+(defun float-parent-shown-p (parent)
+  "True when PARENT is managed, not minimized, and on its output's
+current workspace."
+  (let ((out (window-output parent)))
+    (and out
+         (gethash (window-proxy parent) *windows*)
+         (not (window-minimized-p parent))
+         (eql (window-workspace parent) (current-workspace out)))))
+
+(defun float-centre-area (win)
+  "The rectangle a new float WIN is centred on, as
+(VALUES X Y WIDTH HEIGHT) in layout coordinates.
+- WIN's parent floats: the parent's rectangle.
+- WIN's parent is tiled: the frame holding it, else the parent's
+  rectangle when no frame holds it.
+- Otherwise: the usable area of WIN's output.
+A parent counts only while shown on WIN's output."
+  (let ((parent (window-parent win))
+        (out (window-output win)))
+    (if (and parent
+             (float-parent-shown-p parent)
+             (eq (window-output parent) out))
+        (let ((frame (window-frame parent)))
+          (cond ((window-floating-p parent)
+                 (values (or (window-float-x parent) (window-x parent))
+                         (or (window-float-y parent) (window-y parent))
+                         (or (window-float-width parent) (window-width parent))
+                         (or (window-float-height parent)
+                             (window-height parent))))
+                (frame
+                 (values (+ (output-x out) (frame-x frame))
+                         (+ (output-y out) (bar-reserved-height out) (frame-y frame))
+                         (frame-width frame)
+                         (frame-height frame)))
+                (t
+                 (values (window-x parent) (window-y parent)
+                         (window-width parent) (window-height parent)))))
+        (output-usable-area out))))
+
+(defun float-centre-new (win)
+  "Centre WIN on float-centre-area when it awaits its first placement
+and its client has committed a size, then clear the pending mark.
+Otherwise do nothing."
+  (when (and (gethash win *float-centre-pending*)
+             (window-output win)
+             (plusp (window-width win))
+             (plusp (window-height win)))
+    (remhash win *float-centre-pending*)
+    (multiple-value-bind (ax ay aw ah) (float-centre-area win)
+      (setf (window-float-x win) (+ ax (floor (- aw (window-width win)) 2))
+            (window-float-y win) (+ ay (floor (- ah (window-height win)) 2))))))
+
+(defun float-follow-parent (win)
+  "Move WIN, a float awaiting its first placement, to its parent's
+output and workspace when the parent is shown on another output.
+Returns true when WIN moved."
+  (let ((parent (window-parent win)))
+    (when (and parent
+               (gethash win *float-centre-pending*)
+               (window-output win)
+               (float-parent-shown-p parent)
+               (not (eq (window-output parent) (window-output win))))
+      (setf (window-output win) (window-output parent))
+      (assign-window-workspace win (window-workspace parent))
+      (request-manage-dirty)
+      t)))
+
+(defun forget-float-centre (win)
+  "Drop WIN's pending first placement."
+  (remhash win *float-centre-pending*)
+  nil)
 
 (defun float-apply-resize (win op)
   "Apply the cumulative resize delta of OP (a seat op-state plist) to
@@ -246,13 +340,15 @@ is not part of the tiling, and propose its float dimensions — 0x0
       (propose-window-dimensions win 0 0)))
 
 (defun float-manage-decisions (output)
-  "Manage-sequence decisions for floating windows on OUTPUT: adopt
+  "Manage-sequence decisions for floating windows on OUTPUT: move a
+new float to its parent's output (float-follow-parent), adopt
 new/unassigned floats onto the current workspace, and re-propose the
 dimensions of floats on the current workspace."
   (let ((workspace (current-workspace output)))
     (dolist (win (all-windows))
       (unless (or (window-minimized-p win)
                    (not (window-floating-p win)))
+        (float-follow-parent win)
         (cond ((and (null (window-output win))
                     (window-arrives-on-p win output))
                ;; Adopt: same as the tiling path stamping placements
@@ -287,6 +383,7 @@ its hide logic."
     (let ((below (let ((top (first (last tiled-wins))))
                    (and top (window-node top)))))
       (dolist (win floats)
+        (float-centre-new win)
         (float-clamp-position win)
         (make-window-node win)
         (multiple-value-bind (ax ay)
@@ -408,3 +505,5 @@ Cumulative deltas make this idempotent: origin + total motion."
                       (propose-window-dimensions win
                                                  (window-float-width win)
                                                  (window-float-height win))))))))))))
+
+(add-hook :window-closed #'forget-float-centre)

@@ -287,6 +287,34 @@
         (handle-seat-event seat :window-interaction :tb-d)
         (check "press above a dialog: no move" (seat-op-pending seat) nil))
 
+      ;; --- the strip stays in the usable area ---
+      ;; A 36 px bar; strip 24 px; focused border 2 px: the usable top
+      ;; is 36, so a float with a strip starts at y 62 or lower.
+      (fresh-world)
+      (let ((bar-height (symbol-function 'bar-reserved-height))
+            (out (make-instance 'rhizome-output :proxy :tb-out
+                                                :width 1280 :height 800)))
+        (setf (symbol-function 'bar-reserved-height)
+          (lambda (&optional output) (declare (ignore output)) 36))
+        (flet ((clamped-y (y &key parent)
+                 (let ((win (make-float :tb-c :x 100 :y y :w 400 :h 300)))
+                   (setf (window-output win) out)
+                   (when parent
+                     (handle-window-event win :parent :tb-owner))
+                   (float-clamp-position win)
+                   (window-float-y win))))
+          (check "a strip under the bar moves the float down below it"
+                 (clamped-y 0) 62)
+          (check "a float at the usable top moves down by the strip"
+                 (clamped-y 36) 62)
+          (check "a strip just below the bar stays put" (clamped-y 62) 62)
+          (check "a float lower down stays put" (clamped-y 300) 300)
+          (check "a float off the bottom keeps its strip on the output"
+                 (clamped-y 900) 770)
+          (check "a float with no strip may sit under the bar"
+                 (clamped-y 0 :parent t) 0))
+        (setf (symbol-function 'bar-reserved-height) bar-height))
+
       (format t "~&=== ~D passed, ~D failed ===~%" pass fail)
       (unless (zerop fail)
         (uiop:quit 1)))))

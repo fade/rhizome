@@ -259,7 +259,7 @@ workspace scrolls or floats every window, or no leaf is empty."
              (cy (- (+ (or (window-float-y win) (window-y win) 0)
                        (floor h 2))
                     (output-y output)
-                    (bar-reserved-height)))
+                    (bar-reserved-height output)))
              (best nil)
              (best-distance nil))
         (dolist (leaf (frame-leaves (frame-tree-for output workspace)))

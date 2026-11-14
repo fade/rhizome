@@ -15,6 +15,11 @@ stubbed river requests. Run with:
 - `window-rules.lisp` — app-id/title regex rules assign workspaces.
 - `floating.lisp` — float/tile state, geometry clamps, interactive
   resize math, manage/render integration, and `:float` window rules.
+- `float-centring.lisp` - where a new float first appears: centred on
+  the frame holding its parent window, on the parent itself when the
+  parent floats, else on its output's usable area; it follows a parent
+  shown on another output; it is placed once its size is known and a
+  later move is kept; a window already on screen floats where it is.
 - `focus-on-close.lisp` - focus recovery when a window closes: the next
   window in its frame (or the next column of a scroll ribbon), else the
   newest window on its workspace, else a cleared seat; focus and clear
@@ -204,5 +209,6 @@ stubbed river requests. Run with:
   when titlebars are off or decorations are left to clients), the
   strip's height, geometry, colours and title fitting, redraws only when
   the title, size, focus or colours change, a new buffer on any size
-  change, teardown when the window tiles, goes fullscreen or closes, and
-  a press on the strip starting a move.
+  change, teardown when the window tiles, goes fullscreen or closes,
+  a press on the strip starting a move, and a float with a strip kept
+  below the bar.

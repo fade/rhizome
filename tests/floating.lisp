@@ -162,7 +162,10 @@
       (setf (window-output gimp) out)
       (setf (window-float-x gimp) 5000 (window-float-y gimp) -500
             (window-float-width gimp) 300 (window-float-height gimp) 200)
-      (float-clamp-position gimp)
+      ;; Without a titlebar a float may hang off the top; one with a
+      ;; titlebar keeps its strip on the output (tests/titlebars.lisp)
+      (let ((*config* (merge-plist *config* '(:theme (:titlebar nil)))))
+        (float-clamp-position gimp))
       (ok "clamp pulls back onto output" (window-float-x gimp) 1890)
       (ok "clamp pulls up onto output" (window-float-y gimp) -170)
 
