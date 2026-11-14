@@ -1,0 +1,447 @@
+#+TITLE: Rhizome configuration reference
+#+STARTUP: showall
+
+This reference lists every configuration key rhizome reads. For how
+the configuration file loads and how =configure= merges groups, see
+[[file:manual.org::*Configuration][Configuration]] in the user manual.
+
+* Conventions
+
+Every key belongs to a group, and a key's path is the group followed
+by the key: =(:bar :height)= is the =:height= key of the =:bar=
+group. Set a key by passing its group to =configure=:
+
+#+begin_src lisp
+(rhizome:configure '(:bar (:height 24)))
+#+end_src
+
+In the tables:
+
+- Type :: =boolean= is =t= or =nil=. =colour= is a string of the form
+  ="#rrggbb"=. =command= is a shell command string, run with
+  =bash -c=. =seconds= and =pixels= are numbers.
+- Default :: the value in effect when the key is not set. A key
+  marked (unset) has no value in the default configuration, and the
+  default shown is the value the code uses in its place.
+- Applies :: when a change takes effect. /live/ means on the next
+  redraw or window event. /restart/ means at the next start of the
+  window manager. /bar restart/ means at the next start of the bar
+  process, which reads the configuration file (see [[*The bar process][The bar process]]).
+
+Groups whose values include a keyword (=:windows=, =:workspaces=,
+=:frames=, =:animations=, =:output=, and the =(:tiling :placement)=
+list) are replaced whole by each =configure= call. Set every key of
+such a group in one call.
+
+* The bar process
+
+The bar runs as a separate process and reads
+=~/.config/rhizome/config.lisp= when it starts. A =configure= or
+=reload-config= call that changes any =:bar= key except =:enabled=
+restarts the bar, and the new bar reads the file. Changes to the
+=:modules= group and the =:theme= font keys restart nothing; the bar
+shows them when it next starts, for example after a window manager
+restart. Keep bar settings in the configuration file.
+
+* :bar
+
+The status bar.
+
+| Key                  | Type    | Default             | Applies     | Effect                                                                                                                           |
+|----------------------+---------+---------------------+-------------+----------------------------------------------------------------------------------------------------------------------------------|
+| =:enabled=           | boolean | =t=                 | live        | Show the bar. =nil= hides it without stopping its process; MOD+B toggles this key.                                               |
+| =:height=            | pixels  | =20=                | bar restart | Height of the bar. The window manager reserves this plus twice =:margin= at the top of the output.                               |
+| =:margin=            | pixels  | =8= (unset)         | bar restart | Space between the bar and the output's top, left, and right edges, and below the bar.                                            |
+| =:padding=           | pixels  | =6=                 | bar restart | Inset of the left and right segments. With a non-zero =:corner-radius= the inset is the radius plus this.                        |
+| =:corner-radius=     | pixels  | =10= (unset)        | bar restart | Corner radius of the bar; 0 draws a plain rectangle. Also the corner radius of the message window and the prompts, 8 when unset. |
+| =:border-color=      | colour  | ="#3b4261"= (unset) | bar restart | Hairline border of a bar with rounded corners.                                                                                   |
+| =:opacity=           | number  | =0.9=               | live        | Opacity from 0.0 to 1.0 of the bar, the message window, and the prompts.                                                         |
+| =:interval=          | seconds | =0.15=              | bar restart | How often the bar checks its modules for changes. The bar redraws only when a module's text changes.                             |
+| =:background=        | colour  | ="#1a1b26"=         | live        | Background of the bar, the message window, and the prompts.                                                                      |
+| =:foreground=        | colour  | ="#c0caf5"=         | live        | Default text colour; occupied workspace numbers.                                                                                 |
+| =:accent=            | colour  | ="#7aa2f7"=         | live        | Current workspace pill, the clock's time, the hover highlight, and the border of the message window and prompts.                 |
+| =:muted=             | colour  | ="#565f89"=         | live        | Empty workspace numbers and the clock's date.                                                                                    |
+| =:recording-color=   | colour  | ="#f7768e"= (unset) | bar restart | Colour of the =:recording= module's =REC= marker.                                                                                |
+| =:modules=           | plist   | see below           | bar restart | The modules of each segment: =(:left (...) :center (...) :right (...))=.                                                         |
+| =:workspaces= =:gap= | pixels  | =8= (unset)         | bar restart | Space after each workspace number. Set it as =(:bar (:workspaces (:gap 8)))=.                                                    |
+
+The bar draws in its own process, so /live/ for a colour applies to
+the message window and the prompts; the bar itself shows a new colour
+after a bar restart.
+
+The default module layout is:
+
+#+begin_src lisp
+(:left (:workspaces :layout :windows)
+ :center (:clock)
+ :right (:tray :network :volume :battery))
+#+end_src
+
+A segment lists module names, =:tray=, and =(:icons (ENTRY ...))=
+blocks. Module names are =:workspaces=, =:layout=, =:windows=,
+=:focused=, =:recording=, =:clock=, =:battery=, =:volume=,
+=:network=, and =:display=. An unknown name draws nothing. Each icons
+entry is a property list:
+
+| Key               | Type    | Effect                                                                                |
+|-------------------+---------+---------------------------------------------------------------------------------------|
+| =:icon=           | string  | An icon name, found as a PNG in the hicolor theme, or an absolute path to a PNG file. |
+| =:on-click=       | command | Run on a left click.                                                                  |
+| =:on-scroll-up=   | command | Run on scrolling up.                                                                  |
+| =:on-scroll-down= | command | Run on scrolling down.                                                                |
+
+Example:
+
+#+begin_src lisp
+(rhizome:configure
+ '(:bar (:height 28
+         :margin 4
+         :corner-radius 10
+         :modules (:left ((:icons ((:icon "flameshot" :on-click "flameshot gui")))
+                          :workspaces :layout)
+                   :center (:clock)
+                   :right (:recording :tray :network :volume :battery :display)))))
+#+end_src
+
+* :modules
+
+Settings for individual bar modules, one property list per module
+name. Every module accepts =:on-click=, =:on-scroll-up=, and
+=:on-scroll-down=. All keys apply at the next bar restart.
+
+| Key                         | Type    | Default                                              | Effect                                                                                                                                    |
+|-----------------------------+---------+------------------------------------------------------+-------------------------------------------------------------------------------------------------------------------------------------------|
+| =(:clock :format)=          | string  | ="%a %d %b %H:%M"=                                   | Clock format. Codes: =%H= =%M= =%S= =%d= =%m= =%y= =%Y= =%a= =%A= =%b= =%B=. The part after the last space is drawn in the accent colour. |
+| =(:battery :interval)=      | seconds | =5=                                                  | Time between battery readings.                                                                                                            |
+| =(:volume :interval)=       | seconds | =5=                                                  | Time between =wpctl= readings.                                                                                                            |
+| =(:volume :on-click)=       | command | ="pavucontrol"=                                      | Run on a click.                                                                                                                           |
+| =(:volume :on-scroll-up)=   | command | ="wpctl set-volume -l 1.0 @DEFAULT_AUDIO_SINK@ 5%+"= | Run on scrolling up.                                                                                                                      |
+| =(:volume :on-scroll-down)= | command | ="wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%-"=        | Run on scrolling down.                                                                                                                    |
+| =(:network :interval)=      | seconds | =10=                                                 | Time between =nmcli= readings.                                                                                                            |
+| =(:network :on-click)=      | command | ="nm-connection-editor"=                             | Run on a click.                                                                                                                           |
+| =(:display :interval)=      | seconds | =10= (unset)                                         | Time between =brightnessctl= readings.                                                                                                    |
+| =(MODULE :on-click)=        | command | =nil= (unset)                                        | Run on a left click on MODULE.                                                                                                            |
+| =(MODULE :on-scroll-up)=    | command | =nil= (unset)                                        | Run on scrolling up over MODULE.                                                                                                          |
+| =(MODULE :on-scroll-down)=  | command | =nil= (unset)                                        | Run on scrolling down over MODULE.                                                                                                        |
+
+A click on =:workspaces= always switches workspace, and clicks and
+scrolls on =:tray= go to the tray item, so those two modules ignore
+the action keys.
+
+#+begin_src lisp
+(rhizome:configure
+ '(:modules (:clock (:format "%H:%M")
+             :display (:on-click "rhizome-cmd display-menu"))))
+#+end_src
+
+* :theme
+
+Fonts and window borders.
+
+| Key                 | Type   | Default       | Applies                       | Effect                                                                  |
+|---------------------+--------+---------------+-------------------------------+-------------------------------------------------------------------------|
+| =:font-family=      | string | ="monospace"= | live; bar restart for the bar | Font family, resolved with =fc-match=.                                  |
+| =:font-size=        | pixels | =14=          | live; bar restart for the bar | Font size.                                                              |
+| =:focused-border=   | colour | ="#7aa2f7"=   | live                          | Border of the focused window; tint of float shadows and the focus glow. |
+| =:unfocused-border= | colour | ="#404040"=   | live                          | Border of the other windows.                                            |
+
+#+begin_src lisp
+(rhizome:configure '(:theme (:font-family "JetBrains Mono" :font-size 13)))
+#+end_src
+
+* :launcher
+
+The application launcher (MOD+D). All keys apply the next time the
+launcher opens.
+
+| Key                     | Type   | Default             | Effect                                                                       |
+|-------------------------+--------+---------------------+------------------------------------------------------------------------------|
+| =:background=           | colour | ="#23142d"=         | Background.                                                                  |
+| =:opacity=              | number | =0.9=               | Opacity from 0.0 to 1.0.                                                     |
+| =:icon-size=            | pixels | =20=                | Size of the application icons.                                               |
+| =:accent=               | colour | ="#7aa2f7"=         | The part of each name that matches the typed text.                           |
+| =:prompt-color=         | colour | ="#8c64aa"=         | The prompt label.                                                            |
+| =:query-color=          | colour | ="#dcc8f0"=         | The typed text.                                                              |
+| =:cursor-color=         | colour | ="#b4a0d2"=         | The text cursor.                                                             |
+| =:selection-background= | colour | ="#503278"=         | The selected row.                                                            |
+| =:selected-color=       | colour | ="#f0e6ff"=         | Text of the selected row.                                                    |
+| =:entry-color=          | colour | ="#aa96c8"=         | Text of the other rows.                                                      |
+| =:placeholder-color=    | colour | ="#6b5a8a"= (unset) | Placeholder and count text.                                                  |
+| =:border-color=         | colour | ="#4a3a66"= (unset) | Hairline border.                                                             |
+| =:corner-radius=        | pixels | =12= (unset)        | Corner radius.                                                               |
+| =:dim-alpha=            | number | =60= (unset)        | Alpha from 0 to 255 of the dimmed layer behind the launcher; 0 turns it off. |
+
+#+begin_src lisp
+(rhizome:configure '(:launcher (:background "#1e1e2e" :dim-alpha 0)))
+#+end_src
+
+* :menus
+
+The window menu (MOD+middle click) and the menus of tray items. All
+keys apply the next time a menu opens.
+
+| Key                 | Type   | Default             | Effect                                     |
+|---------------------+--------+---------------------+--------------------------------------------|
+| =:background=       | colour | ="#1f1633"= (unset) | Background.                                |
+| =:item-color=       | colour | ="#c9b8e8"= (unset) | Text of the entries.                       |
+| =:hover-background= | colour | ="#4b3a78"= (unset) | Background of the entry under the pointer. |
+| =:hover-color=      | colour | ="#f0e6ff"= (unset) | Text of the entry under the pointer.       |
+| =:border-color=     | colour | ="#4a3a72"= (unset) | Hairline border.                           |
+| =:corner-radius=    | pixels | =10= (unset)        | Corner radius.                             |
+| =:opacity=          | number | =0.95= (unset)      | Opacity from 0.0 to 1.0.                   |
+
+#+begin_src lisp
+(rhizome:configure '(:menus (:background "#1a1b26" :hover-background "#3b4261")))
+#+end_src
+
+* :decorations
+
+Shadows around floating windows and the glow around the focused tiled
+window. All keys apply live.
+
+| Key              | Type    | Default       | Effect                                                            |
+|------------------+---------+---------------+-------------------------------------------------------------------|
+| =:enabled=       | boolean | =t= (unset)   | Draw shadows and the focus glow.                                  |
+| =:radius=        | pixels  | =12= (unset)  | Width of the shadow around a float; 0 turns shadows and glow off. |
+| =:alpha=         | number  | =0.4= (unset) | Opacity from 0.0 to 1.0 of the shadow of an unfocused float.      |
+| =:focused-alpha= | number  | =0.6= (unset) | Opacity of the shadow of the focused float.                       |
+| =:glow-radius=   | pixels  | =6= (unset)   | Width of the glow around the focused tiled window.                |
+| =:glow-alpha=    | number  | =0.3= (unset) | Opacity of that glow.                                             |
+
+#+begin_src lisp
+(rhizome:configure '(:decorations (:radius 16 :focused-alpha 0.8)))
+#+end_src
+
+* :windows
+
+| Key            | Type    | Default   | Applies | Effect                                                                                                                |
+|----------------+---------+-----------+---------+-----------------------------------------------------------------------------------------------------------------------|
+| =:decorations= | keyword | =:server= | live    | =:server= asks each application that supports it to draw no title bar. =:client= lets every application draw its own. |
+
+#+begin_src lisp
+(rhizome:configure '(:windows (:decorations :client)))
+#+end_src
+
+* :workspaces
+
+Replaced whole by each =configure= call.
+
+| Key               | Type    | Default         | Applies | Effect                                                                                                       |
+|-------------------+---------+-----------------+---------+--------------------------------------------------------------------------------------------------------------|
+| =:types=          | plist   | =nil=           | live    | Group types by workspace number, for example =(2 :floating 5 :floating)=. A workspace not listed is =:tile=. |
+| =:default-layout= | keyword | =:master-stack= | live    | Layout of a workspace that has not had one set.                                                              |
+
+#+begin_src lisp
+(rhizome:configure '(:workspaces (:types (9 :floating)
+                                  :default-layout :even)))
+#+end_src
+
+* :gaps
+
+| Key      | Type   | Default | Applies | Effect                                                                                                 |
+|----------+--------+---------+---------+--------------------------------------------------------------------------------------------------------|
+| =:inner= | pixels | =6=     | live    | Space around each tiled window: twice this between neighbours, once at the output edge. 0 tiles flush. |
+
+#+begin_src lisp
+(rhizome:configure '(:gaps (:inner 0)))
+#+end_src
+
+* :frames
+
+Replaced whole by each =configure= call.
+
+| Key            | Type    | Default | Applies | Effect                                                                                                                                                                                                      |
+|----------------+---------+---------+---------+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| =:prune-empty= | keyword | =:auto= | live    | Which empty frames close. =:auto= keeps frames you split and closes frames a new window split open. =:never= keeps every empty frame. =:always= closes every empty frame. Any other value reads as =:auto=. |
+
+#+begin_src lisp
+(rhizome:configure '(:frames (:prune-empty :never)))
+#+end_src
+
+* :tiling
+
+The =:placement= list is replaced whole by each =configure= call.
+
+| Key                        | Type    | Default                | Applies | Effect                                                                                                                                                         |
+|----------------------------+---------+------------------------+---------+----------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| =:auto-split=              | boolean | =t= (unset)            | live    | Split an occupied frame so a new window gets its own frame. =nil= stacks it in the frame.                                                                      |
+| =:placement= =:policy=     | keyword | =:stumpwm= (unset)     | live    | Name of the placement policy.                                                                                                                                  |
+| =:placement= =:new-frame=  | keyword | =:last-window= (unset) | live    | =:stumpwm= policy: what fills the new half of a split. =:empty= leaves it empty.                                                                               |
+| =:placement= =:new-window= | list    | =(:focused)= (unset)   | live    | =:stumpwm= policy: frame preferences for a new window, from =:focused=, =:last=, =:empty=, =:unfocused=, and functions of =(output workspace window history)=. |
+
+#+begin_src lisp
+(rhizome:configure '(:tiling (:auto-split t
+                              :placement (:policy :stumpwm
+                                          :new-frame :empty
+                                          :new-window (:empty :focused)))))
+#+end_src
+
+* :animations
+
+Replaced whole by each =configure= call.
+
+| Key            | Type         | Default           | Applies | Effect                                                                |
+|----------------+--------------+-------------------+---------+-----------------------------------------------------------------------|
+| =:enabled=     | boolean      | =t=               | live    | Animate window movement.                                              |
+| =:duration-ms= | milliseconds | =200=             | live    | Length of a glide. The workspace slide always lasts 160 milliseconds. |
+| =:easing=      | keyword      | =:ease-out-cubic= | live    | =:ease-out-cubic=, =:linear=, or =:ease-in-out=.                      |
+
+#+begin_src lisp
+(rhizome:configure '(:animations (:enabled t :duration-ms 150 :easing :linear)))
+#+end_src
+
+* :window-rules
+
+A list of rules, applied in order when a window opens and again when
+its title or application ID changes; the first rule that matches
+applies. Default =()=. A =configure= call replaces the
+whole list.
+
+| Key           | Type    | Effect                                                                                                   |
+|---------------+---------+----------------------------------------------------------------------------------------------------------|
+| =:match=      | string  | Regular expression, matched without regard to case.                                                      |
+| =:key=        | keyword | Field =:match= tests: =:app-id= (default), =:title=, =:any= (application ID or title), or =:identifier=. |
+| =:wse=        | list    | A window selection expression, used in place of =:match=.                                                |
+| =:workspace=  | integer | Workspace to open on.                                                                                    |
+| =:follow=     | boolean | With =:workspace=, switch to that workspace.                                                             |
+| =:float=      | boolean | Open floating.                                                                                           |
+| =:fullscreen= | boolean | Open fullscreen.                                                                                         |
+| =:output=     | integer | Output to open on, counting from 1 left to right, then top to bottom.                                    |
+| =:layout=     | keyword | Layout name set as the first output's current layout.                                                    |
+
+#+begin_src lisp
+(rhizome:configure
+ '(:window-rules ((:match "firefox" :workspace 2 :follow t)
+                  (:match "pavucontrol" :float t)
+                  (:wse (:and (:app-id "foot") (:title "scratch")) :float t))))
+#+end_src
+
+* :window-state
+
+| Key        | Type    | Default | Applies | Effect                                                                                                                     |
+|------------+---------+---------+---------+----------------------------------------------------------------------------------------------------------------------------|
+| =:enabled= | boolean | =t=     | live    | Remember the workspace and float state of windows with a stable identifier, in =~/.local/share/rhizome/window-state.sexp=. |
+
+#+begin_src lisp
+(rhizome:configure '(:window-state (:enabled nil)))
+#+end_src
+
+* :scratchpads
+
+| Key        | Type | Default                                    | Applies | Effect                                                                                                     |
+|------------+------+--------------------------------------------+---------+------------------------------------------------------------------------------------------------------------|
+| =:entries= | list | =((:name "term" :command "foot"))= (unset) | live    | Scratchpads as =(:name NAME :command COMMAND)= entries. A name with no entry runs the name as its command. |
+
+#+begin_src lisp
+(rhizome:configure
+ '(:scratchpads (:entries ((:name "term" :command "foot")
+                           (:name "calc" :command "foot -e bc")))))
+#+end_src
+
+* :output
+
+Replaced whole by each =configure= call.
+
+| Key                  | Type    | Default  | Applies | Effect                                                                                                                             |
+|----------------------+---------+----------+---------+------------------------------------------------------------------------------------------------------------------------------------|
+| =:presentation-mode= | keyword | =:vsync= | live    | =:vsync= shows frames at vertical blank. =:async= shows them at once, trading tearing for latency. Needs river protocol version 4. |
+
+#+begin_src lisp
+(rhizome:configure '(:output (:presentation-mode :async)))
+#+end_src
+
+* :pointer
+
+| Key               | Type    | Default                            | Applies | Effect                                                                            |
+|-------------------+---------+------------------------------------+---------+-----------------------------------------------------------------------------------|
+| =:warp-on-switch= | boolean | =t=                                | live    | Move the pointer to the output's centre on a workspace switch.                    |
+| =:xcursor-theme=  | string  | =$XCURSOR_THEME= (unset)           | restart | Cursor theme. With neither the key nor the variable set, river's default applies. |
+| =:xcursor-size=   | pixels  | =$XCURSOR_SIZE=, else =24= (unset) | restart | Cursor size.                                                                      |
+
+#+begin_src lisp
+(rhizome:configure '(:pointer (:warp-on-switch nil
+                               :xcursor-theme "Adwaita"
+                               :xcursor-size 32)))
+#+end_src
+
+* :lock
+
+| Key             | Type            | Default              | Applies | Effect                                                                           |
+|-----------------+-----------------+----------------------+---------+----------------------------------------------------------------------------------|
+| =:command=      | string or list  | ="swaylock"= (unset) | live    | The locker program, or a list of program and arguments.                          |
+| =:args=         | list of strings | =nil= (unset)        | live    | Arguments added after a string =:command=.                                       |
+| =:idle-seconds= | seconds         | =0= (unset)          | restart | Run =swayidle= to start the locker after this many idle seconds. 0 turns it off. |
+
+#+begin_src lisp
+(rhizome:configure '(:lock (:command "swaylock"
+                            :args ("--daemonize" "--color" "000000")
+                            :idle-seconds 600)))
+#+end_src
+
+* :idle
+
+Read once, when the window manager starts.
+
+| Key           | Type    | Default       | Applies | Effect                                                                                                                             |
+|---------------+---------+---------------+---------+------------------------------------------------------------------------------------------------------------------------------------|
+| =:lock-after= | seconds | =300= (unset) | restart | Run =swaylock -f= after this many idle seconds. =nil= or 0 turns off this idle manager.                                            |
+| =:dpms-after= | seconds | =600= (unset) | restart | Turn the screens off with =wlopm= after this many idle seconds, and on again on activity. Has no effect when =:lock-after= is off. |
+
+This idle manager always runs =swaylock=, whatever =(:lock :command)=
+names. To use another locker on idle, turn this one off and set
+=(:lock :idle-seconds)=:
+
+#+begin_src lisp
+(rhizome:configure '(:idle (:lock-after nil)))
+(rhizome:configure '(:lock (:command "hyprlock" :idle-seconds 300)))
+#+end_src
+
+* :ipc
+
+| Key        | Type    | Default | Applies | Effect                                                  |
+|------------+---------+---------+---------+---------------------------------------------------------|
+| =:enabled= | boolean | =t=     | restart | Listen for commands on =$XDG_RUNTIME_DIR/rhizome.sock=. |
+
+* :slynk
+
+| Key        | Type    | Default | Applies | Effect                             |
+|------------+---------+---------+---------+------------------------------------|
+| =:enabled= | boolean | =t=     | restart | Start a slynk server on 127.0.0.1. |
+| =:port=    | integer | =4005=  | restart | Port of the slynk server.          |
+
+#+begin_src lisp
+(rhizome:configure '(:slynk (:port 4010)))
+#+end_src
+
+* :swank
+
+Accepted for configurations written for the earlier swank server.
+While the =:slynk= group equals its default, the =:enabled= and =:port=
+keys of a =:swank= group set the slynk server instead. Once =:slynk=
+is changed, =:swank= is ignored.
+
+| Key        | Type    | Default | Applies | Effect                  |
+|------------+---------+---------+---------+-------------------------|
+| =:enabled= | boolean | =t=     | restart | As =(:slynk :enabled)=. |
+| =:port=    | integer | =4005=  | restart | As =(:slynk :port)=.    |
+
+* :debug
+
+| Key       | Type    | Default       | Applies | Effect                                                             |
+|-----------+---------+---------------+---------+--------------------------------------------------------------------|
+| =:events= | boolean | =nil= (unset) | live    | Log every river window manager event. Large while windows animate. |
+
+* Variables
+
+These settings are Lisp variables rather than configuration keys. Set
+them in the configuration file with =setf=.
+
+| Variable                     | Default                           | Effect                                                                                                        |
+|------------------------------+-----------------------------------+---------------------------------------------------------------------------------------------------------------|
+| =rhizome:*mod*=              | Super (=(:mod4)=)                 | The user modifier. Change it with =set-user-mod=, which also moves the default bindings.                      |
+| =rhizome:*modifier-map*=     | Meta to =:mod1=, Super to =:mod4= | Logical modifiers in key specs mapped to river modifiers. Change it with =set-modifier=.                      |
+| =rhizome::*workspace-count*= | =9=                               | Workspaces per output.                                                                                        |
+| =rhizome::*enable-tap*=      | =t=                               | Turn on tap-to-click on touchpads. One, two, and three finger taps click the left, right, and middle buttons. |
+| =rhizome::*enable-tap-drag*= | =t=                               | Turn on tap-and-drag on touchpads.                                                                            |
+
+Variables written with =::= are internal to the =rhizome= package.
