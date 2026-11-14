@@ -1,0 +1,1267 @@
+#+TITLE: Rhizome user manual
+#+STARTUP: showall
+
+Rhizome is a window manager for the [[https://github.com/riverwm/river][river]] Wayland compositor, written in
+Common Lisp in the tradition of StumpWM. This manual describes how to
+run it, how to use it from the keyboard, and how to configure and
+extend it from Lisp. Every configuration key is listed with its type
+and default in [[file:config-reference.org][the configuration reference]].
+
+* Concepts
+
+** Compositor, window manager, and bar
+
+River draws the screen and handles input devices. It delegates every
+window management decision to a separate client that speaks the
+=river-window-management-v1= protocol. Rhizome is that client: it
+places windows, sets focus and borders, and grabs keys, and river
+carries out the result.
+
+Three processes cooperate in a running session:
+
+- river :: the compositor.
+- the window manager :: an SBCL process running =(rhizome:run)=. It
+  holds all window state, the key bindings, the prompts, the
+  launcher, and the IPC socket.
+- the bar :: a second SBCL process running =(rhizome:run-bar)=. The
+  window manager starts it, restarts it when it dies, and passes it
+  state through a snapshot file. The bar also hosts the system tray.
+
+** Terms
+
+- output :: a monitor.
+- workspace :: one of nine numbered window groups on each output
+  (StumpWM calls these groups). One workspace per output is visible
+  at a time.
+- frame :: a rectangle of the screen in a workspace's frame tree. A
+  frame holds zero or more windows and shows one of them.
+- frame tree :: the binary tree of splits that divides a workspace
+  into frames.
+- layout :: a named template, such as =:master-stack=, that rebuilds a
+  workspace's frame tree.
+- group type :: how a workspace arranges its windows: =:tile= (frame
+  trees), =:floating= (every window floats), or =:scroll= (a
+  horizontal ribbon of columns).
+- float :: a window outside the frame tree, with its own position and
+  size, stacked above the tiled windows.
+- MOD :: the user modifier key, Super by default.
+- prefix key :: the key that starts a key sequence, =C-t= (Control+T)
+  by default.
+
+* Running rhizome
+
+** Requirements
+
+- river 0.4 or 0.5, which provides =river-window-management-v1=.
+- SBCL with Quicklisp. Rhizome loads =wayflan-client=, =cl-ppcre=,
+  =bordeaux-threads=, =cffi=, and =pngload= through Quicklisp.
+- =python3= for the =rhizome-cmd= command-line helper.
+- freetype and fontconfig for TrueType text. Without them every
+  surface uses a built-in 8x16 bitmap font.
+
+The default bindings and bar modules run external programs: =foot=,
+=emacs=, =grim=, =slurp=, =wl-copy=, =wl-paste=, =wpctl=, =nmcli=,
+=brightnessctl=, =swayidle=, =swaylock=, =wlopm=, =pavucontrol=,
+=nm-connection-editor=, =alacritty= (for =Terminal=true= launcher
+entries), =hyprsunset= (the night light), and =systemctl=. A missing
+program disables only the feature that runs it.
+
+** Installing the session files
+
+#+begin_src sh
+make install
+#+end_src
+
+=make install= runs =session/install.sh=, which copies these files
+into your home directory. Running it again overwrites them.
+
+| Source                           | Installed as                                      |
+|----------------------------------+---------------------------------------------------|
+| =session/rhizome-session=        | =~/.local/bin/rhizome-session=                    |
+| =session/rhizome-cmd=            | =~/.local/bin/rhizome-cmd=                        |
+| =session/river-init=             | =~/.config/river/init=                            |
+| =session/rhizome-session.target= | =~/.config/systemd/user/rhizome-session.target=   |
+| =session/river-portals.conf=     | =~/.config/xdg-desktop-portal/river-portals.conf= |
+
+=rhizome-session= exports the session environment and runs river.
+River runs =~/.config/river/init=, which imports the environment into
+systemd and D-Bus, starts =rhizome-session.target=, and starts the
+window manager in a supervision loop: when the window manager exits,
+the loop starts it again. The script also restarts
+=xdg-desktop-portal=, and starts =variety=, =flameshot=, and
+=lxqt-policykit-agent= when they are not running. The window manager
+writes its log to =~/.cache/rhizome/rhizome.log=.
+
+To start a session, select =~/.local/bin/rhizome-session= in your
+display manager, or run it from a text console.
+=session/sddm/install-root.sh= registers a session entry for SDDM
+(Simple Desktop Display Manager) on Omarchy systems.
+
+** Starting rhizome by hand
+
+With river already running, start the window manager in another
+terminal:
+
+#+begin_src sh
+sbcl --eval '(ql:quickload :rhizome)' --eval '(rhizome:run)'
+#+end_src
+
+=(rhizome:run)= connects to river and returns when the window manager
+stops. If river does not advertise =river_window_manager_v1=, =run=
+logs the problem and returns.
+
+** Building and testing
+
+| Command      | Effect                                                                  |
+|--------------+-------------------------------------------------------------------------|
+| =make build= | Load the system to check that it compiles.                              |
+| =make test=  | Run the suites listed in the Makefile's =SUITES= and fail if any fails. |
+| =make docs=  | Rebuild =docs/testing-day.pdf=.                                         |
+| =make clean= | Delete the project's compiled fasl cache.                               |
+
+The test suites run without river, a Wayland socket, or a D-Bus
+session. Run a subset with =make test SUITES="surface decorations"=.
+
+* Configuration
+
+** The configuration file
+
+At startup the window manager loads =~/.config/rhizome/config.lisp=
+if it exists. The file is ordinary Lisp. It usually contains calls to
+=rhizome:configure=:
+
+#+begin_src lisp
+(rhizome:configure '(:theme (:font-family "JetBrains Mono"
+                             :font-size 14)))
+(rhizome:configure '(:gaps (:inner 4)))
+#+end_src
+
+The file loads in whatever package is current, normally =CL-USER=, so
+either prefix rhizome's symbols with =rhizome:= or begin the file with
+=(in-package #:rhizome)=. An error in the file is logged and the rest
+of the file is skipped; the window manager starts with whatever the
+file configured before the error.
+
+=examples/config.lisp= in the source tree is a commented file that
+sets every common group.
+
+** Merge rules
+
+The configuration is a nested property list. =configure= merges the
+list you pass into the current configuration and applies the result:
+
+- When both the current value and the new value are property lists
+  whose values are not keywords, the two merge key by key.
+- Any other value replaces the old one whole. Lists such as a
+  module list or =:window-rules= are replaced, not appended to.
+- A group whose values include a keyword, such as
+  =(:frames (:prune-empty :auto))= or
+  =(:animations (:easing :ease-out-cubic))=, is replaced whole. Pass
+  every key of such a group that you want to keep in one call.
+
+For example, this pair of calls leaves =:types= unset, because the
+second call replaces the whole =:workspaces= group:
+
+#+begin_src lisp
+(rhizome:configure '(:workspaces (:types (2 :floating))))
+(rhizome:configure '(:workspaces (:default-layout :even)))
+#+end_src
+
+Write both keys in one call instead:
+
+#+begin_src lisp
+(rhizome:configure '(:workspaces (:types (2 :floating)
+                                  :default-layout :even)))
+#+end_src
+
+** Changing the configuration live
+
+=configure= works from the REPL, the eval prompt, and =rhizome-cmd= as
+well as from the file. Most keys are read each time they are used, so
+a change takes effect on the next redraw or the next window event.
+These take effect only at a restart of the window manager:
+
+- =(:idle ...)= and =(:lock :idle-seconds)=, which start =swayidle=
+  once at startup.
+- =(:ipc :enabled)= and =(:slynk ...)=, read when the servers start.
+- =(:pointer :xcursor-theme)= and =(:pointer :xcursor-size)=, sent
+  when a seat appears.
+
+The bar runs in its own process and reads =~/.config/rhizome/config.lisp=
+when it starts. A =configure= or =(rhizome:reload-config)= call in the
+window manager reaches the running bar in two ways only:
+
+- =(:bar :enabled)= hides or shows the bar.
+- A change to any other =:bar= key restarts the bar process.
+
+Because a restarted bar reads the file, put bar settings in the file
+and call =(rhizome:reload-config)=. Changes to the =:modules= group
+and the =:theme= fonts restart nothing; the bar shows them when it
+next starts, for example after a restart of the window manager.
+
+=(rhizome:reload-config)= resets the configuration to the defaults,
+removes every user key binding, loads the file again, and applies the
+result. Bindings that the file no longer makes are gone; the default
+bindings stay.
+
+* Keys
+
+** The user modifier
+
+MOD is Super by default. Every direct binding and the MOD+drag
+pointer bindings use it. Change it live:
+
+#+begin_src lisp
+(rhizome:set-user-mod :alt)     ; Alt
+(rhizome:set-user-mod :super)   ; Super, the default
+#+end_src
+
+=set-user-mod= accepts =:alt=, =:super=, and =:ctrl=. The default
+bindings move to the new modifier; user bindings keep the modifiers
+they were made with. Under WSLg (Windows Subsystem for Linux GUI),
+Windows takes the Super key, so use =:alt= there.
+
+** Direct bindings
+
+| Key              | Action                                                            |
+|------------------+-------------------------------------------------------------------|
+| MOD+Return       | Start a terminal (=foot=).                                        |
+| MOD+E            | Start Emacs.                                                      |
+| MOD+D            | Open the application launcher.                                    |
+| MOD+Q            | Close the focused window.                                         |
+| MOD+J            | Focus the next window in the current frame.                       |
+| MOD+K            | Focus the previous window in the current frame.                   |
+| MOD+Space        | Cycle the layout: master-stack, even, monocle.                    |
+| MOD+1 to MOD+9   | Switch to workspace 1 to 9.                                       |
+| MOD+Shift+1 to 9 | Move the focused window to that workspace and follow it.          |
+| MOD+B            | Hide or show the bar.                                             |
+| MOD+W            | Open the window list.                                             |
+| MOD+G            | Open the workspace picker.                                        |
+| MOD+X            | Open the command palette.                                         |
+| MOD+;            | Open the eval prompt.                                             |
+| MOD+, and MOD+.  | Scroll the ribbon viewport left or right by half an output width. |
+| MOD+Shift+L      | Lock the session.                                                 |
+| MOD+Shift+E      | Log out. Press twice within 3 seconds.                            |
+| MOD+Shift+Q      | Power off the machine (=systemctl poweroff=).                     |
+| MOD+Shift+R      | Reboot the machine (=systemctl reboot=).                          |
+| Print            | Screenshot of every output.                                       |
+| Shift+Print      | Screenshot of a region selected with =slurp=.                     |
+| C-t              | Start a prefix key sequence.                                      |
+
+Screenshots go to =~/Pictures/Screenshots/= with a timestamped file
+name, and to the clipboard.
+
+** Pointer bindings
+
+| Button           | Action                                                                                         |
+|------------------+------------------------------------------------------------------------------------------------|
+| MOD+left drag    | Move the window under the pointer. A tiled window floats first.                                |
+| MOD+right drag   | Resize the window under the pointer from its bottom-right corner. A tiled window floats first. |
+| MOD+middle click | Open the window menu at the pointer.                                                           |
+
+** Prefix key sequences
+
+The prefix key, =C-t= by default, is an ordinary binding. Pressing it
+opens an invisible surface that takes the keyboard, so the following
+key goes to the window manager instead of the focused application.
+The message window lists the keys available next, with a short
+description of each. The sequence ends when a command runs, on Escape, on an unbound
+key, or after 5 seconds without a key.
+
+While =C-t= is the prefix key, applications never receive Control+T.
+Move the prefix with =set-prefix-key= (see [[*Changing key bindings][Changing key bindings]]).
+
+| Keys            | Action                                                            |
+|-----------------+-------------------------------------------------------------------|
+| C-t w           | Open the window list.                                             |
+| C-t g           | Open the workspace picker.                                        |
+| C-t x           | Open the command palette.                                         |
+| C-t :           | Open the eval prompt.                                             |
+| C-t !           | Prompt for a shell command and run it.                            |
+| C-t ;           | Show or hide the default scratchpad.                              |
+| C-t b           | Hide or show the bar.                                             |
+| C-t f           | Float or tile the focused window.                                 |
+| C-t F11         | Toggle fullscreen on the focused window.                          |
+| C-t s           | Split the current frame side by side.                             |
+| C-t S           | Split the current frame into top and bottom.                      |
+| C-t R           | Remove the current split, merging the frame into its sibling.     |
+| C-t Q           | Collapse the workspace to one frame.                              |
+| C-t B           | Make every split in the workspace even.                           |
+| C-t + and C-t - | Move the current split's dividing line by 30 pixels.              |
+| C-t r           | Start interactive resize.                                         |
+| C-t arrow       | Focus the frame in that direction.                                |
+| C-t M arrow     | Move the focused window to the frame in that direction.           |
+| C-t e arrow     | Swap the current frame's window with the frame in that direction. |
+| C-t n           | Show the next hidden window in the current frame.                 |
+| C-t p           | Show the previous hidden window in the current frame.             |
+| C-t '           | Prompt for a window number and focus that window.                 |
+| C-t #           | Mark or unmark the focused window.                                |
+| C-t 1 to C-t 9  | Switch to workspace 1 to 9.                                       |
+| C-t N           | Switch to the next workspace.                                     |
+| C-t P           | Switch to the previous workspace.                                 |
+| C-t l           | Cycle the workspace's group type: tile, scroll, floating.         |
+| C-t v           | Turn the scroll ribbon on or off for the workspace.               |
+| C-t , and C-t . | Focus the ribbon column to the left or right.                     |
+| C-t Return      | Open expose, the window overview.                                 |
+| C-t a           | Show the date and time.                                           |
+| C-t m           | Show the last message again.                                      |
+| C-t C           | Start command mode.                                               |
+| C-t h b         | List the prefix bindings.                                         |
+| C-t h c         | Prompt for a command and show its documentation.                  |
+| C-t h f         | Prompt for a function and show its documentation.                 |
+| C-t h v         | Prompt for a variable and show its documentation.                 |
+| C-t h k         | Describe the next prefix key you press.                           |
+| C-t h w         | Show the focused window's title, size, and position.              |
+| C-t q           | Stop the window manager. Press twice within 3 seconds.            |
+
+Uppercase letters in the table are the shifted keys: =C-t S= is
+Control+T followed by Shift+S.
+
+** Command mode
+
+=C-t C= keeps the prefix key active after each command, so a run of
+commands needs no repeated =C-t=. The message window lists the
+available keys. Escape ends command mode, as does a minute without a
+key.
+
+** Interactive resize
+
+=C-t r= enters a resize mode. Each arrow key moves the current split's
+dividing line by 30 pixels: Left and Up by -30, Right and Down by +30.
+The change applies at once. Escape ends the mode and keeps the new
+sizes. The mode also ends after a minute without a key.
+
+** Expose
+
+=C-t Return= floats every window on the workspace, including windows
+hidden in frames, into a grid. Minimized and fullscreen windows are
+left out, and expose needs at least two windows. Pick a window in one
+of these ways:
+
+- Press 1 to 9 for the first nine windows, or 0 for the tenth.
+- Move the focus with the arrow keys and press Return.
+- Click a window.
+
+The picked window takes the focus and the workspace returns to its
+previous layout. Escape restores the layout and the previous focus.
+
+** Changing key bindings
+
+Key bindings live in two layers. The default layer holds rhizome's
+bindings. The user layer, =*top-map*= for direct keys and =*prefix-map*=
+for prefix sequences, holds yours. A user binding shadows a default
+binding on the same key, and =reload-config= clears the user layer.
+
+Key specs use the Emacs and StumpWM syntax. Modifier prefixes are =C-=
+(Control), =M-= (Meta), =s-= (Super), =H-= (Hyper), =A-= (Alt), and
+=S-= (Shift). Separate the keys of a sequence with spaces. A single
+character names its own keysym with its case kept, so ="T"= is
+Shift+T. Named keys include =Return=, =Space=, =Tab=, =Escape=,
+=Backspace=, =Delete=, =Home=, =End=, =PageUp=, =PageDown=, the arrow
+keys, =Print=, =Menu=, =F1= to =F12=, and the XF86 volume, mute, and
+brightness keys.
+
+By default Meta maps to river's =:mod1= (the Alt key), Super to
+=:mod4=, and Hyper and Alt to nothing. Map a logical modifier to a
+river modifier with =set-modifier=:
+
+#+begin_src lisp
+(rhizome:set-modifier :hyper :mod3)
+#+end_src
+
+Bind a direct key:
+
+#+begin_src lisp
+(rhizome:define-key rhizome:*top-map* "s-t"
+  (lambda () (uiop:launch-program '("kitty"))))
+#+end_src
+
+Bind a key after the prefix:
+
+#+begin_src lisp
+(rhizome:define-prefix-key "c"
+  (lambda () (uiop:launch-program '("kitty")))
+  "terminal")
+#+end_src
+
+The optional last argument documents the binding in the which-key
+display and in =C-t h k=. A key spec with several keys binds through
+nested keymaps, so =(rhizome:define-prefix-key "o t" ...)= binds the
+sequence =C-t o t=.
+
+Other key functions:
+
+- =(rhizome:undefine-key rhizome:*top-map* "s-q")= :: removes a
+  default direct binding. River no longer grabs the key, so the
+  focused application receives it. Inside a prefix map the key
+  becomes unbound.
+- =(rhizome:define-key keymap spec nil)= :: removes your binding
+  and restores the default one.
+- =(rhizome:set-prefix-key "C-z")= :: moves the prefix key.
+- =(rhizome:sticky-keymap keymap label)= :: returns a binding that
+  enters KEYMAP in command mode, as =C-t C= does for the prefix map.
+
+** Minor modes
+
+A minor mode is a named keymap consulted before the prefix map while
+the mode is enabled. The most recently enabled mode wins. Minor modes
+apply to prefix sequences only, because Wayland gives a client no way
+to pass a key on to another application.
+
+#+begin_src lisp
+(rhizome:define-minor-mode :presentation "keys for talks")
+(rhizome:define-minor-mode-key :presentation "n"
+  (lambda () (rhizome:message "next slide")))
+(rhizome:enable-minor-mode :presentation)
+#+end_src
+
+=rhizome-cmd enable-minor-mode presentation= and
+=rhizome-cmd disable-minor-mode presentation= do the same from a
+shell. =C-t h b= names the enabled modes.
+
+* Workspaces, frames, and layouts
+
+** Workspaces
+
+Each output has nine workspaces. A new window opens on the current
+workspace of its output. Switching workspaces hides the windows of
+the old workspace and shows those of the new one, which slide in from
+the side when animations are on. The window last focused on the
+workspace takes the focus; if it is gone, the newest window does.
+
+Switching also moves the pointer to the centre of the output. Turn
+that off with =(:pointer (:warp-on-switch nil))=.
+
+** Frame trees
+
+Every =:tile= workspace starts as one frame filling the output. Split
+it with =C-t s= or =C-t S=, and remove a split with =C-t R=. Each frame
+shows one of its windows; the others stay hidden in the frame.
+=C-t n= and =C-t p= bring the next or previous hidden window forward,
+and MOD+J and MOD+K cycle the windows of the current frame.
+
+When a new window arrives, the placement policy picks a frame for it
+(see [[*Placement policy][Placement policy]]). If that frame already holds a window, the
+window manager splits it along its longer side and gives the new
+window the new half, so every window gets a frame of its own. Turn this off with
+=(:tiling (:auto-split nil))=: a new window then joins the frame and
+hides the window behind it, as in StumpWM. A frame smaller than
+twice the minimum frame size is never split.
+
+The =(:frames (:prune-empty ...))= key controls which empty frames
+close:
+
+- =:auto= :: the default. A frame you split stays when it goes
+  empty, so you can move a window into it later. A frame that a new
+  window split open closes with its last window, and its neighbour
+  grows into the space.
+- =:never= :: every empty frame stays, as in StumpWM.
+- =:always= :: every empty frame closes.
+
+The root frame never closes.
+
+Other frame commands, available from the command palette or
+=rhizome-cmd=:
+
+- =only= :: collapse to one frame (=C-t Q=).
+- =balance= :: make every split even (=C-t B=).
+- =fclear= :: empty the current frame; its windows move to the other
+  frames.
+- =dump-frame NAME= and =restore-frame NAME= :: save the workspace's
+  frame tree to =~/.local/share/rhizome/frame-dumps/= and rebuild it
+  later. Windows are placed by number, missing windows are skipped,
+  and the tree is scaled if the output size has changed.
+
+** Gaps
+
+=(:gaps (:inner 6))= puts 6 pixels around each tiled window, so
+adjacent windows have 12 pixels between them and the output edges
+have 6. Set it to 0 for flush tiling.
+
+** Layouts
+
+A layout is a template that rebuilds the current workspace's frame
+tree. MOD+Space cycles the built-in layouts; =switch-layout= picks one
+by name:
+
+| Layout          | Frames                                                |
+|-----------------+-------------------------------------------------------|
+| =:master-stack= | One frame on the left half and one on the right half. |
+| =:even=         | A grid with one frame per window.                     |
+| =:monocle=      | One frame filling the output.                         |
+
+#+begin_src lisp
+(rhizome:switch-layout (first (rhizome:all-outputs)) :even)
+#+end_src
+
+=rhizome-cmd switch-layout even= does the same. Splits you make after
+a layout switch stay until the next switch. Each workspace keeps its
+own layout; a workspace that never had one uses
+=(:workspaces (:default-layout ...))=, =:master-stack= by default.
+
+Define a layout with =define-layout=. The body receives the windows to
+place and the usable width and height, and returns a list of
+=(window x y width height)= entries. Each rectangle becomes a frame,
+so the rectangles must divide the area exactly; otherwise the
+workspace falls back to one frame.
+
+#+begin_src lisp
+(rhizome:define-layout :rows (windows width height)
+  (let ((h (floor height (max 1 (length windows)))))
+    (loop for win in windows
+          for i from 0
+          collect (list win 0 (* i h) width h))))
+#+end_src
+
+** Group types
+
+Each workspace has a group type:
+
+- =:tile= :: frame trees, the default.
+- =:floating= :: every window floats. New windows open in a cascade.
+- =:scroll= :: a horizontal ribbon in which every window owns a
+  full-height column half as wide as the output.
+
+=C-t l= cycles the current workspace through tile, scroll, and
+floating. Switching type takes over every window on the workspace.
+=rhizome-cmd set-group-type floating= sets the current workspace's
+type, and =rhizome-cmd group-type= reports it.
+
+Declare floating workspaces in the configuration with a property list
+of workspace numbers and types:
+
+#+begin_src lisp
+(rhizome:configure '(:workspaces (:types (2 :floating 5 :floating))))
+#+end_src
+
+** The scroll ribbon
+
+=C-t v= turns the ribbon on or off for the current workspace. Turning
+it on keeps the windows in their frame order, left to right. New
+windows open next to the focused column.
+
+- =C-t ,= and =C-t .= move the focus one column; the viewport follows
+  to keep the focused column visible.
+- MOD+, and MOD+. scroll the viewport by half an output width without
+  moving the focus.
+
+Turning the ribbon off returns every window to the frame tree.
+
+** Window numbers, marks, and pulling
+
+Every window has a number, shown in the window list. Use numbers
+with these commands:
+
+- =C-t '= :: prompt for a number and focus that window.
+- =renumber= :: renumber the workspace's windows from 1.
+- =repack-window-numbers= :: close the gaps in the numbering.
+
+=C-t #= marks the focused window; marked windows show =*= in the
+window list. =clear-window-marks= clears every mark.
+
+* Floating windows
+
+A floating window keeps its own position and size and stacks above
+the tiled windows; the focused float is on top. Floats belong to a
+workspace like any other window.
+
+- =C-t f= or =rhizome-cmd toggle-float= floats or tiles the focused
+  window.
+- A window rule with =:float t= floats an application when it opens.
+- MOD+left drag moves a window and MOD+right drag resizes it. A
+  floating window whose application requests an interactive move,
+  for example from its own title bar, moves the same way.
+
+A resize respects the window's minimum and maximum size hints. At
+least 30 pixels of a float always stay on its output, so a float
+cannot be dragged out of reach.
+
+The window manager tells every floating window that it is not tiled.
+A tiled window that floats keeps its position and size. A window that
+floats before it has a size, for example through a window rule, opens
+at the size its application asks for.
+
+** Maximize and fullscreen
+
+A maximize request from an application, or =rhizome-cmd maximize= for
+the focused window, floats the window over the output's usable area,
+the output minus the bar. A second request restores the window: a
+tiled window returns to its frame and a float returns to its old
+geometry. Size hints still apply, so a fixed-size dialog keeps its
+size.
+
+=C-t F11= or =rhizome-cmd toggle-fullscreen= toggles fullscreen on the
+focused window. A fullscreen window covers the bar.
+
+** The window menu
+
+MOD+middle click on a window opens a menu at the pointer with these
+entries: Minimize or Restore, Float or Tile, Maximize or Unmaximize,
+Fullscreen or Exit fullscreen, Close, and one Move to workspace entry
+for each other workspace. Hover to highlight an entry and click to
+select it. Up, Down, and Return work too. Escape, or moving the
+pointer off the menu, closes it. An application that asks for its
+window menu gets the same menu.
+
+A minimized window stays hidden until you restore it from the menu or
+move it to another workspace.
+
+** Shadows and focus glow
+
+Every floating window gets a soft shadow drawn around it, tinted with
+the focused border colour when the window has the focus. The focused
+tiled window gets a narrow glow in the gap around it. Both come from
+the =:decorations= group; =(:decorations (:enabled nil))= turns both
+off.
+
+** Title bars
+
+The window manager draws borders and no title bars. With
+=(:windows (:decorations :server))=, the default, it asks every
+application that supports server-side decorations to drop its own
+title bar. An application that supports only client-side decorations
+keeps its own. Set =:client= to let every application draw its own
+title bar.
+
+* The bar
+
+The bar is a strip at the top of the first output river announces,
+drawn by its own process. It is anchored to the top edge with a
+margin on each side and reserves its height plus twice the margin, so
+tiled windows never cover it.
+
+** Modules
+
+The bar has three segments, =:left=, =:center=, and =:right=, each a
+list of modules:
+
+#+begin_src lisp
+(rhizome:configure
+ '(:bar (:modules (:left (:workspaces :layout :windows)
+                   :center (:clock)
+                   :right (:tray :network :volume :battery)))))
+#+end_src
+
+| Module         | Shows                                                                                                                                                                  |
+|----------------+------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| =:workspaces=  | The workspace numbers. The current one sits on an accent pill, occupied ones use the foreground colour, and empty ones use the muted colour. Click a number to switch. |
+| =:layout=      | The current layout name.                                                                                                                                               |
+| =:windows=     | The number of windows.                                                                                                                                                 |
+| =:focused=     | The focused window's title.                                                                                                                                            |
+| =:recording=   | =REC= while any screen capture session is active.                                                                                                                      |
+| =:clock=       | The date and time.                                                                                                                                                     |
+| =:battery=     | The battery level from =/sys/class/power_supply/BAT1=.                                                                                                                 |
+| =:volume=      | The default sink's volume from =wpctl=.                                                                                                                                |
+| =:network=     | The active connection from =nmcli=.                                                                                                                                    |
+| =:display=     | The screen brightness from =brightnessctl=.                                                                                                                            |
+| =:tray=        | The system tray.                                                                                                                                                       |
+| =(:icons ...)= | Application icons with click actions.                                                                                                                                  |
+
+A module whose program is missing, or that fails, shows nothing.
+
+The clock format takes =%H= =%M= =%S= =%d= =%m= =%y= =%Y= =%a= =%A=
+=%b= =%B=. The part after the last space draws in the accent colour
+and the rest in the muted colour.
+
+** Clicks and scrolling
+
+Any module can run a shell command on a click or a scroll:
+
+#+begin_src lisp
+(rhizome:configure
+ '(:modules (:volume (:on-click "pavucontrol")
+             :display (:on-click "rhizome-cmd display-menu"))))
+#+end_src
+
+The keys are =:on-click=, =:on-scroll-up=, and =:on-scroll-down=.
+Commands run through =bash -c=. By default a click on the volume
+module opens =pavucontrol= and scrolling changes the volume by 5%, and
+a click on the network module opens =nm-connection-editor=.
+
+=rhizome-cmd display-menu= opens a menu to change the brightness,
+toggle the night light (=hyprsunset= at 4000 K), and pick a mode and
+scale for each output.
+
+** Icons
+
+An =(:icons ...)= entry in a segment draws a 16x16-pixel icon for
+each entry, each with its own actions:
+
+#+begin_src lisp
+(rhizome:configure
+ '(:bar (:modules (:left ((:icons ((:icon "flameshot" :on-click "flameshot gui")
+                                   (:icon "/path/to/custom.png"
+                                    :on-click "rhizome-cmd lock")))
+                          :workspaces)
+                   :center (:clock)
+                   :right (:volume :network :battery)))))
+#+end_src
+
+=:icon= is an icon name, looked up as a PNG in the hicolor theme
+directories, or an absolute path to a PNG file.
+
+** The system tray
+
+The =:tray= module hosts the StatusNotifierItem tray. Applications
+such as Variety and Flameshot register their icons with it.
+
+- A left click activates the item.
+- A right click opens the item's own menu.
+- Scrolling over an item sends it the scroll.
+
+The tray needs a D-Bus session bus.
+
+** Hiding the bar
+
+MOD+B, =C-t b=, or =rhizome-cmd toggle-bar= hides or shows the bar
+without restarting its process, and the tiled windows grow into the
+space. The setting is kept in =(:bar :enabled)=, so the window manager
+does not restart a bar you hid. If the bar process dies while the bar
+is enabled, the window manager starts a new one within 15 seconds.
+The bar logs to =~/.cache/rhizome/bar.log=.
+
+* Prompts, the launcher, and messages
+
+** The application launcher
+
+MOD+D opens the launcher over a dimmed screen. It lists the
+applications found in the =.desktop= files of
+=$XDG_DATA_HOME/applications=, =~/.local/share/applications=, the
+=applications= directory of each =$XDG_DATA_DIRS= entry,
+=/usr/local/share/applications=, and =/usr/share/applications=.
+Entries marked =NoDisplay= or =Hidden=, and entries that are not
+applications, are left out. An entry with =Terminal=true= runs in
+=alacritty=.
+
+- Type to filter. The characters you type must appear in the
+  application name in order, ignoring case; names that contain the
+  text as one piece come first.
+- Up and Down move the selection.
+- Return starts the selected application and closes the launcher.
+- Backspace deletes a character, and Escape closes the launcher.
+
+With no text typed, the applications you start most often and most
+recently come first. Launch counts live in
+=~/.local/share/rhizome/launcher-history.sexp=.
+
+** Prompts
+
+The window list (MOD+W), the workspace picker (MOD+G), and the command
+palette (MOD+X) share one prompt:
+
+- Type to filter, with the same matching as the launcher.
+- Up and Down, or Tab, move the selection.
+- Return accepts the selection, and Escape closes the prompt.
+
+A prompt closes on its own after 30 seconds.
+
+- The window list shows each window's number, workspace, and title.
+  Choosing a window switches to its workspace and focuses it.
+- The workspace picker switches to the chosen workspace.
+- The command palette runs a command from the command table. A
+  command's reply shows in the message window.
+
+=C-t != opens a prompt with no candidates. Type a shell command and
+press Return to run it with =bash -c=.
+
+From Lisp, =select-from-menu= opens the same prompt over a list of
+entries. An entry whose value is a function runs it:
+
+#+begin_src lisp
+(rhizome:select-from-menu "Workspace?"
+  (list (cons "Web"  (lambda () (rhizome:switch-workspace 2)))
+        (cons "Code" (lambda () (rhizome:switch-workspace 3)))))
+#+end_src
+
+Other entries go to the function given as =:on-select=. For full
+control, call =prompt-open= with a title, =:candidates=, and an
+=:on-complete= function that receives the chosen string. Without
+candidates, the prompt passes the typed text to =:on-complete=.
+
+** The message window
+
+The message window shows short notices at the top of the screen, such
+as the workspace number after a switch. Show your own with
+=rhizome:message=, which takes a format string and arguments:
+
+#+begin_src lisp
+(rhizome:message "~D windows" (length (rhizome:all-windows)))
+#+end_src
+
+A message stays for 3 seconds. =C-t m= shows the last message again,
+and =rhizome-cmd copy-last-message= copies it to the clipboard.
+
+** Scratchpads
+
+A scratchpad is a window that you show and hide with one key while
+its program keeps running. =C-t ;= shows or hides the scratchpad named
+=term=, which runs =foot= by default. On first use the window manager
+starts the program and claims the first window that opens within 10
+seconds. A shown scratchpad floats near the top of the screen and
+takes the focus.
+
+Configure scratchpads by name:
+
+#+begin_src lisp
+(rhizome:configure
+ '(:scratchpads (:entries ((:name "term" :command "foot")
+                           (:name "music" :command "foot -e ncmpcpp")))))
+#+end_src
+
+=rhizome-cmd scratchpad music= shows or hides the scratchpad named
+=music=, and =rhizome-cmd scratchpad list= lists them.
+
+* Controlling rhizome from a shell
+
+The window manager listens on the Unix socket
+=$XDG_RUNTIME_DIR/rhizome.sock=. It reads one command per line and
+writes one line of reply. =rhizome-cmd= sends its arguments as one
+line and prints the reply:
+
+#+begin_src sh
+rhizome-cmd current-workspace
+rhizome-cmd switch-workspace 3
+rhizome-cmd toggle-float
+rhizome-cmd '(+ 1 2)'
+#+end_src
+
+A line that starts with =(= is read and evaluated as Lisp in the
+=RHIZOME= package, and the reply is the printed values. Any other line
+is a command name followed by arguments separated by spaces. Each
+argument that reads as an integer arrives as one. An unknown command
+replies with the list of command names.
+
+Commands run on the window manager's main thread, so a command can
+safely change any window state. The socket is disabled with
+=(:ipc (:enabled nil))=.
+
+** Commands
+
+The same commands run from the command palette.
+
+| Command                                                           | Arguments | Effect                                                        |
+|-------------------------------------------------------------------+-----------+---------------------------------------------------------------|
+| =switch-workspace=                                                | N         | Switch to workspace N.                                        |
+| =current-workspace=                                               |           | Reply with the current workspace number.                      |
+| =switch-layout=                                                   | NAME      | Apply the named layout to the current workspace.              |
+| =list-layouts=                                                    |           | Write the layout names to the log.                            |
+| =group-type=                                                      |           | Reply with the workspace's group type.                        |
+| =set-group-type=                                                  | TYPE      | Set the group type: =tile=, =scroll=, or =floating=.          |
+| =cycle-group-type=                                                |           | Cycle the group type, as =C-t l= does.                        |
+| =split-horizontal=                                                |           | Split the current frame side by side.                         |
+| =split-vertical=                                                  |           | Split the current frame into top and bottom.                  |
+| =remove-split=                                                    |           | Remove the current split.                                     |
+| =only=                                                            |           | Collapse the workspace to one frame.                          |
+| =balance=                                                         |           | Make every split even.                                        |
+| =fclear=                                                          |           | Move the current frame's windows to the other frames.         |
+| =focus-left=, =focus-right=, =focus-up=, =focus-down=             |           | Focus the frame in that direction.                            |
+| =exchange-left=, =exchange-right=, =exchange-up=, =exchange-down= |           | Swap windows with the frame in that direction.                |
+| =focus-next=, =focus-previous=                                    |           | Cycle the windows of the current frame.                       |
+| =pull-next=, =pull-prev=                                          |           | Show the next or previous hidden window in the current frame. |
+| =renumber=                                                        |           | Renumber the workspace's windows from 1.                      |
+| =repack-window-numbers=                                           |           | Close the gaps in the workspace's window numbers.             |
+| =mark=                                                            |           | Mark or unmark the focused window.                            |
+| =clear-window-marks=                                              |           | Clear every mark.                                             |
+| =toggle-float=                                                    |           | Float or tile the focused window.                             |
+| =maximize=                                                        |           | Maximize or restore the focused window.                       |
+| =toggle-fullscreen=                                               |           | Toggle fullscreen on the focused window.                      |
+| =list-windows=                                                    |           | Reply with every window's title.                              |
+| =wse=                                                             | EXPR      | Reply with the windows matching a selection expression.       |
+| =dump-frame=                                                      | NAME      | Save the workspace's frame tree.                              |
+| =restore-frame=                                                   | NAME      | Restore a saved frame tree.                                   |
+| =scroll-toggle=                                                   |           | Turn the scroll ribbon on or off.                             |
+| =scroll-focus-left=, =scroll-focus-right=                         |           | Focus the next ribbon column.                                 |
+| =scroll-viewport-left=, =scroll-viewport-right=                   |           | Scroll the ribbon viewport.                                   |
+| =iresize=                                                         |           | Start interactive resize.                                     |
+| =command-mode=                                                    |           | Start command mode.                                           |
+| =set-prefix-key=                                                  | SPEC      | Move the prefix key, for example =set-prefix-key C-z=.        |
+| =enable-minor-mode=                                               | NAME      | Enable a minor mode.                                          |
+| =disable-minor-mode=                                              | NAME      | Disable a minor mode.                                         |
+| =list-minor-modes=                                                |           | Reply with the enabled minor modes.                           |
+| =toggle-bar=                                                      |           | Hide or show the bar.                                         |
+| =display-menu=                                                    |           | Open the display menu.                                        |
+| =tray-show-menu=                                                  | ...       | Open a tray item's menu. The bar sends this command.          |
+| =scratchpad=                                                      | NAME      | Show or hide the named scratchpad; =list= lists them.         |
+| =screenshot=                                                      | [region]  | Take a screenshot; =region= selects an area first.            |
+| =getsel=                                                          |           | Show the clipboard contents.                                  |
+| =putsel=                                                          | TEXT      | Put TEXT on the clipboard.                                    |
+| =copy-last-message=                                               |           | Copy the last message to the clipboard.                       |
+| =lastmsg=                                                         |           | Show the last message again.                                  |
+| =time=                                                            |           | Show the date and time.                                       |
+| =help=                                                            |           | Write the command names to the log.                           |
+| =lock=                                                            |           | Lock the session.                                             |
+| =logout=                                                          |           | Log out. Send it twice within 3 seconds.                      |
+| =suspend=                                                         |           | Run =systemctl suspend=.                                      |
+| =hibernate=                                                       |           | Run =systemctl hibernate=.                                    |
+| =detach=                                                          |           | Stop managing the session without ending it.                  |
+| =quit=                                                            |           | Stop the window manager. River keeps running.                 |
+
+Arguments are separated by spaces, so =putsel= receives only the
+first word of the text, and =wse= receives only the first word of the
+expression. To pass longer values, send a Lisp form instead:
+
+#+begin_src sh
+rhizome-cmd '(rhizome:wse-count (quote (:app-id "foot")))'
+#+end_src
+
+Most commands act on the first output.
+
+* The REPL
+
+** SLY
+
+The window manager starts a slynk server on =127.0.0.1:4005=. Connect
+from Emacs with =M-x sly-connect= to get a REPL inside the running
+window manager. Change the port with =(:slynk (:port 4006))=, or turn
+the server off with =(:slynk (:enabled nil))=. The server starts in a
+separate thread, so loading slynk never delays startup.
+
+=(rhizome:repl-server-port)= returns the port the server listens on,
+or =nil= when the server is off, still starting, or failed to start.
+Calling =(rhizome:start-slynk)= again starts no second server.
+
+A configuration written for the older swank server keeps working.
+While the =:slynk= group holds its default values, the window
+manager reads =:enabled= and =:port= from a =(:swank ...)= group
+instead, and =start-swank= is another name for =start-slynk=.
+
+** The eval prompt
+
+MOD+; or =C-t := opens a one-line prompt. Type a Lisp expression and
+press Return to evaluate it in the window manager; the result appears
+in the prompt, and the expression stays so you can edit it and
+evaluate again. Errors show in the prompt instead of stopping the
+window manager. Escape closes the prompt. Expressions are read in the
+=RHIZOME= package.
+
+#+begin_src lisp
+(switch-workspace 3)
+(length (all-windows))
+#+end_src
+
+The eval prompt, the launcher, and the other prompts accept printable
+ASCII characters only.
+
+* Hooks
+
+A hook is a list of functions that the window manager calls when an
+event happens. An error in one function is logged and does not
+affect the others or the window manager.
+
+#+begin_src lisp
+(rhizome:add-hook :window-created
+  (lambda (win)
+    (rhizome:message "new window: ~A" (rhizome:window-title win))))
+#+end_src
+
+| Hook                 | Arguments           | Runs when                       |
+|----------------------+---------------------+---------------------------------|
+| =:window-created=    | window              | A window appears.               |
+| =:window-closed=     | window              | A window closes.                |
+| =:focus-changed=     | window              | A window takes the focus.       |
+| =:layout-changed=    | output, layout name | A layout or group type changes. |
+| =:workspace-changed= | workspace, output   | An output switches workspace.   |
+| =:output-created=    | output              | An output appears.              |
+
+=:layout-changed= also passes =:tile=, =:floating=, and =:scroll= when
+a workspace changes group type.
+
+=remove-hook= removes one function, =clear-hook= removes every function
+from a hook, and =list-hooks= returns the hooks that have functions.
+=run-hook= runs a hook by hand.
+
+* Window rules
+
+Window rules act on a window when it opens, and again when its title
+or application ID changes. Each rule is a property
+list; the first rule that matches applies and the rest are skipped.
+
+#+begin_src lisp
+(rhizome:configure
+ '(:window-rules ((:match "firefox" :workspace 2 :follow t)
+                  (:match "gimp" :float t)
+                  (:match "mpv" :fullscreen t)
+                  (:match "Picture-in-Picture" :key :title :float t)
+                  (:match "steam" :output 2))))
+#+end_src
+
+=:match= is a regular expression matched without regard to case
+against the field that =:key= names:
+
+- =:app-id= :: the application ID, the default.
+- =:title= :: the window title.
+- =:any= :: the application ID or the title.
+- =:identifier= :: the stable window identifier from river.
+
+A rule can use =:wse= with a window selection expression in place of
+=:match=. The actions are:
+
+- =:workspace N= :: open on workspace N.
+- =:follow t= :: with =:workspace=, switch to that workspace.
+- =:float t= :: open floating.
+- =:fullscreen t= :: open fullscreen.
+- =:output N= :: open on output N, counting outputs from 1 left to
+  right, then top to bottom.
+- =:layout NAME= :: set the first output's current layout name.
+
+The rules are one list, so a =configure= call replaces every rule.
+Write all your rules in one call.
+
+** Window selection expressions
+
+A window selection expression describes a set of windows:
+
+| Expression                                | Matches                               |
+|-------------------------------------------+---------------------------------------|
+| =(:app-id REGEX)=                         | Windows whose application ID matches. |
+| =(:title REGEX)=                          | Windows whose title matches.          |
+| =(:number N)=                             | Window number N.                      |
+| =(:workspace N)=                          | Windows on workspace N.               |
+| =(:float t)=, =(:float nil)=              | Floating windows, or tiled windows.   |
+| =(:marked t)=                             | Marked windows.                       |
+| =(:focused t)=                            | The focused window.                   |
+| =(:and E ...)=, =(:or E ...)=, =(:not E)= | Combinations.                         |
+| =(:any)=                                  | Every window.                         |
+
+The regular expressions here are case-sensitive; begin one with
+=(?i)= to ignore case. =wse-windows= returns the matching windows,
+=wse-map= calls a function on each, and =wse-count= counts them:
+
+#+begin_src lisp
+(rhizome:wse-map '(:and (:workspace 2) (:float nil))
+                 #'rhizome:toggle-float)
+#+end_src
+
+** Remembered placements
+
+River gives some windows a stable identifier. When such a window
+closes, the window manager records its workspace and whether it
+floats in =~/.local/share/rhizome/window-state.sexp=, and restores
+both when a window with the same identifier opens again, even after a
+restart or a new login. The remembered placement applies first and the window
+rules after it, so a rule wins. Turn this off with
+=(:window-state (:enabled nil))=.
+
+* Placement policy
+
+A placement policy makes two choices in the frame tree:
+
+- which hidden window fills the new half of a split frame, and
+- which frame a new window enters.
+
+The default policy, =:stumpwm=, follows StumpWM. Its options are:
+
+- =:new-frame= :: =:last-window=, the default, shows the most
+  recently focused hidden window in the new half. =:empty= leaves the
+  new half empty.
+- =:new-window= :: a list of preferences. The first entry that names
+  a frame wins; if none does, the window enters the focused frame.
+  The entries are =:focused= (the focused frame, the default),
+  =:last= (the frame focused before it), =:empty= (the first empty
+  frame), =:unfocused= (the first frame other than the focused one),
+  or a function of =(output workspace window history)= that returns
+  a frame or =nil=.
+
+Send new windows into an empty frame first:
+
+#+begin_src lisp
+(rhizome:configure
+ '(:tiling (:placement (:new-window (:empty :focused)))))
+#+end_src
+
+Auto-split still applies to the frame the policy picks.
+
+To write your own policy, define a class with
+=define-placement-policy= and specialize the two generic functions on
+it:
+
+#+begin_src lisp
+(rhizome:define-placement-policy :newest-left newest-left ()
+  ())
+
+(defmethod rhizome:placement-new-window-frame
+    ((policy newest-left) output workspace window history)
+  (first (rhizome:frame-leaves
+          (rhizome:frame-tree-for output workspace))))
+
+(defmethod rhizome:placement-new-frame-window
+    ((policy newest-left) output workspace frame history)
+  nil)
+
+(rhizome:configure '(:tiling (:placement (:policy :newest-left))))
+#+end_src
+
+=history= is the workspace's windows in the order they last held the
+focus, most recent first; =workspace-focus-history= returns the same
+list. =placement-options= returns the =:placement= property list. A
+policy name that is not defined is logged once and the =:stumpwm=
+policy is used. An error in a policy is logged and the new window
+enters the focused frame.
+
+* Theming
+
+** Fonts
+
+Text on the bar, the launcher, the prompts, the menus, and the message
+window uses one TrueType font:
+
+#+begin_src lisp
+(rhizome:configure '(:theme (:font-family "JetBrains Mono"
+                             :font-size 14)))
+#+end_src
+
+The family name goes through =fc-match=, so a missing family resolves
+to the closest installed font. Without freetype, fontconfig, or a
+matching font, every surface uses the built-in 8x16 bitmap font.
+A =:theme= change takes effect at once in the window manager's own
+surfaces; the bar picks up the new font when it next starts.
+
+** Colours
+
+Colours are strings of the form ="#rrggbb"=.
+
+- =:theme= :: =:focused-border= and =:unfocused-border= colour window
+  borders. The focused border colour also tints float shadows and the
+  focus glow.
+- =:bar= :: =:background=, =:foreground=, =:accent=, =:muted=, and
+  =:border-color=. The message window, the prompts, and the eval
+  prompt use the bar's colours too.
+- =:launcher= :: every launcher colour, listed in the configuration
+  reference.
+- =:menus= :: the window menu's colours.
+
+=(:bar :opacity)= sets the opacity of the bar, the message window, and
+the prompts, from 0.0 to 1.0. The launcher and the window menu have
+their own =:opacity= keys.
+
+** Animations
+
+Windows glide when they move: workspaces slide in on a switch, expose
+moves windows into its grid and back, and floats glide to an explicit
+position, as when they maximize.
+
+#+begin_src lisp
+(rhizome:configure '(:animations (:enabled t
+                                  :duration-ms 200
+                                  :easing :ease-out-cubic)))
+#+end_src
+
+=:easing= is =:ease-out-cubic=, =:linear=, or =:ease-in-out=. The
+workspace slide lasts 160 milliseconds whatever =:duration-ms= says.
+
+* Sessions
+
+** Locking
+
+MOD+Shift+L or =rhizome-cmd lock= runs the locker, =swaylock= by
+default:
+
+#+begin_src lisp
+(rhizome:configure '(:lock (:command "swaylock"
+                            :args ("--daemonize"))))
+#+end_src
+
+Any locker that uses the =ext-session-lock-v1= protocol works.
+
+Two settings start =swayidle= at startup:
+
+- =(:idle (:lock-after 300 :dpms-after 600))= is on by default. It
+  runs =swaylock -f= after 300 idle seconds and turns the screens off
+  with =wlopm= after 600. This locker is always =swaylock=, whatever
+  =(:lock :command)= says. Set =:lock-after= to =nil= or 0 to turn it
+  off; =:dpms-after= then has no effect either.
+- =(:lock (:idle-seconds N))=, off by default, runs the configured
+  locker after N idle seconds.
+
+** Logging out
+
+MOD+Shift+E or =rhizome-cmd logout= ends the river session and returns
+to the display manager. Press the key twice within 3 seconds; the
+first press shows a reminder. The window manager asks river to end
+the session through the protocol; with a river older than protocol
+version 4 it sends river =SIGTERM= instead.
+
+** Detaching and replacing the window manager
+
+=rhizome-cmd detach= stops the window manager without ending the
+session. Before it exits, the window manager:
+
+- saves the session state to =~/.local/share/rhizome/takeover.sexp=,
+- records the placement of every window that has an identifier,
+- closes its own surfaces, and
+- stops the bar.
+
+River keeps showing the windows, and any window manager that speaks
+=river-window-management-v1= can then take over. Under the supervision
+loop in =~/.config/river/init=, a fresh window manager starts at once,
+reads the saved state, and restores each output's workspace, the
+frame trees, and the focus as the windows reappear. To upgrade a
+running session:
+
+#+begin_src sh
+git pull
+make build
+rhizome-cmd detach
+#+end_src
+
+The same loop restarts the window manager if it crashes; the windows
+stay on screen while it restarts, and remembered placements put them
+back on their workspaces.
+
+** Stopping
+
+=C-t q= pressed twice, or =rhizome-cmd quit=, stops the window manager
+and leaves river running. Under the supervision loop a new window
+manager starts. MOD+Shift+Q and MOD+Shift+R power off and reboot the
+machine; =rhizome-cmd suspend= and =rhizome-cmd hibernate= suspend
+and hibernate the machine. All four use =systemctl=.
+
+* Troubleshooting
+
+** Logs
+
+| Log                            | Written by                                      |
+|--------------------------------+-------------------------------------------------|
+| =~/.cache/rhizome/rhizome.log= | The window manager, under the supervision loop. |
+| =~/.cache/rhizome/bar.log=     | The bar process.                                |
+
+For a trace of every protocol event, set =(:debug (:events t))=. The
+trace is large while windows animate.
+
+** Common problems
+
+- No bar appears :: Check that =sbcl= is on the =PATH= of the window
+  manager, and read =~/.cache/rhizome/bar.log=. The bar process loads
+  =rhizome= through Quicklisp, so the bar also fails when the system
+  cannot load. Check that =(:bar :enabled)= is not =nil=.
+- A bar setting has no effect :: The bar reads the configuration
+  file, not the live configuration. Put the setting in the file and
+  run =(rhizome:reload-config)=. A =:modules= or =:theme= font change
+  appears when the bar next starts, as after a window manager restart.
+- =rhizome-cmd= reports no socket :: The window manager is not
+  running, or =(:ipc (:enabled nil))= is set. The socket is
+  =$XDG_RUNTIME_DIR/rhizome.sock=; when =XDG_RUNTIME_DIR= is unset the
+  window manager uses =/tmp/rhizome-UID.sock= while =rhizome-cmd= looks
+  for =/tmp/rhizome.sock=, so set =XDG_RUNTIME_DIR=.
+- An application never receives Control+T :: Control+T is the prefix
+  key. Move it with =(rhizome:set-prefix-key "C-z")=.
+- Text uses the bitmap font :: Install freetype and fontconfig and
+  check that =fc-match= finds the configured family.
+- The screen locks with swaylock although another locker is
+  configured :: The default =(:idle ...)= group always runs
+  =swaylock=. Set =(:idle (:lock-after nil))= and use
+  =(:lock (:idle-seconds N))= instead.
+- Power keys do nothing :: They run =systemctl=, which needs systemd
+  and a polkit agent.
+- The configuration is wrong and the session is unusable :: Fix the
+  file, then run =rhizome-cmd '(rhizome:reload-config)'=.
+
+** Known limitations
+
+- Most key bindings and commands act on the first output, and the
+  bar appears on the first output only.
+- Text input in the launcher and the prompts is limited to printable
+  ASCII characters.
+- Minor modes apply to prefix sequences only, because a Wayland
+  client cannot pass a key on to another application.
+- The battery module reads =BAT1= only.
