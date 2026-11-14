@@ -385,11 +385,11 @@ tests.")
       (error (e)
         (format t "~&; Rhizome: window state load failed: ~A~%" e)))))
 
-(defun window-output-wl-name (win)
-  "The wl_output name of WIN's output, or NIL. The name, not the
-output object, survives a WM restart."
-  (let ((out (window-output win)))
-    (and out (output-wl-output-name out))))
+(defun window-output-connector-name (win)
+  "The connector name of WIN's output, or NIL. The connector name, not
+the output object or its wl_output name, names the same head after a
+WM or river restart."
+  (output-connector-name (window-output win)))
 
 (defun remember-window-state (win)
   "Record WIN's placement under its identifier (v4 windows only).
@@ -398,17 +398,18 @@ final workspace and the floating state."
   (when (and (window-identifier win) (window-state-changed-p))
     (setf (gethash (window-identifier win) *window-state*)
           (list :workspace (window-workspace win)
-                :output (window-output-wl-name win)
+                :output (window-output-connector-name win)
                 :float (window-floating-p win)))
     (save-window-state)))
 
 (defun restore-window-output (win output-name)
-  "Put WIN on the registered output whose wl_output name is OUTPUT-NAME.
+  "Put WIN on the registered output whose connector name is OUTPUT-NAME.
 With no such output, WIN keeps its registered output, else takes the
-current output. WIN leaves the frame it holds when its output changes.
+current output; a numeric OUTPUT-NAME from an older file counts as no
+such output. WIN leaves the frame it holds when its output changes.
 Return the output WIN ends on, or NIL when no output exists."
   (let* ((own (and (live-output-p (window-output win)) (window-output win)))
-         (target (or (and output-name (find-output-by-wl-name output-name))
+         (target (or (find-output-by-connector output-name)
                      own
                      (current-output))))
     (when (and target (not (eq target (window-output win))))

@@ -100,6 +100,33 @@ the result back to the hash."
               collect state)
         #'string< :key (lambda (state) (getf state :name))))
 
+(defun output-connector-name (output)
+  "The connector name (\"HDMI-A-1\") of the enabled head showing
+OUTPUT, or NIL when no head matches. A head matches when its position
+equals OUTPUT's and, where both sizes are known, its logical size
+does too. Unlike the wl_output global name, the connector name names
+the same head after a river restart."
+  (when output
+    (let ((x (output-x output)) (y (output-y output))
+          (width (output-width output)) (height (output-height output)))
+      (flet ((matches-p (state)
+               (and (getf state :enabled)
+                    (equal (getf state :position) (cons x y))
+                    (multiple-value-bind (w h)
+                        (display-layout-size (getf state :current-mode)
+                                             (getf state :scale))
+                      (or (zerop w) (zerop width)
+                          (and (= w width) (= h height)))))))
+        (getf (find-if #'matches-p (display-heads)) :name)))))
+
+(defun find-output-by-connector (name)
+  "The registered output whose connector name is NAME, or NIL. A NAME
+that is not a string, such as a numeric wl_output name from an older
+saved file, matches nothing."
+  (and (stringp name)
+       (find name (all-outputs) :key #'output-connector-name
+                                :test #'equal)))
+
 (defun display-mode-label (mode)
   "Human label for a mode proxy: \"1920x1080 @ 60Hz\"."
   (let ((info (and mode (gethash mode *display-modes*))))

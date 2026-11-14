@@ -42,10 +42,10 @@ are not worth serializing)."
 
 (defun takeover-window-entry (win)
   "WIN's takeover entry, keyed by its stable identifier. :output is
-the wl_output name of WIN's output, or NIL."
+the connector name of WIN's output, or NIL."
   (cons (window-identifier win)
         (list :workspace (window-workspace win)
-              :output (window-output-wl-name win)
+              :output (window-output-connector-name win)
               :float (window-floating-p win)
               :float-x (window-float-x win)
               :float-y (window-float-y win)
@@ -62,7 +62,7 @@ geometry and trees are live values."
           (list
             :outputs
             (loop for out in (all-outputs-sorted)
-                  collect (cons (output-wl-output-name out)
+                  collect (cons (output-connector-name out)
                                 (gethash out *output-workspace*)))
             :windows
             (loop for win in (all-windows)
@@ -78,7 +78,7 @@ geometry and trees are live values."
                                              (frame-tree-for out ws))
                                 when (and tree
                                           (frame-tree-has-windows tree))
-                                  collect (cons (cons (output-wl-output-name out)
+                                  collect (cons (cons (output-connector-name out)
                                                       ws)
                                                 (frame-tree-to-sexp tree)))))))
     (handler-case
@@ -124,8 +124,9 @@ The file is deleted so a later fresh boot sees nothing."
   (ignore-errors (delete-file *takeover-state-path*)))
 
 (defun find-output-by-wl-name (name)
-  "The output whose wl_output name is NAME (the stable key across
-a swap; proxies are not)."
+  "The output whose wl_output global name is NAME, or NIL. The name
+holds for the life of one river session only; saved state uses
+FIND-OUTPUT-BY-CONNECTOR."
   (find name (loop for out being the hash-values of *outputs*
                    collect out)
         :key #'output-wl-output-name :test #'equal))
@@ -136,7 +137,7 @@ showing, before the first layout renders. Missing outputs (a
 monitor unplugged mid-swap) are skipped."
   (when *takeover-state*
     (dolist (pair (getf *takeover-state* :outputs))
-      (let ((out (find-output-by-wl-name (car pair))))
+      (let ((out (find-output-by-connector (car pair))))
         (when (and out (cdr pair)
                    (<= 1 (cdr pair) *workspace-count*))
           (setf (gethash out *output-workspace*) (cdr pair))
@@ -179,7 +180,8 @@ registered; see RESTORE-WINDOW-OUTPUT."
               (request-manage-dirty)
               (format t "~&; Rhizome: takeover: ~A → output ~A workspace ~A~%"
                       (window-identifier win)
-                      (window-output-wl-name win) (getf entry :workspace)))
+                      (window-output-connector-name win)
+                      (getf entry :workspace)))
           (error (e)
             (format t "~&; Rhizome: takeover placement failed: ~A~%" e)))))))
 
@@ -225,6 +227,8 @@ them anyway, but dropping keeps the trees honest."
   "The settled moment: rebuild every workspace's frame tree and
 restore focus, then consume the takeover state."
   (when *takeover-state*
+    ;; Heads named at boot may not have been known yet; by now they are
+    (takeover-restore-output-workspaces)
     (let ((number-map (make-hash-table)))
       ;; old-number → new-number, through identifiers. A window whose
       ;; output was not yet registered when it re-registered moves to
@@ -243,7 +247,7 @@ restore focus, then consume the takeover state."
                        (window-number win)))
       (dolist (tree-entry (getf *takeover-state* :trees))
         (let* ((key (car tree-entry))
-               (out (find-output-by-wl-name (car key)))
+               (out (find-output-by-connector (car key)))
                (ws (cdr key)))
           (when (and out ws)
             (handler-case
