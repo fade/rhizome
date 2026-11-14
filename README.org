@@ -282,7 +282,7 @@ everyone else points their display manager (or a TTY) at
 =~/.local/bin/rhizome-session=.
 
 The Makefile is the conventional front door for the rest, too:
-=make build= compile-checks the system, =make test= runs all 16
+=make build= compile-checks the system, =make test= runs all 37
 regression suites, failing if any is red, and
 =make docs= rebuilds the testing-day PDF.
 
@@ -533,6 +533,7 @@ Default chains (the StumpWM classics, mapped to rhizome features):
 
 | Chain   | Action                 |
 |---------+------------------------|
+| C-t ;   | Show or hide the default scratchpad |
 | C-t w   | Window list            |
 | C-t g   | Workspace picker       |
 | C-t x   | Command palette        |
@@ -555,7 +556,7 @@ Default chains (the StumpWM classics, mapped to rhizome features):
 | C-t e ←↑↓→ | Swap windows with that frame (exchange) |
 | C-t a   | Show the time (StumpWM: time) |
 | C-t m   | Redisplay the last message (lastmsg) |
-| C-t r   | Interactive resize: arrows until Enter/Esc (iresize) |
+| C-t r   | Interactive resize: arrows resize, Escape ends and keeps the sizes (iresize) |
 | C-t C   | Command mode: sticky prefix until Escape |
 | C-t #   | Mark/unmark the focused window |
 | C-t RET | Expose: window grid; pick with digits/arrows/click |
@@ -599,13 +600,31 @@ through the scripting menu (StumpWM's select-from-menu):
 #+end_src
 =(rhizome:prompt-open "Title:" :candidates '(...) :on-complete #'f)=.
 
+** Scratchpads
+
+A scratchpad is a window that you show and hide while its program
+keeps running. C-t ; toggles the default one, =term=, which runs
+=foot=. On first use the WM starts the program and claims the first
+window that opens within 10 seconds; a shown scratchpad floats near
+the top of the output and takes focus.
+
+#+begin_src lisp
+(rhizome:configure
+ '(:scratchpads (:entries ((:name "term" :command "foot")
+                           (:name "music" :command "foot -e ncmpcpp")))))
+#+end_src
+
+=rhizome-cmd scratchpad music= shows or hides the scratchpad named
+=music=, and =rhizome-cmd scratchpad list= lists the scratchpads
+started so far.
+
 ** Workspaces
 
 Nine StumpWM-style workspaces per output. Windows open on the current
 workspace; =MOD+1..9= switches workspaces, =MOD+Shift+1..9= moves the focused
 window (and follows it). Windows on other workspaces are hidden and reappear
 on return. The current workspace is shown in the bar's =:workspaces=
-module with the active number underlined in the accent color,
+module with the active number on a rounded accent pill,
 occupied workspaces in the foreground color, empty ones muted, and
 configurable breathing room between numbers
 ((:bar :workspaces :gap 8), default 8px). The WM exports its
@@ -618,8 +637,10 @@ Each workspace has its own TYPE and its own LAYOUT:
 #+begin_src lisp
 ;; Type: :tile (frame trees, the default), :floating — StumpWM's
 ;; floating group: every window on it floats, arrivals cascade —
-;; or :scroll (the ribbon). C-t l cycles tile→scroll→floating;
-;; rhizome-cmd set-workspace-type <type> [N]; config:
+;; or :scroll (the ribbon). C-t l cycles tile -> scroll -> floating;
+;; rhizome-cmd set-group-type tile|scroll|floating sets the current
+;; workspace. The config key declares :floating workspaces; a :scroll
+;; workspace starts from C-t l, C-t v, or set-group-type.
 (rhizome:configure '(:workspaces (:types (2 :floating 5 :floating))))
 
 ;; Layout: per-workspace now — switching layouts on one workspace
@@ -640,7 +661,11 @@ Since river reports full output dimensions to the WM even when the bar has an
 exclusive zone, the WM reserves the bar's space itself in its layout math.
 
 #+begin_src lisp
-;; Live from the REPL or in ~/.config/rhizome/config.lisp:
+;; In ~/.config/rhizome/config.lisp. The bar process reads this file
+;; when it starts. From the REPL, :enabled hides or shows the bar live;
+;; any other :bar change, (:bar (:modules ...)) included, restarts the
+;; bar, which then shows the file's values; a top-level :modules change
+;; reaches the bar only through the file.
 (rhizome:configure '(:bar (:enabled nil)))          ; disable the bar
 (rhizome:configure '(:bar (:modules (:left (:layout :windows)
                                         :center (:clock)
@@ -649,7 +674,7 @@ exclusive zone, the WM reserves the bar's space itself in its layout math.
 (rhizome:reload-config)                             ; reset + reload user file
 #+end_src
 
-Bar modules: =:workspaces= (numbers — active underlined in accent,
+Bar modules: =:workspaces= (numbers: active on an accent pill,
 occupied in foreground, empty muted, with per-number gaps),
 =:layout= (current layout), =:windows= (window count), =:focused=
 (focused window title), =:recording= (a red =REC= marker while any
@@ -710,7 +735,7 @@ Features:
 - Strips Exec field codes (=%f=, =%u=, =%F=, etc.) and wraps Terminal=true apps in Alacritty
 - TrueType text through the theming engine (font.lisp; 8x16 bitmap fallback without freetype)
 - Colors entirely from the =:launcher= config group (see Theming below)
-- Substring search filtering with live redraw
+- Substring and fuzzy search filtering with live redraw
 - Scrollable list with client-side key repeat (hold down arrow to scroll)
 - Keyboard: type to filter, Up/Down to navigate, Enter to launch, Escape to close, Backspace to delete
 - Reuses shm buffer across redraws for fast rendering (no per-frame mmap/munmap)
@@ -745,17 +770,20 @@ The bar's own colors live under =:bar= (=:background=, =:foreground=,
 =:accent=, =:muted= — already supported by the module renderer's
 per-part hex colors). The workspace module's spacing is
 (:bar :workspaces :gap 8) (default 8px). Changing =:theme= font keys
-re-resolves the font in the WM process live; the bar restarts (as
-with any bar affecting change) and picks the new font up at startup.
+re-resolves the font in the WM process live. The bar process does not
+restart for a =:theme= change; it reads the font from the config file
+the next time it starts.
 Text widths are per-glyph advances now, so the bar centers the clock
 exactly and the launcher cursor hugs the typed query.
 
 Module parts can carry render flags: =:gap N= (extra pixels after
 the part) and =:underline t= (a 2px line in the part's color under
-the text) — the mechanism behind the active-workspace underline.
-The launcher's selected row carries a 3px accent edge
-((:launcher :accent ...)). A complete, commented configuration
-covering every group lives in =examples/config.lisp=.
+the text), and =:pill t= (a rounded pill in the part's colour behind
+the text; the active-workspace marker). The launcher's selected row is
+a rounded pill in =:selection-background=, and
+=(:launcher :accent ...)= colours the typed query where it appears in
+an entry. A complete, commented configuration covering every group
+lives in =examples/config.lisp=.
 
 ** Animations
 
@@ -790,7 +818,8 @@ tracked in the [[Protocol coverage audit][protocol audit]].
 
 A desktop-style context menu at the pointer: Minimize/Restore,
 Float/Tile, Maximize, Fullscreen, Close, and Move-to-workspace
-entries. Hover highlights with the accent edge; click selects;
+entries. The hovered row gets a rounded =:hover-background= pill and
+a =:hover-color= label; click selects;
 Escape or moving the pointer off the menu dismisses it; arrows +
 Enter work through the menu's keyboard grab. CSD apps asking for
 their window menu (xdg-shell show_window_menu — GTK's menu
@@ -804,7 +833,6 @@ protocol-safe by construction.
             :item-color "#c9b8e8"
             :hover-background "#4b3a78"
             :hover-color "#f0e6ff"
-            :accent "#7aa2f7"
             :opacity 0.95)))
 #+end_src
 
@@ -855,8 +883,8 @@ frames holding windows, one visible at a time:
   shows a hidden window, the one you focused last when there is one,
   or stays empty when no window is hidden (see placement below).
 - =C-t= arrows move focus between frames; =C-t n= / =C-t p= cycle
-  the windows inside the current frame; =rhizome-cmd resize-split
-  30= nudges a dividing line.
+  the windows inside the current frame; =C-t += / =C-t -= nudge a
+  dividing line by 30 pixels.
 - Frames you split stay when they go empty, so you can split and then
   move a window in, or move the last window out, and the frame waits
   for the next one; =C-t R= removes a split and =C-t Q= collapses to
@@ -956,6 +984,13 @@ MOD+Shift+L locks now; =rhizome-cmd lock= too. With =:idle-seconds=
 set, the WM spawns =swayidle= at startup and locks after that many
 seconds of inactivity.
 
+Another =swayidle=, independent of that one, starts at every startup
+from the =:idle= group, whose defaults are =(:lock-after 300 :dpms-after 600)=.
+It runs =swaylock -f= after =:lock-after= idle seconds, whatever
+=(:lock :command)= names, and turns the outputs off with =wlopm=
+after =:dpms-after= seconds. Set =:lock-after= to 0 or =nil= to turn
+it off, DPMS included. Both idle settings apply at WM startup only.
+
 MOD+Shift+E (or =rhizome-cmd logout=) ends the river session and
 returns to the display manager's greeter — press twice within three
 seconds to confirm. Logout goes through the protocol itself:
@@ -1030,7 +1065,8 @@ focused window with =rhizome-cmd maximize=; the audit trail is in
 the [[Protocol coverage audit][protocol audit]] above.
 
 From the REPL: =(rhizome:float-window win)=, =(rhizome:unfloat-window win)=,
-=(rhizome:toggle-float win)=, =(rhizome:toggle-maximize win)=.
+=(rhizome:toggle-float win)=, =(rhizome::toggle-maximize win)=
+(not exported, hence the double colon).
 
 * Project structure
 
@@ -1101,7 +1137,7 @@ rhizome/
 - [X] Frame trees (the StumpWM layout model): per-workspace recursive
       frame trees with user splits (C-t s/S), merge (C-t R), resize
       (C-t +/-), directional frame focus (C-t arrows), moving windows
-      between frames (C-t m + arrows), window cycling within frames
+      between frames (C-t M + arrows), window cycling within frames
       (C-t n/p), and layout names as one-shot tree templates;
       focus cycling (MOD+J/K) cycles the current frame's windows
 - [X] WM-side pointer bindings: MOD+Left-drag moves the window under
@@ -1120,9 +1156,9 @@ rhizome/
   - [X] TrueType text through the theming engine (bitmap fallback
         without freetype) and each app's icon left of its name
   - [X] Direct-to-shm rendering (reuses buffer, no per-frame mmap/munmap)
-  - [X] Themable colors, translucent ARGB surface, accent edge on the
+  - [X] Themable colors, translucent ARGB surface, rounded pill on the
         selected row (:launcher config group)
-  - [X] Substring search filtering with live redraw
+  - [X] Substring and fuzzy search filtering with live redraw
   - [X] Scrollable list with client-side key repeat
   - [X] Keyboard input: type to filter, Up/Down navigate, Enter launches, Escape closes
   - [X] evdev-to-xkb keycode conversion
@@ -1156,7 +1192,8 @@ manual, 180 commands). Where rhizome stands:
       (C-t B equalize splits), fclear (clears the current frame)
 - [X] exchange-direction: swap windows between frames (C-t e + arrows;
       StumpWM binds C-t x, which rhizome keeps for the command palette)
-- [X] pull: pull any window (by number via rhizome-cmd pull N, or the
+- [X] pull: pull any window (by number via
+      =rhizome-cmd '(pull-window-by-number N)'=, or the
       next/previous hidden window with C-t n/p — StumpWM's real
       pull-hidden-next/prev semantics)
 - [X] Clipboard commands getsel/putsel/copy-last-message via wl-clipboard
@@ -1166,7 +1203,7 @@ manual, 180 commands). Where rhizome stands:
 *** Medium
 
 - [X] Interactive resize mode (StumpWM's iresize, C-t r): arrows
-      resize the split until Enter commits or Escape aborts
+      resize the split; Escape ends the mode and keeps the new sizes
 - [X] Which-key hints: after C-t (and after descending into nested
       maps like C-t h or C-t M), the message window lists the available
       next keys with their docs — multi-line since the message window
@@ -1179,7 +1216,8 @@ manual, 180 commands). Where rhizome stands:
       output changed (rhizome-cmd dump-frame / restore-frame <name>;
       files in ~/.local/share/rhizome/frame-dumps/)
 - [X] Window marks: C-t # tags windows (marked ones show * in the
-      windowlist); move-marked <ws> moves them all and clears marks
+      windowlist); =rhizome-cmd '(rhizome:move-marked-to-workspace N)'=
+      moves them all and clears marks
 - [X] set-prefix-key: (rhizome:set-prefix-key "C-z") swaps the
       prefix chord live, reinstalling the grab in the next manage
       sequence; parse-key-spec speaks C/M/s/S-t style specs
@@ -1309,7 +1347,8 @@ dbus-broker rejects the padded form).
       (:and (:app-id \"emacs\") (:title \"docs\")) over app-id,
       title, number, workspace, float, marked, focused; wse-windows /
       wse-map / wse-count for scripting, window rules accept :wse in
-      place of :match, rhizome-cmd wse <expr> reports matches
+      place of :match, and from a shell
+      =rhizome-cmd '(rhizome:wse-count (quote EXPR))'= counts matches
 - [X] Niri-style scrollable tiling (C-t v): a horizontal ribbon
       where every window owns a full-height column; C-t , / . move
       focus between columns with the viewport following (niri keeps
