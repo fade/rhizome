@@ -10,10 +10,11 @@
 ;;;
 ;;;   (rhizome:load-module "my-placement")
 ;;;
-;;; Nothing is loaded unless the config or the REPL asks. Module code
-;;; runs inside the window manager process and uses the exported
-;;; registration points: define-placement-policy, keymaps, hooks, and
-;;; window rules through configure.
+;;; Nothing is loaded until load-module is called, from the config
+;;; file or the REPL. Module code runs inside the window manager
+;;; process and uses the exported registration points:
+;;; define-placement-policy, keymaps, hooks, and window rules through
+;;; configure.
 
 (in-package #:rhizome)
 
@@ -62,8 +63,8 @@ loads nothing; changed sources are recompiled and loaded, so state
 held in DEFVAR survives.
 
 Signals MODULE-NOT-FOUND, naming the path searched, when the system
-definition is absent, and an error when NAME is empty or contains a
-directory separator, or when the system NAME resolves to a file
+definition is absent. Signals an error when NAME is empty or contains
+a directory separator, or when the system NAME resolves to a file
 other than the module's."
   (check-type name string)
   (when (or (zerop (length name))

@@ -163,11 +163,11 @@ the object is needed, to name the output of a layer surface."
                     (wl:wl-registry.bind *registry* name iface-class 1))))))))
 
 (defun layer-surface-output ()
-  "The wl_output for a new keyboard capture, prompt or message layer
-surface: the current output's, or NIL when there is none. Without an
-output, river places the surface on its default output, which rhizome
-never sets, so on a multi-head host it lands on the first head
-whichever head the operator works on."
+  "The wl_output for a new keyboard capture, prompt, or message layer
+surface: the current output's, or NIL when there is none. River picks
+the output for a layer surface created without one, so on a
+multi-output host such a surface can open away from the output in
+use."
   (handler-case (output-wl-output (current-output))
     (error (e)
       (format t "~&; Rhizome: no wl_output for a layer surface: ~A~%" e)
@@ -183,8 +183,8 @@ output when one is bound, else the current output (heads.lisp)."
 
 (defun window-arrives-on-p (win output)
   "True when the unplaced WIN opens on OUTPUT: OUTPUT is its arrival
-output, no output claims it, or OUTPUT is not registered (a pass run
-outside the manage loop adopts as before)."
+output, no output claims it, or OUTPUT is not registered, as in a
+pass run outside the manage loop, which then adopts WIN."
   (let ((target (find-output-for-window win)))
     (or (null target)
         (eq target output)

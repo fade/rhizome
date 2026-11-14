@@ -91,8 +91,8 @@ cycle (which would fight the user for focus).")
 
 (defvar *arrival-output* nil
   "The output new windows open on, bound for the duration of one
-manage pass so every output's pass agrees on it. NIL outside a pass:
-find-output-for-window then asks current-output.")
+manage pass so every output's pass uses the same one. NIL outside a
+pass, where find-output-for-window calls current-output instead.")
 
 (defun output-snapshot (output current primary)
   "The bar's view of OUTPUT as a plist.
@@ -346,12 +346,12 @@ handlers should make window management requests here."
   ;; use_ssd / use_csd answer decoration hints: manage-state too
   (sync-window-decorations)
 
-  ;; Remembered outputs that waited for connector names move their
-  ;; windows before this pass adopts them (workspaces.lisp)
+  ;; Windows whose remembered output awaited a connector name move
+  ;; now, before this pass adopts them (workspaces.lisp)
   (resolve-pending-window-outputs)
 
-  ;; New windows open on the current output; fix it once so the
-  ;; per-output passes cannot disagree as focus moves under them
+  ;; New windows open on the current output; bind it once so every
+  ;; per-output pass uses the same output while focus moves
   (let ((*arrival-output* (current-output)))
     (maphash (lambda (output-proxy output)
                (declare (ignore output-proxy))

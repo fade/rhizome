@@ -1,8 +1,8 @@
-;;; Tests for the focused-frame outline (outline.lisp): which frame
-;;; and output carry the outline, when it hides, the theme settings,
-;;; the ring pixels, and the render pass's surface lifecycle. River
-;;; requests are stubbed and recorded; the shm buffer path runs for
-;;; real.
+;;; Tests for the focused-frame outline (frame-outline.lisp): which
+;;; frame and output carry the outline, when it hides, the theme
+;;; settings, the ring pixels, and the render pass's surface
+;;; lifecycle. River requests are stubbed and recorded; the shm buffer
+;;; path runs for real.
 (ql:quickload :rhizome)
 
 (in-package #:rhizome)
@@ -170,7 +170,7 @@
         (remove-current-split out1 1)
         (check "after remove: the merged frame"
                (rect) '(0 0 960 1080))
-        ;; Output offset: a frame on the second head
+        ;; Output offset: a frame on the second output
         (dolist (win (list t1 t2))
           (setf (window-output win) out2))
         (setf *outputs* (make-hash-table))
@@ -179,9 +179,9 @@
         (set-workspace-tree out2 1 '((0 0 640 800) (640 0 640 800))
                             (list t1 t2))
         (setf (window-focused-p t2) t)
-        (check "focused window on the second head: the outline follows it"
+        (check "focused window on the second output: the outline follows it"
                (eq (first (target)) out2) t)
-        (check "frame on a head at x 1920: global coordinates"
+        (check "frame on an output at x 1920: global coordinates"
                (rect) '(2560 0 640 800))
         ;; Bar reservation shifts the frame down
         (configure '(:bar (:enabled t :height 20 :margin 8)))
@@ -190,7 +190,7 @@
         (configure '(:bar (:enabled nil)))
         ;; Fullscreen hides it
         (setf (window-fullscreen-p t2) t)
-        (check "fullscreen window on the head hides the outline"
+        (check "fullscreen window on the output hides the outline"
                (target) '(nil))
         (setf (window-fullscreen-p t2) nil)
         ;; A minimized fullscreen window does not
@@ -262,7 +262,7 @@
                (subseq (rect) 0 2))
         (check "commits are synced to the render sequence"
                (length (calls-of :sync)) (length (calls-of :commit)))
-        (check "only the focused head's outline is mapped"
+        (check "only the focused output's outline is mapped"
                (list (getf (gethash out2 *frame-outlines*) :mapped)
                      (gethash out1 *frame-outlines*))
                '(t nil))

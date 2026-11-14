@@ -261,11 +261,13 @@ river resends app-id and title, and clients retitle at will.")
 its workspace or output, optionally switch the output's layout and/or
 follow the window. Returns the matched rule, if any; NIL once a rule
 has applied to WIN.
-A :workspace rule stamps the output too (the :output rule's, else the
-arrival output), so the manage pass keeps the workspace instead of
-adopting the window onto the one showing. On a workspace its output is
-not showing, a tiled window joins that workspace's frame tree hidden and
-focus stays put; :follow switches the output there and focuses it."
+A :workspace rule from 1 to *WORKSPACE-COUNT* also sets the output
+(the :output rule's, else the arrival output), so the manage pass
+keeps the workspace instead of adopting the window onto the one
+showing; a :workspace outside that range is ignored. On a workspace
+its output is not showing, a tiled window joins that workspace's frame
+tree hidden and focus stays put; :follow switches the output there and
+focuses the window."
   (when (gethash win *window-rules-applied*)
     (return-from apply-window-rules nil))
   (dolist (rule (config-get '(:window-rules)))

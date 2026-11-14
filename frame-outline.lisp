@@ -1,7 +1,7 @@
 ;;; Focused-frame outline
 ;;;
 ;;; A ring around the frame commands act on, on the output they act
-;;; on, so an empty focused frame and the focused head are visible.
+;;; on, so an empty focused frame and the focused output are visible.
 ;;; River decorates windows only (set_borders, decoration surfaces),
 ;;; so the ring is a WM-owned river_shell_surface_v1, one per output,
 ;;; sized to the frame and transparent inside.

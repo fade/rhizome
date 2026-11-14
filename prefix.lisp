@@ -73,7 +73,8 @@ Labels and picking live in fselect.lisp (stub-redefined here).")
         :help (make-keymap :name :default-help))
   "The default sub-keymaps under the prefix key (C-t M, C-t e, C-t h),
 by role. setup-default-prefix-bindings refills these objects in place,
-so a user keymap whose parent is one of them sees a rebuilt default.")
+so lookups through a user keymap whose parent is one of them return
+the rebuilt defaults.")
 
 (defvar *prefix-map*
   (make-keymap :name :prefix

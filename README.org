@@ -651,7 +651,7 @@ Each workspace has its own TYPE and its own LAYOUT:
 Rhizome's tiling is the dynamic (dwm-style) type by construction:
 new windows auto-insert into the frame tree without frame surgery.
 
-** Multiple monitors
+** Multiple outputs
 
 Each output keeps its own workspaces and frame trees, and one output
 is current at a time, as in StumpWM. The current output is the output
@@ -662,7 +662,7 @@ failing that, the first output.
 New windows open on the current output, in its current frame. Prefix
 commands, =MOD+1..9=, =MOD+J/K=, =MOD+Space= and every IPC command act
 on the current output too. IPC commands that report or change a
-workspace therefore follow the monitor you are working on.
+workspace therefore follow the output you are working on.
 
 | Command                       | Effect                                                    |
 |-------------------------------+-----------------------------------------------------------|
@@ -693,14 +693,13 @@ in your config. =C-t o= and =C-t O= are free in the default map:
 #+end_src
 
 River reports no event for a click on an empty desktop, so clicking
-an empty monitor does not select it; use =focus-next-output=, or let
-the pointer decide while no window has focus.
+an empty output does not select it; use =focus-next-output=.
 
 *** Output layout
 
 River places outputs in its own order, which need not match your desk.
-Declare where each output sits with =(:displays (:layout ...))=. On the
-host this was written for, HDMI-A-1 sits to the left of DVI-D-1:
+Declare where each output sits with =(:displays (:layout ...))=. For
+example, to place HDMI-A-1 to the left of DVI-D-1:
 
 #+begin_src lisp
 (rhizome:configure
@@ -708,9 +707,10 @@ host this was written for, HDMI-A-1 sits to the left of DVI-D-1:
                        ("DVI-D-1" :primary t)))))
 #+end_src
 
-That is the equivalent of =xrandr --output DVI-D-0 --auto --primary;
-xrandr --output HDMI-0 --auto --left-of DVI-D-0= under StumpWM. Each
-entry is a key followed by options:
+Under StumpWM, where X names the same connectors DVI-D-0 and HDMI-0,
+the equivalent is =xrandr --output DVI-D-0 --auto --primary; xrandr
+--output HDMI-0 --auto --left-of DVI-D-0=. Each entry is a key
+followed by options:
 
 | Option                     | Effect                                                 |
 |----------------------------+--------------------------------------------------------|
@@ -722,8 +722,8 @@ entry is a key followed by options:
 | =:mode "WxH@HZ"=           | a mode, such as ="1920x1200@60"=; the refresh is optional |
 | =:scale N=                 | a scale, such as =1.5=                                 |
 
-A key matches an output's connector name (=HDMI-A-1=), or failing that
-a part of its description, ignoring case, so a layout written for a
+A key matches an output's connector name (=HDMI-A-1=) or, failing
+that, part of its description, ignoring case, so a layout written for a
 docked laptop can name the monitor (="DELL U2412M"=) rather than the
 port it is plugged into. Relative placement uses each output's current
 mode, or the =:mode= you give, divided by its scale, and aligns top
@@ -772,12 +772,13 @@ exclusive zone, the WM reserves the bar's space itself in its layout math.
 (rhizome:reload-config)                             ; reset + reload user file
 #+end_src
 
-*** One bar per monitor
+*** One bar per output
 
-Each output gets its own bar, as each head gets its own mode-line in
-StumpWM. A bar shows its own output's workspace (=:workspaces=), layout
-(=:layout=) and window count (=:windows=); a click on a workspace number
-switches that output. Bars follow monitors as you plug and unplug them.
+Each output gets its own bar, like the mode-line in StumpWM. A bar
+shows its own output's workspace (=:workspaces=), layout (=:layout=),
+and window count (=:windows=); a click on a workspace number switches
+that output. A bar comes and goes with its output as you plug and
+unplug monitors.
 
 The tray stays on one bar, the primary: the leftmost output that
 carries a bar. The other modules (clock, battery, volume, icons, and
@@ -1244,8 +1245,8 @@ From the REPL: =(rhizome:float-window win)=, =(rhizome:unfloat-window win)=,
 * Modules
 
 A module is an ASDF system that extends rhizome from its own
-directory. Rhizome loads no module unless the config file or the REPL
-asks for one.
+directory. Rhizome loads no module until load-module is called, from the config
+file or the REPL.
 
 ** Directory layout
 

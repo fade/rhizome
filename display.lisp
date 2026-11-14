@@ -206,8 +206,8 @@ override. Returns T when the apply was sent."
 ;;; --- Output layout from config ---
 ;;;
 ;;; (:displays (:layout SPECS)) positions heads declaratively. Each
-;;; spec is (KEY . OPTIONS); KEY matches a head's connector name, or
-;;; failing that a substring of its description, ignoring case.
+;;; spec is (KEY . OPTIONS); KEY matches a head's connector name or,
+;;; failing that, a substring of its description, ignoring case.
 ;;; OPTIONS:
 ;;;   :position (X Y)    explicit position
 ;;;   :primary T         anchor at 0,0 for relative placement
@@ -216,15 +216,15 @@ override. Returns T when the apply was sent."
 ;;; "Primary" names only the anchor of relative placement: river has
 ;;; no primary output. Heads placed from :position or :primary are
 ;;; shifted together so their minimum x and y are 0. A head placed
-;;; against an unnamed head is placed against its current position
-;;; and is not shifted.
+;;; against an unnamed head is placed against that head's current
+;;; position and is not shifted.
 
 (defvar *display-layout-pending* nil
   "True while a configuration sent by DISPLAY-APPLY-LAYOUT awaits
 river's succeeded, failed or cancelled event.")
 
 (defvar *display-head-set* nil
-  "The head set seen at the last done the layout handled, as
+  "The head set at the last done event the layout processed, as
 DISPLAY-HEAD-SET returns it. NIL before the first done.")
 
 (defun display-head-set ()
@@ -499,7 +499,7 @@ unchanged layout applied again stays quiet."
 Return :applied when a configuration was sent, :unchanged when the
 layout already holds, :pending while an earlier layout awaits river's
 answer, :no-layout when SPECS is empty, or :no-manager before the
-output manager is bound. Heads named in SPECS that match no head are
+output manager is bound. Keys in SPECS that match no head are
 logged; see DISPLAY-NOTE-ABSENT-HEADS."
   (cond ((null specs) :no-layout)
         ((null *output-manager*) :no-manager)
@@ -515,8 +515,8 @@ logged; see DISPLAY-NOTE-ABSENT-HEADS."
 
 (defun display-layout-on-done ()
   "Apply the configured layout when the head set differs from the one
-seen at the last handled done. Skip while a layout is pending: the
-done that follows river's answer sees the change. Errors are logged."
+at the last processed done. Skip while a layout is pending: the done
+that follows river's answer reports the change. Errors are logged."
   (unless *display-layout-pending*
     (let ((heads (display-head-set)))
       (unless (equal heads *display-head-set*)

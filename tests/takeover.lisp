@@ -360,7 +360,7 @@
           (ignore-errors (delete-file *takeover-state-path*)))
 
         ;; A takeover file from a build that wrote no user mark keeps
-        ;; today's behaviour: the empty frame prunes
+        ;; the unmarked behaviour: the empty frame prunes
         (fresh-wm)
         (let* ((dvi (head :um-dvi "DVI-D-1" 1920))
                (kitty (new-window :um-kitty "kitty-id" 3)))
@@ -444,8 +444,8 @@
 
         ;; --- boot: restore waits until connector names are known ---
         ;; The successor learns its windows and outputs from river
-        ;; before the output manager names any head: in the VM log the
-        ;; first done with named heads follows the first manage pass.
+        ;; before the output manager names any head, and the first done
+        ;; with named heads follows the first manage pass.
         ;; Events go through the real registration functions and proxy
         ;; hooks, in that order.
         (labels ((proxy () (make-instance 'wl:wl-proxy))

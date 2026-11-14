@@ -241,10 +241,12 @@
         (ok "a crossing after a no-op warp focuses the entered window"
             (focused) c)
 
-        ;; --- Expose, prompt, prefix and float ops suppress ---
+        ;; --- Modal interactions and float ops suppress ---
 
         (dolist (spec '((*expose-active* "the expose overview")
                         (*prompt-active* "a prompt")
+                        (*eval-prompt-active* "the eval prompt")
+                        (*launcher-active* "the launcher")
                         (*menu-active* "a menu")
                         (*prefix-mode-active* "prefix-key capture")
                         (*iresize-active* "interactive frame resize")))

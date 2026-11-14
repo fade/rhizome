@@ -76,7 +76,7 @@ read from the snapshot file. Refreshed at most once per tick."
   "Seconds a head whose surface the compositor closed stays closed.")
 
 (defun bar-view ()
-  "The snapshot as the rendering bar sees it: its output's entry
+  "The snapshot as the rendering bar reads it: its output's entry
 shadows the global keys."
   (append *bar-output-view* (bar-snapshot)))
 
@@ -147,7 +147,7 @@ surface within *bar-reopen-delay* seconds."
          t)))
 
 (defmacro with-bar-head ((head) &body body)
-  "Run BODY as HEAD's bar: bar-view sees HEAD's output entry and
+  "Run BODY as HEAD's bar: bar-view returns HEAD's output entry and
 bar-head-segment-modules applies HEAD's primary status."
   (let ((h (gensym "HEAD")))
     `(let* ((,h ,head)
@@ -287,8 +287,8 @@ use it."
 
 (defun bar-module-workspaces ()
   "Workspace numbers of the bar's output with breathing room: the
-active workspace in the accent color on a pill; occupied workspaces
-in the foreground color; empty ones muted. Occupancy comes from the
+active workspace in the accent colour on a pill; occupied workspaces
+in the foreground colour; empty ones muted. Occupancy comes from the
 output's :occupied list (workspace numbers with visible windows)."
   (let* ((snapshot (bar-view))
          (current (getf snapshot :workspace 1))

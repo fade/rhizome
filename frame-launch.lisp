@@ -53,7 +53,7 @@ in FRAME of WORKSPACE on OUTPUT. WINDOW is that window once matched."
       (with-open-file (in (format nil "/proc/~D/stat" pid))
         (let* ((line (read-line in))
                (end (position #\) line :from-end t)))
-          ;; After the parenthesised command name: state, then ppid
+          ;; After the parenthesized command name: state, then ppid
           (and end
                (parse-integer
                 (second (uiop:split-string

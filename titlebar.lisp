@@ -12,7 +12,7 @@
 ;;;   it has a parent (dialogs, file pickers, transients)
 ;;;   its size is fixed (min and max size hints equal)
 ;;;   it supports only client-side decorations
-;;;   the first window rule carrying :titlebar sets it NIL
+;;;   the first matching rule carrying :titlebar sets it NIL
 ;;;   it is fullscreen, maximized, or minimized
 ;;;   decorations are left to clients, (:windows (:decorations :client))
 ;;;   titlebars are off, (:theme (:titlebar nil))

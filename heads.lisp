@@ -1,4 +1,4 @@
-;;; Multiple outputs (heads) for Rhizome
+;;; Multiple outputs for Rhizome
 ;;;
 ;;; StumpWM multi-head semantics: one output is current at a time.
 ;;; New windows open there, output-relative commands act on it, and
@@ -110,12 +110,11 @@ Returns OUTPUT, or NIL when it is not a registered output."
     output))
 
 (defun move-window-to-output (win output)
-  "Move WIN to OUTPUT's current workspace and focus it. A tiled WIN
-on a frame-tiled workspace is adopted into OUTPUT's current frame at
-once, as a new window is, so a render pass before the next manage
-pass cannot stack it on that frame's window. The next manage pass
-prunes the emptied source frame. A float keeps its offset from the
-output's origin. Returns WIN, or NIL when nothing moves."
+  "Move WIN to OUTPUT's current workspace and focus it; return WIN, or
+NIL when nothing moves. A float keeps its offset from the output's
+origin. A tiled WIN joins OUTPUT's current frame at once, as a new
+window does, so a render pass before the next manage pass cannot
+stack it on that frame's window."
   (let ((source (and win (window-output win)))
         (workspace (and output (current-workspace output))))
     (when (and win (live-output-p output) (not (eq source output)))

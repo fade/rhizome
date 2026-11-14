@@ -974,9 +974,9 @@ tree, or no longer lists it) is adopted again and logged as
         (if (floating-workspace-p output workspace)
             (float-adopt-window win output workspace)
             (frame-adopt-window win output workspace))))
-    ;; Invariant: every tiled window shown here sits in a leaf. A stale
-    ;; frame pointer is never adopted above, and the window would stay
-    ;; unsized and unplaced.
+    ;; Invariant: every tiled window shown here sits in a leaf.
+    ;; Adoption above skips a window that still holds a stale frame;
+    ;; without this pass it stays unsized and unplaced.
     (unless (floating-workspace-p output workspace)
       (dolist (win wins)
         (unless (or (window-floating-p win)

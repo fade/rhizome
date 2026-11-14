@@ -458,7 +458,7 @@ readers check that it still lives there.")
 
 (defvar *raised-window* (find-if #'window-focused-p (all-windows))
   "The window most recently raised, or NIL. focus-window raises the
-window it focuses unless told not to; float-render-decisions stacks
+window it focuses unless RAISE is NIL; float-render-decisions stacks
 this window above the other floats.")
 
 (defun focus-window (win seat &key (raise t))
