@@ -33,14 +33,24 @@
   "Number of messages shown so far; show-message increments it.")
 
 (defun show-message (text &optional (seconds 3))
-  "Show TEXT on screen for SECONDS (default 3). If a message is
-already showing, replace it. Newlines start new lines."
+  "Show TEXT on screen for SECONDS (default 3), on the current output.
+If a message is already showing there, replace it; one showing on
+another output is hidden first. Newlines start new lines."
   (incf *message-serial*)
   (setf *last-message* text)
   (unless (and *compositor* *shm* *layer-shell*)
     (format t "~&; Rhizome: ~A~%" text)
     (return-from show-message))
-  (setf *message-expiry* (+ (get-universal-time) seconds))
+  (let ((output (layer-surface-output)))
+    (when (and *message-state*
+               (not (eq (gethash :wl-output *message-state*) output)))
+      (message-hide))
+    (setf *message-expiry* (+ (get-universal-time) seconds))
+    (show-message-surface text output)))
+
+(defun show-message-surface (text output)
+  "Render TEXT into the message surface, creating the surface on
+wl_output OUTPUT when none exists (NIL leaves the output to river)."
   (let ((height (message-height-for text)))
     (if *message-state*
         (if (and (gethash :shm-ptr *message-state*)
@@ -62,12 +72,13 @@ already showing, replace it. Newlines start new lines."
           (setf *message-state* state
                 *message-height* height)
           ;; The render helpers expect the global wl_shm in the state hash
-          (setf (gethash :shm state) *shm*)
+          (setf (gethash :shm state) *shm*
+                (gethash :wl-output state) output)
           (let ((surface (wl:wl-compositor.create-surface *compositor*)))
             (setf (gethash :surface state) surface)
             (let ((layer-surface
                     (rwm:zwlr-layer-shell-v1.get-layer-surface
-                      *layer-shell* surface nil :top "rhizome-message")))
+                      *layer-shell* surface output :top "rhizome-message")))
               (setf (gethash :layer-surface state) layer-surface)
               (push (lambda (event-name &rest args)
                       (case event-name

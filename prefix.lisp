@@ -130,7 +130,8 @@ keys to the WM's wl_keyboard, and set *prefix-mode-active*."
       (setf (gethash :surface state) surface)
       (let ((layer-surface
               (rwm:zwlr-layer-shell-v1.get-layer-surface
-                *layer-shell* surface nil :top "rhizome-prefix")))
+                *layer-shell* surface (layer-surface-output)
+                :top "rhizome-prefix")))
         (setf (gethash :layer-surface state) layer-surface)
         (push (lambda (event-name &rest args)
                 (case event-name
