@@ -385,6 +385,12 @@ tests.")
       (error (e)
         (format t "~&; Rhizome: window state load failed: ~A~%" e)))))
 
+(defun window-output-wl-name (win)
+  "The wl_output name of WIN's output, or NIL. The name, not the
+output object, survives a WM restart."
+  (let ((out (window-output win)))
+    (and out (output-wl-output-name out))))
+
 (defun remember-window-state (win)
   "Record WIN's placement under its identifier (v4 windows only).
 Called when the window closes — one hook point captures both the
@@ -392,8 +398,23 @@ final workspace and the floating state."
   (when (and (window-identifier win) (window-state-changed-p))
     (setf (gethash (window-identifier win) *window-state*)
           (list :workspace (window-workspace win)
+                :output (window-output-wl-name win)
                 :float (window-floating-p win)))
     (save-window-state)))
+
+(defun restore-window-output (win output-name)
+  "Put WIN on the registered output whose wl_output name is OUTPUT-NAME.
+With no such output, WIN keeps its registered output, else takes the
+current output. WIN leaves the frame it holds when its output changes.
+Return the output WIN ends on, or NIL when no output exists."
+  (let* ((own (and (live-output-p (window-output win)) (window-output win)))
+         (target (or (and output-name (find-output-by-wl-name output-name))
+                     own
+                     (current-output))))
+    (when (and target (not (eq target (window-output win))))
+      (frame-remove-window win)
+      (setf (window-output win) target))
+    target))
 
 (defun restore-window-state (win)
   "Restore WIN's remembered placement, if any. Runs before config
@@ -411,9 +432,8 @@ takeover/relogin clustering bug."
           (assign-window-workspace win (getf state :workspace))
           (setf (window-minimized-p win) nil)
           ;; Stamp the output so the manage pass adopts the window
-          ;; onto ITS remembered workspace, not the current one
-          (unless (window-output win)
-            (setf (window-output win) (first (all-outputs)))))
+          ;; onto ITS remembered output and workspace
+          (restore-window-output win (getf state :output)))
         (request-manage-dirty)
         (format t "~&; Rhizome: restored placement for ~A (workspace ~A)~%"
                 (window-identifier win) (getf state :workspace))))))
