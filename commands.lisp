@@ -514,7 +514,60 @@ Usage: wse <expr>  e.g. wse (:and (:app-id \"firefox\") (:float t))"
 (define-command :current-workspace (output args)
   "Report the current workspace number."
   (declare (ignore args))
-  (format nil "~A" (current-workspace (or output (first (all-outputs))))))
+  (format nil "~A" (current-workspace (or output (current-output)))))
+
+;;; --- Multiple outputs (heads.lisp) ---
+
+(define-command :focus-next-output (output args)
+  "Focus the next output, wrapping (StumpWM's snext). An empty
+output becomes current, so the next new window opens there."
+  (declare (ignore output args))
+  (focus-next-output)
+  "ok")
+
+(define-command :focus-previous-output (output args)
+  "Focus the previous output, wrapping (StumpWM's sprev)."
+  (declare (ignore output args))
+  (focus-previous-output)
+  "ok")
+
+(define-command :focus-output-left (output args)
+  "Focus the output to the left of the current one."
+  (declare (ignore output args))
+  (focus-output-left)
+  "ok")
+
+(define-command :focus-output-right (output args)
+  "Focus the output to the right of the current one."
+  (declare (ignore output args))
+  (focus-output-right)
+  "ok")
+
+(define-command :move-window-next-output (output args)
+  "Move the focused window to the next output, wrapping; focus
+follows it."
+  (declare (ignore output args))
+  (move-window-next-output)
+  "ok")
+
+(define-command :move-window-previous-output (output args)
+  "Move the focused window to the previous output, wrapping; focus
+follows it."
+  (declare (ignore output args))
+  (move-window-previous-output)
+  "ok")
+
+(define-command :move-window-output-left (output args)
+  "Move the focused window to the output on its left."
+  (declare (ignore output args))
+  (move-window-output-left)
+  "ok")
+
+(define-command :move-window-output-right (output args)
+  "Move the focused window to the output on its right."
+  (declare (ignore output args))
+  (move-window-output-right)
+  "ok")
 
 (define-command :toggle-bar (output args)
   "Toggle the status bar."

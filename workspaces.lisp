@@ -77,7 +77,7 @@ every unconfigured one."
   "Stamp WIN as belonging to WORKSPACE."
   (setf (gethash win *window-workspace*) workspace))
 
-(defun switch-workspace (workspace &optional (output (first (all-outputs))))
+(defun switch-workspace (workspace &optional (output (current-output)))
   "Switch OUTPUT to WORKSPACE (1-based), focusing its newest window."
   (unless (and (<= 1 workspace *workspace-count*) output)
     (return-from switch-workspace))
@@ -238,15 +238,16 @@ window. Returns the matched rule, if any."
         (when workspace
           (assign-window-workspace win workspace)
           (setf (window-minimized-p win) nil))
+        ;; :layout and :follow act on the output the window opens on
         (when layout
-          (let ((outs (all-outputs)))
-            (when (and outs (gethash (find-layout-symbol layout) *layouts*))
-              (setf (output-current-layout (first outs))
+          (let ((out (or (window-output win) (find-output-for-window win))))
+            (when (and out (gethash (find-layout-symbol layout) *layouts*))
+              (setf (output-current-layout out)
                     (find-layout-symbol layout)))))
         (when (and follow workspace)
-          (let ((outs (all-outputs)))
-            (when outs
-              (switch-workspace workspace (first outs)))))
+          (let ((out (or (window-output win) (find-output-for-window win))))
+            (when out
+              (switch-workspace workspace out))))
         (request-manage-dirty)
         (format t "~&; Rhizome: window rule ~S applied to ~A~%"
                 rule (or (window-app-id win) (window-title win) win))

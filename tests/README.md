@@ -58,5 +58,11 @@ stubbed river requests. Run with:
   (icon discovery, 16x16 scaling, caching, per-entry actions).
 - `hooks-and-eval.lisp` — hook firing/removal/error isolation and the
   eval prompt's evaluator.
+- `multi-head.lisp` - two side-by-side outputs: which output is
+  current (focus, last selection, pointer), new windows opening on
+  it, focusing the next/previous/left/right output (an empty one
+  clears focus), moving a window across outputs (frame left behind
+  and pruned, adoption on the target, float offsets), and IPC
+  commands acting on the current output.
 - `ipc.lisp` — command dispatch and a real unix-socket round-trip
   (server thread + client thread + main-thread queue drain).

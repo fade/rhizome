@@ -70,7 +70,7 @@ package; otherwise it is NAME ARGS..., looked up in *command-table*."
            (handler
              (let ((result
                      (handler-case
-                         (let ((r (funcall handler (first (all-outputs))
+                         (let ((r (funcall handler (current-output)
                                                 args)))
                            (format nil "~A" (or r "")))
                        (error (e)
