@@ -252,12 +252,25 @@ cleared when none is left (see refocus-after-close)."
         #'<
         :key (lambda (o) (+ (* (output-y o) 65536) (output-x o)))))
 
+(defvar *window-rules-applied* (make-hash-table :test 'eq :weakness :key)
+  "Window -> the rule applied to it. A rule applies once per window:
+river resends app-id and title, and clients retitle at will.")
+
 (defun apply-window-rules (win)
-  "Apply the first matching window rule to WIN: assign its workspace
-or output, optionally switch the output's layout and/or follow the
-window. Returns the matched rule, if any."
+  "Apply the first matching window rule to WIN, once per window: assign
+its workspace or output, optionally switch the output's layout and/or
+follow the window. Returns the matched rule, if any; NIL once a rule
+has applied to WIN.
+A :workspace rule stamps the output too (the :output rule's, else the
+arrival output), so the manage pass keeps the workspace instead of
+adopting the window onto the one showing. On a workspace its output is
+not showing, a tiled window joins that workspace's frame tree hidden and
+focus stays put; :follow switches the output there and focuses it."
+  (when (gethash win *window-rules-applied*)
+    (return-from apply-window-rules nil))
   (dolist (rule (config-get '(:window-rules)))
     (when (window-rule-matches-p win rule)
+      (setf (gethash win *window-rules-applied*) rule)
       (let ((workspace (getf rule :workspace))
             (layout (getf rule :layout))
             (follow (getf rule :follow))
@@ -281,9 +294,28 @@ window. Returns the matched rule, if any."
           ;; Place on a specific output (1-based index)
           (setf (window-output win)
                 (nth (1- output-index) (all-outputs-sorted))))
-        (when workspace
-          (assign-window-workspace win workspace)
-          (setf (window-minimized-p win) nil))
+        (when (and workspace (<= 1 workspace *workspace-count*))
+          (let ((out (or (window-output win) (find-output-for-window win))))
+            ;; Leave any tree the window already joined
+            (unless (and (eql (window-workspace win) workspace)
+                         (eq (window-output win) out))
+              (frame-remove-window win))
+            (when out
+              (setf (window-output win) out))
+            (assign-window-workspace win workspace)
+            (setf (window-minimized-p win) nil)
+            (when (and out
+                       (not follow)
+                       (not (eql workspace (current-workspace out))))
+              ;; Not showing: join its tree now, hidden by the render
+              ;; pass, and leave the seats' focus where it is
+              (when (eq *pending-autofocus* win)
+                (setf *pending-autofocus* nil))
+              (unless (or (window-floating-p win)
+                          (window-frame win)
+                          (floating-workspace-p out workspace)
+                          (scroll-workspace-p out workspace))
+                (frame-adopt-window win out workspace)))))
         ;; :layout and :follow act on the output the window opens on
         (when layout
           (let ((out (or (window-output win) (find-output-for-window win))))
