@@ -276,6 +276,8 @@ them. Returns the binding (or NIL) and the key it was found under."
   "Dispatch one key, KEYSYM with MODIFIERS (logical or river keywords),
 within a key sequence. Returns T."
   (let ((key (make-key keysym modifiers)))
+    (when (debug-events-p)
+      (format t "~&; Rhizome [debug]: prefix key ~A~%" (key-description key)))
     (cond
       ;; Escape aborts whatever prefix mode is running
       ((= keysym 65307)

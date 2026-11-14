@@ -2,7 +2,8 @@
 ;;; multi-output host: the prefix capture, its which-key message, and
 ;;; the prompt open on the current output's wl_output, never on
 ;;; whichever output the compositor picks for a surface without one.
-;;; River requests are stubbed.
+;;; Also covers the log line for a key the capture receives. River
+;;; requests are stubbed.
 (ql:quickload :rhizome)
 
 (in-package #:rhizome)
@@ -195,7 +196,25 @@
         (quiet #'enter-prefix-mode)
         (try "an output that returns is bound again"
              (lambda () (mapcar #'first binds))
-             '(42 42))))
+             '(42 42)))
+
+      ;; A key the capture receives is logged only with debug event
+      ;; logging on, (:debug (:events t))
+      (flet ((key-log (events)
+               (let ((*config* (merge-plist *config*
+                                            (list :debug (list :events events)))))
+                 (two-heads)
+                 (quiet #'enter-prefix-mode)
+                 (with-output-to-string (*standard-output*)
+                   (prefix-handle-key 65307)))))
+        (let ((off (key-log nil))
+              (on (key-log t)))
+          (try "debug events off: a key reaching the prefix capture is not logged"
+               (lambda () (and (search "prefix key" off) t))
+               nil)
+          (try "debug events on: a key reaching the prefix capture is logged"
+               (lambda () (and (search "prefix key Esc" on) t))
+               t))))
 
     (format t "~&=== ~A passed, ~A failed ===~%" pass fail)
     (unless (zerop fail) (uiop:quit 1))))
