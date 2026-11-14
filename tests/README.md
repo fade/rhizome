@@ -193,3 +193,12 @@ stubbed river requests. Run with:
   workspaces, switched off), the theme settings, the ring pixels, and
   the shell surface lifecycle (one per output, redraw only on change,
   destroyed with its output).
+- `titlebars.lisp` - float titlebars: which windows carry one (a plain
+  float does; a tiled window, a window with a parent, a fixed-size
+  window, a CSD-only window, a window whose rule sets `:titlebar nil`,
+  and a fullscreen, maximized or minimized float do not, nor any window
+  when titlebars are off or decorations are left to clients), the
+  strip's height, geometry, colours and title fitting, redraws only when
+  the title, size, focus or colours change, a new buffer on any size
+  change, teardown when the window tiles, goes fullscreen or closes, and
+  a press on the strip starting a move.

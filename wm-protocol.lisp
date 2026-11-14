@@ -434,7 +434,10 @@ window positions, borders, and z-ordering here."
   (decorations-render-pass)
   ;; The focused-frame outline (river_shell_surface_v1).
   ;; Placeholder: redefined by frame-outline.lisp, which loads later.
-  (frame-outline-render-pass))
+  (frame-outline-render-pass)
+  ;; Float titlebars (river_decoration_v1 above the window).
+  ;; Placeholder: redefined by titlebar.lisp, which loads later.
+  (titlebars-render-pass))
 
 ;;; --- Manage dirty --
 
@@ -446,6 +449,10 @@ decorations.lisp)."
 (defun frame-outline-render-pass ()
   "Focused-frame outline (placeholder: redefined by
 frame-outline.lisp)."
+  nil)
+
+(defun titlebars-render-pass ()
+  "Float titlebars (placeholder: redefined by titlebar.lisp)."
   nil)
 
 (defun request-manage-dirty ()

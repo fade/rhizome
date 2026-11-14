@@ -937,7 +937,7 @@ protocol-safe by construction.
 
 ** Titlebars (server-side decorations)
 
-Like StumpWM, rhizome gives windows no titlebar. Every client that
+Like StumpWM, rhizome gives tiled windows no titlebar. Every client that
 supports server-side decoration (its decoration_hint is anything
 but only_supports_csd) is told use_ssd, so kitty, Firefox and GTK
 apps drop their own titlebar and buttons; rhizome draws borders and
@@ -948,6 +948,23 @@ client draw its own titlebar again.
 #+begin_src lisp
 (rhizome:configure
   '(:windows (:decorations :server)))   ; default; :client for CSD
+#+end_src
+
+Floating windows get a titlebar drawn by rhizome: a strip above the
+window showing its title, filled with the window's border colour
+(=:focused-border= or =:unfocused-border=). Press on it and drag to
+move the float. Tiled windows never get one, and neither does a float
+that has a parent window (a dialog or file picker), has a fixed size,
+only supports client-side decoration, or is fullscreen or maximized.
+Under =:client= decorations no float gets one.
+
+#+begin_src lisp
+(rhizome:configure
+  '(:theme (:titlebar t                ; default; nil turns them off
+            :titlebar-height 24)))     ; default: font line height + 8
+;; No titlebar for one application
+(rhizome:configure
+  '(:window-rules ((:match "pavucontrol" :titlebar nil))))
 #+end_src
 
 ** Mouse focus policy
