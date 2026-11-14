@@ -161,3 +161,12 @@ stubbed river requests. Run with:
   the first is configured or during a resize (one surface, one
   buffer), and reopening an overlay over a state that still holds a
   buffer.
+- `bindings-overridable.lisp` - every default key binding, enumerated
+  from the default keymaps, rebound, unbound, and moved to a new key from
+  a user init, whether the init loads before the defaults exist (WM
+  start) or runs after them. The user's choice, and every other
+  default, holds through manage sequences, set-user-mod, set-prefix-key,
+  a rebuild of the defaults, reload-config, an output hotplug, and
+  configure. Also covers a user key inside a default sub-keymap (C-t h,
+  C-t M, C-t e), and an unbind on a literal modifier across
+  set-user-mod.
