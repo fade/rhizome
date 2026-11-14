@@ -122,6 +122,8 @@ re-sends the presentation mode (apply-presentation-mode diffs it)."
     (:removed
      (format t "~&; Rhizome: output removed~%")
      (remhash (output-proxy output) *outputs*)
+     (when (output-wl-output-name output)
+       (remhash (output-wl-output-name output) *output-wl-outputs*))
      (bar-note-non-exclusive-area output nil))
 
     (t
@@ -130,6 +132,34 @@ re-sends the presentation mode (apply-presentation-mode diffs it)."
 (defun all-outputs ()
   "Return a list of all registered outputs."
   (loop for output being the hash-values of *outputs* collect output))
+
+(defvar *output-wl-outputs* (make-hash-table)
+  "wl_output global name -> the wl_output proxy this connection bound
+for it. Filled by output-wl-output.")
+
+(defun output-wl-output (output)
+  "Return a wl_output proxy for OUTPUT, binding the wl_output global
+river names for it on first use, or NIL when OUTPUT is NIL, has no
+wl_output name yet, or no registry is bound. Binds at version 1: only
+the object is needed, to name the output of a layer surface."
+  (let ((name (and output (output-wl-output-name output))))
+    (when (and name *registry*)
+      (or (gethash name *output-wl-outputs*)
+          (let ((iface-class (wl:find-interface-named "wl_output")))
+            (when iface-class
+              (setf (gethash name *output-wl-outputs*)
+                    (wl:wl-registry.bind *registry* name iface-class 1))))))))
+
+(defun layer-surface-output ()
+  "The wl_output for a new keyboard capture, prompt or message layer
+surface: the current output's, or NIL when there is none. Without an
+output, river places the surface on its default output, which rhizome
+never sets, so on a multi-head host it lands on the first head
+whichever head the operator works on."
+  (handler-case (output-wl-output (current-output))
+    (error (e)
+      (format t "~&; Rhizome: no wl_output for a layer surface: ~A~%" e)
+      nil)))
 
 (defun find-output-for-window (win)
   "The output a new, unplaced WIN opens on: the manage pass's arrival

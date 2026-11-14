@@ -115,6 +115,12 @@ the surface maps and receives keyboard focus."
   "True when the globals the capture surface needs are bound."
   (and *compositor* *shm* *layer-shell* t))
 
+(defun prefix-capture-open-p ()
+  "True while a key sequence holds an open capture surface. River gives
+that surface the keyboard once it maps; exit-prefix-mode and the
+surface's :closed handler give it back to the focused window."
+  (and *prefix-mode-active* *prefix-state* t))
+
 (defun open-prefix-capture-surface ()
   "Create the invisible keyboard-exclusive layer surface that routes
 keys to the WM's wl_keyboard, and set *prefix-mode-active*."
@@ -130,7 +136,8 @@ keys to the WM's wl_keyboard, and set *prefix-mode-active*."
       (setf (gethash :surface state) surface)
       (let ((layer-surface
               (rwm:zwlr-layer-shell-v1.get-layer-surface
-                *layer-shell* surface nil :top "rhizome-prefix")))
+                *layer-shell* surface (layer-surface-output)
+                :top "rhizome-prefix")))
         (setf (gethash :layer-surface state) layer-surface)
         (push (lambda (event-name &rest args)
                 (case event-name
@@ -275,6 +282,7 @@ them. Returns the binding (or NIL) and the key it was found under."
   "Dispatch one key, KEYSYM with MODIFIERS (logical or river keywords),
 within a key sequence. Returns T."
   (let ((key (make-key keysym modifiers)))
+    (format t "~&; Rhizome [debug]: prefix key ~A~%" (key-description key))
     (cond
       ;; Escape aborts whatever prefix mode is running
       ((= keysym 65307)

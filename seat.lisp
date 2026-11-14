@@ -103,8 +103,10 @@ during the expose overview a click picks the window)."
 (defun handle-layer-shell-seat-event (event-name &rest args)
   "Handle a river_layer_shell_seat_v1 event. :focus-none queues each
 seat's focused window again for the next manage sequence: river assigns
-the keyboard to no window when a layer surface releases it.
-:focus-exclusive and :focus-non-exclusive only log: river ignores focus
+the keyboard to no window when a layer surface releases it. While the
+prefix capture is open it queues nothing: river hands the keyboard to
+the capture once it maps, and focusing the window first only delays
+that. :focus-exclusive and :focus-non-exclusive only log: river ignores focus
 requests while an exclusive surface holds the keyboard, and a request in
 the sequence that grants non-exclusive focus keeps it from the surface."
   (declare (ignore args))
@@ -114,11 +116,15 @@ the sequence that grants non-exclusive focus keeps it from the surface."
     (:focus-non-exclusive
      (format t "~&; Rhizome: layer shell non-exclusive focus~%"))
     (:focus-none
-     (format t "~&; Rhizome: layer shell focus none~%")
-     (handler-case
-         (reassert-seat-focus)
-       (error (e)
-         (format t "~&; Rhizome: layer shell focus none failed: ~A~%" e))))))
+     (cond
+       ((prefix-capture-open-p)
+        (format t "~&; Rhizome: layer shell focus none, kept for the prefix capture~%"))
+       (t
+        (format t "~&; Rhizome: layer shell focus none~%")
+        (handler-case
+            (reassert-seat-focus)
+          (error (e)
+            (format t "~&; Rhizome: layer shell focus none failed: ~A~%" e))))))))
 
 (defun register-seat (proxy)
   "Register a new river_seat_v1 proxy and set up event handlers."
