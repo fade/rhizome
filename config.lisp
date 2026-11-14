@@ -120,6 +120,10 @@ Returns (values value found-p)."
              ;; open once it is empty; :never keeps every empty frame,
              ;; as StumpWM does; :always prunes every empty frame.
              )
+    :fselect (:timeout 20
+              ;; Seconds C-t f waits for a frame label before the
+              ;; labels close; nil waits until a key arrives
+              )
     :animations (:enabled t
                  :duration-ms 200
                  ;; :easing :ease-out-cubic (default) | :linear |

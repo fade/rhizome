@@ -174,6 +174,16 @@ use it."
         (list (list* "REC " color)))
       ""))
 
+(defun bar-module-echo ()
+  "The WM's echo text (the snapshot's :echo, e.g. fselect's hint) in
+the accent colour, or \"\" when there is none. It takes the centre
+segment while shown unless the bar configuration places :echo itself."
+  (let ((text (getf (bar-snapshot) :echo)))
+    (if (and (stringp text) (plusp (length text)))
+        (list (list* text (config-getf '(:bar) :accent :default "#7aa2f7")
+                     nil))
+        "")))
+
 (defun bar-module-workspaces ()
   "Workspace numbers with breathing room: the active workspace in
 the accent color, underlined; occupied workspaces in the
@@ -331,6 +341,7 @@ strftime subset: %H %M %S %d %m %y %Y %a %A %b %B."
     (:windows . bar-module-windows)
     (:focused . bar-module-focused)
     (:recording . bar-module-recording)
+    (:echo . bar-module-echo)
     (:clock . bar-module-clock)
     (:battery . bar-module-battery)
     (:volume . bar-module-volume)
@@ -379,8 +390,19 @@ telltale."
      (or (getf (bar-part-flags part) :gap 0) 0)))
 
 (defun bar-segment-modules (position)
-  "The configured module list for :left, :center or :right."
-  (config-getf '(:bar :modules) position :default nil))
+  "The configured module list for :left, :center or :right. While the
+snapshot carries an :echo and no segment names :echo, the centre
+segment is (:echo) alone, so the text has the middle of the bar on a
+narrow output."
+  (let ((modules (config-getf '(:bar :modules) position :default nil)))
+    (if (and (eq position :center)
+             (getf (bar-snapshot) :echo)
+             (notany (lambda (segment)
+                       (member :echo (config-getf '(:bar :modules) segment
+                                                  :default nil)))
+                     '(:left :center :right)))
+        '(:echo)
+        modules)))
 
 (defun bar-segment-width (modules)
   "Total pixel width of a module list, including inter-module gaps

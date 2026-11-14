@@ -524,7 +524,8 @@ build-default-top-map, which directs the writes to *default-top-map*."
   ;; Ctrl+T - prefix key (StumpWM-style keychains, see prefix.lisp):
   ;;   C-t w windowlist | C-t g workspace picker | C-t x command palette
   ;;   C-t : eval       | C-t ! shell command    | C-t b toggle bar
-  ;;   C-t n/p next/prev workspace | C-t q quit rhizome
+  ;;   C-t n/p pull next/prev hidden window into the frame
+  ;;   C-t N/P next/prev workspace | C-t q quit rhizome
   ;; The prefix key is an ordinary binding of a keymap (moved at
   ;; runtime by set-prefix-key); the symbol is resolved at press time
   (define-key (car *prefix-key-binding*) (cdr *prefix-key-binding*)

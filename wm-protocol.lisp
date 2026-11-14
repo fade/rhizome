@@ -46,6 +46,10 @@ Gates versioned requests (exit_session needs >= 4).")
 (defvar *wm-snapshot* '(:layout nil :windows 0 :focused nil)
   "Cached WM state for the bar thread, refreshed by update-wm-snapshot.")
 
+(defvar *bar-echo* nil
+  "Text the bar shows in place of its centre segment, or NIL. Carried
+to the bar process as the snapshot's :echo.")
+
 (defvar *wm-process-mode* nil
   "T only in the window manager process (set by run). Guards bar
 process management: a test process loading rhizome and calling
@@ -103,6 +107,7 @@ answered with another sequence — a self-sustaining churn."
                              (when outs (current-workspace (first outs))))
                 :workspace-count *workspace-count*
                 :bar-hidden (not (config-getf '(:bar) :enabled :default t))
+                :echo *bar-echo*
                 :occupied (let ((occ nil))
                             (dolist (win (all-windows))
                               (let ((ws (window-workspace win)))
@@ -388,7 +393,10 @@ window positions, borders, and z-ordering here."
   (decorations-render-pass)
   ;; The focused-frame outline (river_shell_surface_v1).
   ;; Placeholder: redefined by frame-outline.lisp, which loads later.
-  (frame-outline-render-pass))
+  (frame-outline-render-pass)
+  ;; fselect's frame labels (river_shell_surface_v1).
+  ;; Placeholder: redefined by fselect.lisp, which loads later.
+  (fselect-labels-render-pass))
 
 ;;; --- Manage dirty --
 
@@ -400,6 +408,10 @@ decorations.lisp)."
 (defun frame-outline-render-pass ()
   "Focused-frame outline (placeholder: redefined by
 frame-outline.lisp)."
+  nil)
+
+(defun fselect-labels-render-pass ()
+  "fselect frame labels (placeholder: redefined by fselect.lisp)."
   nil)
 
 (defun request-manage-dirty ()
