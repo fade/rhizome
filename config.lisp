@@ -11,26 +11,42 @@
 ;;; --- Config data structure helpers ---
 
 (defun config-plist-p (list)
-  "Whether LIST should be merged recursively as a config plist.
-Config plists have keywords at even positions and non-keyword values
-at odd positions. Module lists like (:layout :windows) have keywords in
-value position and are therefore replaced wholesale on override."
+  "True when LIST is a non-empty property list: even length, with a
+keyword at every key position. Values may be anything, keywords
+included."
   (and (listp list)
        (plusp (length list))
        (evenp (length list))
-       (every #'keywordp (loop for x on list by #'cddr collect (first x)))
-       (notany #'keywordp (loop for x on (rest list) by #'cddr collect (first x)))))
+       (every #'keywordp (loop for x on list by #'cddr collect (first x)))))
 
-(defun merge-plist (base override)
-  "Recursively merge OVERRIDE into BASE, returning a new plist.
-Plist values merge recursively; everything else is replaced."
+(defun keyword-list-p (list)
+  "True when every element of LIST is a keyword."
+  (every #'keywordp list))
+
+(defun merge-plist (base override &key (groups-p t))
+  "Merge OVERRIDE into BASE key by key and return a new plist. BASE is
+not modified.
+
+A value present on both sides merges recursively when both are
+config plists (CONFIG-PLIST-P) and either
+  - GROUPS-P is true: the values are groups, as at the top level of
+    *CONFIG*, so a group merges whatever its values are; or
+  - either side holds a value that is not a keyword.
+Otherwise the OVERRIDE value replaces the BASE value. Below the top
+level, a list of bare keywords is a value, not a group: a bar module
+list such as (:layout :windows) or a preference list such as
+(:empty :focused) replaces wholesale. A list of plists, such as
+:window-rules, is never a config plist and also replaces."
   (loop with merged = (copy-list base)
         for (key value) on override by #'cddr
         do (let ((existing (getf merged key)))
              (setf (getf merged key)
                    (if (and (config-plist-p existing)
-                            (config-plist-p value))
-                       (merge-plist existing value)
+                            (config-plist-p value)
+                            (or groups-p
+                                (not (keyword-list-p existing))
+                                (not (keyword-list-p value))))
+                       (merge-plist existing value :groups-p nil)
                        value)))
         finally (return merged)))
 
