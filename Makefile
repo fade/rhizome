@@ -24,7 +24,7 @@ SUITES    := animations decorations surface window-rules floating \
              pull-hidden bar-hide \
              server-side-decorations \
              client-fullscreen multi-head frame-adoption \
-             bar-per-output prefix-capture-output
+             bar-per-output prefix-capture-output display-layout
 
 .PHONY: all build test install docs clean help
 

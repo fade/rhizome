@@ -174,6 +174,13 @@ stubbed river requests. Run with:
   hidden windows cycle in window-number order whatever order the
   workspace lists them in, wrapping at either end; unnumbered windows
   come after the numbered ones.
+- `display-layout.lisp` - the `(:displays (:layout ...))` output
+  layout: relative placement against heads of different sizes,
+  normalization to a 0,0 origin, explicit positions, mode and scale
+  overrides, matching by connector name or description, heads named
+  but absent, heads present but not named, the no-op when the layout
+  already holds, the log lines, and the automatic apply on the output
+  manager's done event.
 - `server-side-decorations.lisp`: decoration_hint handling, use_ssd
   and use_csd sent only in the manage pass, the
   `(:windows :decorations)` key, and set_tiled edges for tiled windows.
