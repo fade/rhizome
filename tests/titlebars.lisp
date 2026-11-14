@@ -152,7 +152,12 @@
         (check "unfocused strip spans the 1 px border"
                (multiple-value-list (titlebar-geometry win))
                '(-1 -25 402 24))
-        (setf (window-focused-p win) t)
+        (setf (window-focused-p win) t
+              (window-width win) 396)
+        (check "strip follows the width the client committed"
+               (multiple-value-list (titlebar-geometry win))
+               '(-2 -26 400 24))
+        (setf (window-width win) 0)
         (check "hit: inside the strip" (titlebar-hit-p win 150 190) t)
         (check "hit: the strip's left edge over the border"
                (titlebar-hit-p win 98 180) t)
@@ -264,9 +269,9 @@
 
       ;; --- a press on the strip starts a move ---
       (fresh-world)
-      (let* ((seat (make-instance 'rhizome-seat :proxy :tb-seat))
-             (win (make-float :tb-p :x 100 :y 200 :w 400 :focused t))
-             (dialog (make-float :tb-d :x 700 :y 200 :w 300 :focused nil)))
+      (let ((seat (make-instance 'rhizome-seat :proxy :tb-seat))
+            (win (make-float :tb-p :x 100 :y 200 :w 400 :focused t))
+            (dialog (make-float :tb-d :x 700 :y 200 :w 300 :focused nil)))
         (setf (gethash :tb-seat *seats*) seat)
         (handle-window-event dialog :parent :tb-p)
         (setf (seat-pointer-x seat) 150 (seat-pointer-y seat) 190)

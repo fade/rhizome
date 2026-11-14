@@ -104,12 +104,15 @@ float-render-decisions sets it."
 (defun titlebar-geometry (win)
   "The strip relative to WIN's top-left corner, as
 (VALUES X-OFFSET Y-OFFSET WIDTH HEIGHT): the border box's width, its
-bottom edge on the top border."
+bottom edge on the top border. The width is the one the client
+committed, else the float width; a client may snap to a smaller size
+than proposed (a terminal's cell grid)."
   (let ((bw (titlebar-border-width win))
-        (h (titlebar-height)))
-    (multiple-value-bind (w wh) (decoration-window-size win)
-      (declare (ignore wh))
-      (values (- bw) (- (+ h bw)) (+ w (* 2 bw)) h))))
+        (h (titlebar-height))
+        (w (if (plusp (window-width win))
+               (window-width win)
+               (or (window-float-width win) 100))))
+    (values (- bw) (- (+ h bw)) (+ w (* 2 bw)) h)))
 
 (defun titlebar-hit-p (win px py)
   "True when global point PX PY lies on WIN's strip, at WIN's float
