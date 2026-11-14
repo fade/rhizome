@@ -193,6 +193,6 @@ stubbed river requests. Run with:
   start) or runs after them. The user's choice, and every other
   default, holds through manage sequences, set-user-mod, set-prefix-key,
   a rebuild of the defaults, reload-config, an output hotplug, and
-  configure. Also covers a user key inside a default sub-keymap (C-t h,
-  C-t M, C-t e), and an unbind on a literal modifier across
-  set-user-mod.
+  configure. Also covers swapping C-t f and C-t F, a user key inside a
+  default sub-keymap (C-t h, C-t M, C-t e), and an unbind on a literal
+  modifier across set-user-mod.

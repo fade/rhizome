@@ -201,6 +201,10 @@
                                          (car (last (car e)))))))
 
       ;; --- The table names the bindings a user overrides ---
+      (ok "C-t f is fselect and C-t F the float toggle"
+          (list (keymap-binding-doc *default-prefix-map* 102)
+                (keymap-binding-doc *default-prefix-map* 70))
+          '("select frame by label" "float/tile window"))
       (ok "every default key reads back from its spec string"
           (loop for (keys . nil) in entries
                 unless (equal (kbd (spec keys)) keys)
@@ -269,6 +273,21 @@
                           order op event)
                   (reverse (gethash (list order op event) results))
                   nil))))))
+
+    ;; --- The C-t f / C-t F pair, swapped by command name ---
+    (fresh-start)
+    (run-init :start (lambda ()
+                       (define-key *prefix-map* "f" 'toggle-float-focused)
+                       (define-key *prefix-map* "F" 'enter-fselect)))
+    (set-user-mod :alt)
+    (set-user-mod :super)
+    (setup-default-keybindings)
+    (reload-config)
+    (configure '(:bar (:enabled nil)))
+    (manage-cycles 2)
+    (ok "C-t f and C-t F swapped by a user init stay swapped"
+        (list (effective (kbd "C-t f")) (effective (kbd "C-t F")))
+        '(toggle-float-focused enter-fselect))
 
     ;; --- A user binding inside a default sub-keymap keeps its siblings ---
     (fresh-start)
