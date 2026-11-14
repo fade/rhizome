@@ -143,18 +143,24 @@ during the expose overview a click picks the window)."
 ;;; --- Mouse focus policy ---
 ;;;
 ;;; (:pointer :focus-policy) is :click (only a click focuses) or
-;;; :sloppy (the window the pointer moves into takes keyboard focus,
-;;; without raising). River sends pointer_position only when the
-;;; position changed, and a position change never starts a manage
-;;; sequence on its own, so a pointer_enter that arrives without one
-;;; came from a layout change, a workspace switch, or a window mapping
-;;; under a still pointer, never from the operator moving it.
+;;; :sloppy (the window the pointer crosses into takes keyboard focus,
+;;; without raising). River sends pointer_enter and pointer_leave
+;;; ahead of a manage sequence, and pointer_position only inside one
+;;; when the position changed; a position change alone never starts a
+;;; manage sequence. Sloppy focus therefore acts on a pointer_enter
+;;; that arrived since the previous pass, with motion: an enter without
+;;; motion came from a layout change, a workspace switch, or a window
+;;; mapping under a still pointer, and motion without an enter stayed
+;;; inside the window already entered. A pointer warp rhizome sends
+;;; counts as neither.
 
 (defvar *pointer-focus-state* (make-hash-table :test 'eq)
   "Per-seat pointer focus bookkeeping, a plist per seat:
 :entered is the window under the pointer, or NIL;
+:crossed is true when a pointer_enter arrived since the previous pass;
 :x and :y are the pointer position at the previous manage sequence;
-:focus is the seat's focused window when the previous pass ended.")
+:focus is the seat's focused window when the previous pass ended;
+:warp is (X . Y) of a pointer warp sent and not yet landed, or NIL.")
 
 (defun pointer-focus-get (seat key)
   "KEY of SEAT's pointer focus bookkeeping."
@@ -194,15 +200,23 @@ float move/resize on SEAT."
          (not (window-focused-p win))
          win)))
 
+(defun note-pointer-warp (seat x y)
+  "Record that a pointer warp to X, Y was sent for SEAT. The pass in
+which the pointer lands there takes that position as its baseline, so
+the enter and motion the warp causes take no focus."
+  (pointer-focus-put seat :warp (cons x y)))
+
 (defun pointer-focus-manage-pass ()
   "Apply the :sloppy mouse focus policy in a manage sequence, before
 queued focus requests flush. For each seat, the window under the
-pointer takes keyboard focus, without raising, only when both hold:
+pointer takes keyboard focus, without raising, only when all hold:
+a pointer_enter arrived since the previous manage sequence;
 the pointer moved since the previous manage sequence;
+the pointer is not where a pointer warp of rhizome's put it;
 the seat's focus is what the previous pass left it as.
-The second condition skips the sequence in which a key or command
-moved focus, because the motion that sequence reports may predate
-the move. Focus then stays put until the pointer moves again."
+Motion inside the entered window never takes focus. The last
+condition skips the sequence in which a key or command moved focus,
+because the motion that sequence reports may predate the move."
   (let ((sloppy (eq (mouse-focus-policy) :sloppy)))
     (dolist (seat (all-seats))
       (let* ((x (seat-pointer-x seat))
@@ -211,12 +225,20 @@ the move. Focus then stays put until the pointer moves again."
              (last-y (pointer-focus-get seat :y))
              (moved (and last-x last-y
                          (or (/= x last-x) (/= y last-y))))
+             (warp (pointer-focus-get seat :warp))
+             (warped (and warp (= x (car warp)) (= y (cdr warp))))
+             (crossed (pointer-focus-get seat :crossed))
              (undisturbed (eq (seat-focused-window seat)
                               (pointer-focus-get seat :focus)))
              (target (pointer-focus-target seat)))
-        (when (and sloppy moved undisturbed target
+        (when (and sloppy crossed moved (not warped) undisturbed target
                    (not (pointer-focus-suppressed-p seat)))
           (focus-window target seat :raise nil))
+        ;; A warp stays pending until the pointer lands on it or moves
+        ;; elsewhere
+        (when (and warp (or warped moved))
+          (pointer-focus-put seat :warp nil))
+        (pointer-focus-put seat :crossed nil)
         (pointer-focus-put seat :x x)
         (pointer-focus-put seat :y y)
         (pointer-focus-put seat :focus (seat-focused-window seat))))))
@@ -239,7 +261,8 @@ the move. Focus then stays put until the pointer moves again."
      ;; Recorded for the mouse focus policy, which acts on it in the
      ;; manage sequence that follows (pointer-focus-manage-pass)
      (destructuring-bind (window-proxy) args
-       (pointer-focus-put seat :entered (gethash window-proxy *windows*))))
+       (pointer-focus-put seat :entered (gethash window-proxy *windows*))
+       (pointer-focus-put seat :crossed t)))
 
     (:pointer-leave
      (pointer-focus-put seat :entered nil))
