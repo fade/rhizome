@@ -385,13 +385,20 @@ window positions, borders, and z-ordering here."
            *outputs*)
   ;; Pseudo-shadows on floating windows (river_decoration_v1).
   ;; Placeholder: redefined by decorations.lisp, which loads later.
-  (decorations-render-pass))
+  (decorations-render-pass)
+  ;; Float titlebars (river_decoration_v1 above the window).
+  ;; Placeholder: redefined by titlebar.lisp, which loads later.
+  (titlebars-render-pass))
 
 ;;; --- Manage dirty --
 
 (defun decorations-render-pass ()
   "Decoration surfaces (placeholder: redefined by
 decorations.lisp)."
+  nil)
+
+(defun titlebars-render-pass ()
+  "Float titlebars (placeholder: redefined by titlebar.lisp)."
   nil)
 
 (defun request-manage-dirty ()

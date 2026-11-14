@@ -88,6 +88,12 @@ during the expose overview a click picks the window)."
   (declare (ignore win))
   nil)
 
+(defun titlebar-pressed (win seat)
+  "A window was pressed (placeholder: redefined by titlebar.lisp, where
+a press on a float's titlebar starts a move)."
+  (declare (ignore win seat))
+  nil)
+
 (defclass rhizome-seat ()
   ((proxy          :initarg :proxy          :accessor seat-proxy)
    (wl-seat-name   :initarg :wl-seat-name   :accessor seat-wl-seat-name :initform nil)
@@ -199,6 +205,8 @@ the sequence that grants non-exclusive focus keeps it from the surface."
            ;; Expose: a click during the overview picks the window
            ;; (redefined by expose.lisp, which loads later)
            (expose-clicked win)
+           ;; A press on a float's titlebar drags it
+           (titlebar-pressed win seat)
            (request-manage-dirty)))))
 
     (:op-delta

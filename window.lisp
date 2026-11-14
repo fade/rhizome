@@ -61,6 +61,18 @@ fullscreen request, or NIL for no preference.")
 (defvar *last-registered-window* nil
   "The most recently registered window, for auto-focus.")
 
+(defvar *window-parents* (make-hash-table :test #'eq)
+  "WINDOW -> T for each window whose last parent event named a parent.")
+
+(defun window-has-parent-p (win)
+  "True when WIN's client set a parent window (a dialog or transient)."
+  (values (gethash win *window-parents*)))
+
+(defun forget-window-parent (win)
+  "Drop WIN's parent record."
+  (remhash win *window-parents*)
+  nil)
+
 ;;; --- Window numbering (StumpWM-style 1..9, then 0) ---
 
 (defvar *window-number-map* (make-hash-table)
@@ -281,6 +293,14 @@ Does nothing when WIN is NIL."
          (destructuring-bind (hint) args
            (setf (window-decoration-hint win) hint
                  (window-decoration-stale-p win) t)
+           (request-manage-dirty)))
+
+        (:parent
+         ;; A null parent clears it
+         (destructuring-bind (parent) args
+           (if parent
+               (setf (gethash win *window-parents*) t)
+               (remhash win *window-parents*))
            (request-manage-dirty)))
 
         (:title
