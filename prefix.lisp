@@ -55,6 +55,11 @@ current split's dividing line until Enter commits or Escape aborts.")
 into a grid; pick with digits, arrows+Enter, a click, or Escape.
 Layout restoration lives in expose.lisp (stub-redefined here).")
 
+(defparameter *fselect-active* nil
+  "Frame selection (StumpWM's fselect, C-t f): every frame holding a
+window carries a label until the next key picks one or cancels.
+Labels and picking live in fselect.lisp (stub-redefined here).")
+
 ;;; --- Keymaps ---
 
 (defvar *default-prefix-map*
@@ -206,8 +211,12 @@ created."
 
 (defun exit-prefix-mode ()
   "End the prefix chain and destroy the capture surface. Clears all
-prefix modes (command mode, iresize, expose)."
+prefix modes (command mode, iresize, expose, fselect)."
   (expose-restore-if-active)
+  (when *fselect-active*
+    ;; The next render sequence removes the frame labels
+    (setf *fselect-active* nil)
+    (request-manage-dirty))
   (setf *prefix-mode-active* nil
         *prefix-current-map* nil
         *prefix-root-map* nil
@@ -286,6 +295,9 @@ within a key sequence. Returns T."
       ;; expose: digits/arrows pick a window, Enter picks the focused
       (*expose-active*
        (expose-handle-key keysym))
+      ;; fselect: a label picks its frame, anything else cancels
+      (*fselect-active*
+       (fselect-handle-key key))
       ;; describe-key pending: describe, don't run
       (*prefix-describe-key-pending*
        (setf *prefix-describe-key-pending* nil)
@@ -643,6 +655,19 @@ expose, C-t Return). Placeholder: redefined by expose.lisp."
   "Placeholder: redefined by expose.lisp."
   nil)
 
+;;; --- fselect stubs (redefined by fselect.lisp, which loads later) ---
+
+(defun enter-fselect ()
+  "Label the frames and focus the one whose label is typed next
+(StumpWM's fselect, C-t f). Placeholder: redefined by fselect.lisp."
+  (message "fselect unavailable"))
+
+(defun fselect-handle-key (key)
+  "Placeholder: redefined by fselect.lisp."
+  (declare (ignore key))
+  (exit-prefix-mode)
+  t)
+
 (defun bind-default-prefix-keys ()
   "Bind the default C-t keymap, mapped onto rhizome's features. Called
 by setup-default-prefix-bindings, which directs the writes to
@@ -661,8 +686,10 @@ by setup-default-prefix-bindings, which directs the writes to
   (define-prefix-key 33 (lambda () (run-shell-command-prompt)) "shell command") ; !
   ;; C-t b — toggle the bar
   (define-prefix-key 98 (lambda () (toggle-bar)) "toggle bar")   ; b
-  ;; C-t f — float/tile the focused window (GIMP-style floats)
-  (define-prefix-key 102 (lambda () (toggle-float-focused)) "float/tile window") ; f
+  ;; C-t f - label the frames and pick one (StumpWM's fselect)
+  (define-prefix-key 102 (lambda () (enter-fselect)) "select frame by number") ; f
+  ;; C-t F - float/tile the focused window (GIMP-style floats)
+  (define-prefix-key 70 (lambda () (toggle-float-focused)) "float/tile window") ; F
   ;; C-t n / C-t p — pull the next/previous hidden window into the
   ;; current frame (StumpWM's pull-hidden-next/previous)
   (define-prefix-key 110 (lambda () (with-frame-context

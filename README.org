@@ -539,7 +539,8 @@ Default chains (the StumpWM classics, mapped to rhizome features):
 | C-t :   | Live eval prompt       |
 | C-t !   | Shell command prompt   |
 | C-t b   | Toggle the bar         |
-| C-t f   | Float/tile the focused window |
+| C-t f   | Select a frame by its label (fselect) |
+| C-t F   | Float/tile the focused window |
 | C-t s   | Split frame side-by-side |
 | C-t S   | Split frame stacked (top/bottom) |
 | C-t R   | Remove split (merge into sibling) |
@@ -571,6 +572,15 @@ Escape aborts, an unbound key aborts with a message, and chains
 auto-expire after 5 seconds. Extend with
 =(rhizome:define-prefix-key keysym thunk)= or nested keymaps via
 =define-keymap-key= for deeper chains (C-t h k style).
+
+=C-t f= (or =rhizome-cmd fselect=) labels every frame that holds a
+window, on every visible output, with one numbering: outputs left to
+right, each frame tree in layout order, using the characters of
+=rhizome:*frame-number-map*= (=0-9=, then =a-z=). Type a label to focus
+that frame and its window, on whichever output it sits. =C-g=,
+Escape, or any other key cancels. Empty frames carry no label. The
+label colour is =(:theme :frame-outline)= when it is a colour, else the
+focused border colour.
 
 ** Message window and interactive prompts
 
@@ -1005,7 +1015,7 @@ be moved around freely. Rhizome handles these StumpWM-style as floats
 - Floats live on workspaces like everything else: switching hides and
   restores them with the rest.
 
-Toggle the focused window with =C-t f= or =rhizome-cmd toggle-float=;
+Toggle the focused window with =C-t F= or =rhizome-cmd toggle-float=;
 float apps automatically with a window rule:
 
 #+begin_src lisp

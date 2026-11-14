@@ -167,3 +167,10 @@ stubbed river requests. Run with:
   workspaces, switched off), the theme settings, the ring pixels, and
   the shell surface lifecycle (one per output, redraw only on change,
   destroyed with its output).
+- `fselect.lisp` - frame selection by label (C-t f): which frames
+  carry a label and in what order across outputs (empty and
+  minimized-only frames skipped, floating workspaces skipped), the key
+  to frame mapping, cancel keys, the pick moving focus to another
+  output's frame, the C-t f and C-t F bindings, and the label surfaces
+  torn down on a pick, C-g, Escape, any other key, the timeout, and
+  the removal of an output.
