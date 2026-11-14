@@ -25,7 +25,7 @@ SUITES    := animations decorations surface window-rules floating \
              server-side-decorations \
              client-fullscreen multi-head frame-adoption \
              bar-per-output prefix-capture-output display-layout \
-             mouse-focus config-merge
+             mouse-focus config-merge border-colours
 
 .PHONY: all build test install docs clean help
 
