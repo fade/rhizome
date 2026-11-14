@@ -47,6 +47,7 @@
    (:file "decorations" :depends-on ("floating" "animate"))
    (:file "frame-outline" :depends-on ("decorations" "frames" "scroll" "groups"))
    (:file "fselect" :depends-on ("frame-outline" "prefix" "commands" "font"))
+   (:file "frame-launch" :depends-on ("fselect" "placement" "tiling" "workspaces"))
    (:file "scratchpads" :depends-on ("floating" "workspaces" "prefix"))
    (:file "eval-prompt" :depends-on ("keybindings" "bar"))
    (:file "bar" :depends-on ("launcher" "config" "wm-protocol"))

@@ -119,6 +119,11 @@ Returns (values value found-p)."
              ;; user split makes and prunes a frame a new window split
              ;; open once it is empty; :never keeps every empty frame,
              ;; as StumpWM does; :always prunes every empty frame.
+             :focus-empty nil
+             ;; T lets frame focus (C-t arrows, C-t f) move into an
+             ;; empty frame: keyboard focus clears and the next new
+             ;; window opens there. NIL skips empty frames in C-t f
+             ;; and leaves keyboard focus where it is.
              )
     :animations (:enabled t
                  :duration-ms 200
