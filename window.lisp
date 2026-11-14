@@ -361,10 +361,15 @@ Does nothing when WIN is NIL."
                        e)))))
 
         (:unreliable-pid
-         ;; v2: the creating process's PID — racy (PID reuse), kept
-         ;; only for potential future rule/debug matching.
+         ;; v2: the creating process's PID, racy (PID reuse). A
+         ;; window from a program launch-into-frame started takes its
+         ;; target here, before any manage pass places it.
          (destructuring-bind (pid) args
-           (setf (window-unreliable-pid win) pid)))
+           (setf (window-unreliable-pid win) pid)
+           (handler-case (launch-claim-match win)
+             (error (e)
+               (format t "~&; Rhizome: launch claim match failed: ~A~%"
+                       e)))))
 
         (:pointer-move-requested
          (destructuring-bind (seat-proxy) args

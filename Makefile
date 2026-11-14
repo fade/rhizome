@@ -22,7 +22,7 @@ SUITES    := animations decorations surface window-rules floating frame-pruning 
              takeover tray-menus display-brightness prompt-free-text palette-message pull-hidden \
              server-side-decorations client-fullscreen repl-server-config repl-server-port \
              keymap-layers key-sequences key-grabs key-names shm-buffers \
-             frame-outline fselect
+             frame-outline fselect focus-empty-frames
 
 .PHONY: all build test install docs clean help
 

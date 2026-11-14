@@ -172,6 +172,9 @@ tiled window (Hyprland-style breathing room; 0 = flush)."
   "Manage-sequence pass for OUTPUT: stamp new windows onto this
 output/workspace, let the frame tree propose dimensions, and let
 floats manage themselves."
+  ;; Launched windows keep their launch output and workspace over
+  ;; rules applied after the launch matched them
+  (launch-targets-assert)
   (let* ((workspace (current-workspace output))
          (assigned (remove-if
                      (lambda (win)

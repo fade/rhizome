@@ -7,7 +7,9 @@
 ;;; window, on whichever output it sits. C-g, Escape, any other key,
 ;;; and the selection timeout cancel without a change. The timeout is
 ;;; (:fselect :timeout) seconds, 20 by default; NIL waits for a key.
-;;; Empty frames carry no label and cannot be picked.
+;;; Empty frames carry a label only under (:frames (:focus-empty t));
+;;; picking one clears keyboard focus, so the next new window opens
+;;; there.
 ;;;
 ;;; Each label sits in the corner of its frame furthest from where the
 ;;; message window appears on that output, and the hint text is shown
@@ -61,19 +63,17 @@ number, or NIL to wait until a key arrives. Any other value reads as
 ;;; --- Which frames ---
 
 (defun fselect-frame-window (frame)
-  "The window picking FRAME focuses: its current window unless
-minimized, else its first unminimized window, else NIL."
-  (let ((current (frame-current-window frame)))
-    (if (and current (not (window-minimized-p current)))
-        current
-        (find-if-not #'window-minimized-p (frame-windows frame)))))
+  "The window picking FRAME focuses (frame-focus-window)."
+  (frame-focus-window frame))
 
 (defun fselect-targets ()
   "The labelled frames as a list of (CHAR OUTPUT WORKSPACE FRAME):
 outputs left to right, each current workspace's leaves in layout
-order, skipping outputs that show no frames and frames without an
-unminimized window. At most (length *frame-number-map*) entries."
+order, skipping outputs that show no frames, and frames without an
+unminimized window unless (:frames (:focus-empty t)). At most
+(length *frame-number-map*) entries."
   (let ((chars (coerce *frame-number-map* 'list))
+        (empty-ok (frames-focus-empty-p))
         (targets '()))
     (dolist (output (all-outputs-sorted))
       (let ((workspace (current-workspace output)))
@@ -82,7 +82,7 @@ unminimized window. At most (length *frame-number-map*) entries."
             (when (and chars
                        (plusp (frame-width frame))
                        (plusp (frame-height frame))
-                       (fselect-frame-window frame))
+                       (or empty-ok (fselect-frame-window frame)))
               (push (list (pop chars) output workspace frame) targets))))))
     (nreverse targets)))
 
@@ -105,16 +105,12 @@ Modifiers are ignored, so a Control still held from C-t matches."
 ;;; --- Picking ---
 
 (defun fselect-pick (target)
-  "Make TARGET's frame current on its output and workspace and give
-its window keyboard focus on every seat."
+  "Focus TARGET's frame on its output and workspace (focus-frame): its
+window takes keyboard focus on every seat, or, for an empty frame,
+keyboard focus clears."
   (destructuring-bind (char output workspace frame) target
     (declare (ignore char))
-    (setf (gethash (frame-key output workspace) *current-frames*) frame)
-    (let ((win (fselect-frame-window frame)))
-      (when win
-        (dolist (seat (all-seats))
-          (focus-window win seat))))
-    (request-manage-dirty)))
+    (focus-frame output workspace frame)))
 
 (defun enter-fselect ()
   "C-t f: label the frames and wait for one key (StumpWM's fselect).
