@@ -43,6 +43,13 @@ stubbed river requests. Run with:
   `:new-window` preferences (`:empty`, `:last`, `:unfocused`, functions),
   a custom policy class selected by name, the fallback for an unknown
   name, and the workspace focus history.
+- `modules.lisp` - user modules: `load-module` finds a module in its own
+  directory under `modules/` beside the config file, loads it once,
+  reloads changed sources while `defvar` state survives, loads from
+  `config.lisp` at startup and through `reload-config`, and signals
+  `module-not-found` with the path searched; the module's placement
+  policy, key binding, and hook work. The config pathname points into a
+  temporary directory, so the real `~/.config` is never read.
 - `split-focus.lisp` - the current frame after a split: it stays on
   the original half, with or without a focused window, so a second
   split divides that half again; the placement policy still fills the
