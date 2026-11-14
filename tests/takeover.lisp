@@ -126,7 +126,13 @@
             (ok "unknown numbers vanish from frames"
                 (translate-tree-numbers
                   '(:frame (:rect 0 0 100 100) 1 42) number-map)
-                '(:frame (:rect 0 0 100 100) 7)))))
+                '(:frame (:rect 0 0 100 100) 7))
+            (ok "translation keeps the user mark of a split"
+                (nthcdr 5 (translate-tree-numbers
+                            (append tree '(:user t)) number-map))
+                '(:user t))
+            (ok "translation adds no mark to an unmarked split"
+                (nthcdr 5 translated) nil))))
 
       ;; --- settle detection ---
       (setf *takeover-manage-passes* 0
@@ -308,6 +314,72 @@
                     (tree-windows hdmi 1)
                     (tree-windows dvi 1))
               (list t (list firefox) nil)))
+
+        ;; A user split with one empty frame survives the hot swap:
+        ;; the restored split keeps its mark, so pruning leaves the
+        ;; empty frame and kitty keeps half the width
+        (let ((*takeover-state-path*
+                #P"/tmp/rhizome-test-takeover-usersplit.sexp"))
+          (fresh-wm)
+          (let* ((hdmi (head :us-old-hdmi "HDMI-A-1" 0))
+                 (dvi (head :us-old-dvi "DVI-D-1" 1920))
+                 (firefox (new-window :us-old-ff "firefox-id" 1))
+                 (kitty (new-window :us-old-kitty "kitty-id" 2))
+                 (root (frame-tree-for dvi 1)))
+            (setf (window-output firefox) hdmi
+                  (window-output kitty) dvi
+                  (gethash firefox *window-workspace*) 1
+                  (gethash kitty *window-workspace*) 1)
+            (frame-push-window firefox (frame-tree-for hdmi 1))
+            (split-frame root :horizontal 1/2)
+            (setf (frame-user-split root) t)
+            (frame-push-window kitty (frame-first-child root))
+            (ignore-errors (delete-file *takeover-state-path*))
+            (let ((*standard-output* (make-broadcast-stream)))
+              (write-takeover-state)))
+          (fresh-wm)
+          (let* ((dvi (head :us-new-dvi "DVI-D-1" 1920))
+                 (hdmi (head :us-new-hdmi "HDMI-A-1" 0))
+                 (firefox (new-window :us-new-ff "firefox-id" 4))
+                 (kitty (new-window :us-new-kitty "kitty-id" 5)))
+            (let ((*standard-output* (make-broadcast-stream)))
+              (load-takeover-state)
+              (restore-takeover-placement firefox)
+              (restore-takeover-placement kitty)
+              (apply-takeover-trees))
+            (prune-empty-frames dvi 1)
+            (prune-empty-frames hdmi 1)
+            (ok "a user split keeps its empty frame across a takeover"
+                (mapcar (lambda (leaf) (length (frame-windows leaf)))
+                        (frame-leaves (frame-tree-for dvi 1)))
+                '(1 0))
+            (ok "the window in a restored user split keeps half the width"
+                (frame-width (window-frame kitty)) 960)
+            (ok "the other head keeps its single frame"
+                (tree-windows hdmi 1) (list firefox)))
+          (ignore-errors (delete-file *takeover-state-path*)))
+
+        ;; A takeover file from a build that wrote no user mark keeps
+        ;; today's behaviour: the empty frame prunes
+        (fresh-wm)
+        (let* ((dvi (head :um-dvi "DVI-D-1" 1920))
+               (kitty (new-window :um-kitty "kitty-id" 3)))
+          (setf *takeover-state*
+                (list :windows '(("kitty-id" :workspace 1 :number 2
+                                  :output "DVI-D-1"))
+                      :trees '((("DVI-D-1" . 1)
+                                . (:split :horizontal (:rect 0 0 1920 1080)
+                                   (:frame (:rect 0 0 960 1080) 2)
+                                   (:frame (:rect 960 0 960 1080))))))
+                (window-output kitty) dvi
+                (gethash kitty *window-workspace*) 1)
+          (let ((*standard-output* (make-broadcast-stream)))
+            (apply-takeover-trees))
+          (prune-empty-frames dvi 1)
+          (ok "an unmarked takeover tree prunes its empty frame"
+              (list (length (frame-leaves (frame-tree-for dvi 1)))
+                    (frame-width (window-frame kitty)))
+              '(1 1920)))
 
         ;; An old-format file (no :output key) and a recorded output
         ;; that is gone both fall back to the current output
