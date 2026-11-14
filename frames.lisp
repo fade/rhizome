@@ -93,21 +93,23 @@ full-screen frame (the StumpWM default — split from there)."
 
 (defun current-frame-for (output workspace)
   "The frame commands act on: the focused window's frame when its
-window lives on this workspace, else the stored pointer, else the
-first leaf."
+window lives on this workspace and that frame is a leaf of the tree,
+else the stored pointer, else the first leaf."
   (let* ((key (frame-key output workspace))
          (root (frame-tree-for output workspace))
+         (leaves (frame-leaves root))
          (stored (gethash key *current-frames*))
          (focused (find-if #'window-focused-p (all-windows))))
     (or (and focused
              (window-frame focused)
              (eq (window-output focused) output)
              (eql (window-workspace focused) workspace)
+             (member (window-frame focused) leaves :test #'eq)
              (window-frame focused))
         (and stored
-             (member stored (frame-leaves root))
+             (member stored leaves)
              stored)
-        (first (frame-leaves root)))))
+        (first leaves))))
 
 ;;; --- Tree editing ---
 
@@ -873,12 +875,24 @@ survives, so new windows always have a place to land."
           (when (eq (gethash key *current-frames*) empty)
             (setf (gethash key *current-frames*) sibling)))))))
 
+(defun window-in-frame-tree-p (win output workspace)
+  "T when WIN's frame is a leaf of the workspace's tree and lists WIN."
+  (let ((frame (window-frame win)))
+    (and frame
+         (member frame (frame-leaves (frame-tree-for output workspace))
+                 :test #'eq)
+         (member win (frame-windows frame) :test #'eq)
+         t)))
+
 (defun frames-manage-decisions (output workspace wins)
   "Manage-sequence decisions for the workspace's frame tree: clean up
 windows that died or moved, prune empty frames as
 (:frames (:prune-empty ...)) allows (their neighbours grow; expose
 suspends pruning), adopt frameless windows into the current frame, and
-propose each leaf's visible window its rectangle."
+propose each leaf's visible window its rectangle.
+A tiled window still outside a leaf after adoption (its frame left the
+tree, or no longer lists it) is adopted again and logged as
+\"; Rhizome: re-adopted frameless window <app-id>\"."
   (let* ((root (frame-tree-for output workspace))
          (leaves (frame-leaves root)))
     ;; Drop dead windows and windows whose frame moved elsewhere
@@ -900,9 +914,22 @@ propose each leaf's visible window its rectangle."
         (if (floating-workspace-p output workspace)
             (float-adopt-window win output workspace)
             (frame-adopt-window win output workspace))))
+    ;; Invariant: every tiled window shown here sits in a leaf. A stale
+    ;; frame pointer is never adopted above, and the window would stay
+    ;; unsized and unplaced.
+    (unless (floating-workspace-p output workspace)
+      (dolist (win wins)
+        (unless (or (window-floating-p win)
+                    (window-minimized-p win)
+                    (window-in-frame-tree-p win output workspace))
+          (frame-remove-window win)
+          (frame-adopt-window win output workspace)
+          (format t "~&; Rhizome: re-adopted frameless window ~A~%"
+                  (or (window-app-id win) (window-title win) win)))))
     ;; Each frame proposes its rectangle for its visible window,
-    ;; inset by the configured gap (:gaps :inner)
-    (dolist (leaf leaves)
+    ;; inset by the configured gap (:gaps :inner). Leaves are read
+    ;; after adoption: a split replaces a leaf.
+    (dolist (leaf (frame-leaves (frame-tree-for output workspace)))
       (let ((win (frame-current-window leaf)))
         (when (and win (not (window-minimized-p win)))
           (multiple-value-bind (_x _y w h)
