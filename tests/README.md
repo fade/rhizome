@@ -161,3 +161,10 @@ stubbed river requests. Run with:
   the first is configured or during a resize (one surface, one
   buffer), and reopening an overlay over a state that still holds a
   buffer.
+- `display-layout.lisp` - the `(:displays (:layout ...))` output
+  layout: relative placement against heads of different sizes,
+  normalization to a 0,0 origin, explicit positions, mode and scale
+  overrides, matching by connector name or description, heads named
+  but absent, heads present but not named, the no-op when the layout
+  already holds, the log lines, and the automatic apply on the output
+  manager's done event.

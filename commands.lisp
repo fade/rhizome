@@ -409,6 +409,16 @@ The brightnessctl exit status is ignored."
                       (lambda () (display-output-menu state))))
               (display-heads)))))
 
+(define-command :display-layout (output args)
+  "Lay out the outputs from (:displays :layout) now."
+  (declare (ignore output args))
+  (ecase (display-apply-layout)
+    (:applied "display layout: applied")
+    (:unchanged "display layout: already in place")
+    (:pending "display layout: an earlier layout is still pending")
+    (:no-layout "display layout: no (:displays :layout) configured")
+    (:no-manager "display layout: no output manager")))
+
 (define-command :group-type (output args)
   "Report the current workspace's group type."
   (declare (ignore args))
