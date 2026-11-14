@@ -385,13 +385,21 @@ window positions, borders, and z-ordering here."
            *outputs*)
   ;; Pseudo-shadows on floating windows (river_decoration_v1).
   ;; Placeholder: redefined by decorations.lisp, which loads later.
-  (decorations-render-pass))
+  (decorations-render-pass)
+  ;; The focused-frame outline (river_shell_surface_v1).
+  ;; Placeholder: redefined by frame-outline.lisp, which loads later.
+  (frame-outline-render-pass))
 
 ;;; --- Manage dirty --
 
 (defun decorations-render-pass ()
   "Decoration surfaces (placeholder: redefined by
 decorations.lisp)."
+  nil)
+
+(defun frame-outline-render-pass ()
+  "Focused-frame outline (placeholder: redefined by
+frame-outline.lisp)."
   nil)
 
 (defun request-manage-dirty ()
