@@ -24,7 +24,8 @@ SUITES    := animations decorations surface window-rules floating \
              pull-hidden bar-hide \
              server-side-decorations \
              client-fullscreen multi-head frame-adoption \
-             bar-per-output prefix-capture-output display-layout
+             bar-per-output prefix-capture-output display-layout \
+             mouse-focus
 
 .PHONY: all build test install docs clean help
 

@@ -910,6 +910,33 @@ client draw its own titlebar again.
   '(:windows (:decorations :server)))   ; default; :client for CSD
 #+end_src
 
+** Mouse focus policy
+
+By default a window takes keyboard focus when you click it, and the
+click also raises it. Set the policy to =:sloppy= and moving the
+pointer into a window focuses it as well, the way StumpWM's
+=(setf *mouse-focus-policy* :sloppy)= does.
+
+#+begin_src lisp
+(rhizome:configure '(:pointer (:focus-policy :sloppy)))
+#+end_src
+
+Under =:sloppy=:
+
+- Pointer focus never raises: overlapping floats keep their stacking
+  until you click one.
+- Moving off a window onto empty space or the bar keeps the current
+  focus.
+- Focus that a key or command moved stays put while the pointer sits
+  still, even when a layout change, a workspace switch, or a newly
+  opened window puts a different window under it. The window under
+  the pointer takes focus once you move the pointer.
+- The expose overview, prompts, menus, the launcher, prefix-key
+  capture, interactive frame resize, and an interactive float move or
+  resize hold pointer focus off until they finish.
+
+Any value other than =:sloppy= reads as =:click=.
+
 ** Pseudo-shadows on floats (decorations)
 
 river_decoration_v1, used as intended: every floating window gets

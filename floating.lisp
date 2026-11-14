@@ -263,9 +263,10 @@ dimensions of floats on the current workspace."
 (defun float-render-decisions (output tiled-wins)
   "Render-sequence decisions for floating windows on OUTPUT's current
 workspace: position each at its float coordinates, border it, show it
-if hidden, and stack the floats above the tiling (focused float on
-top). Returns the floats actually rendered, so the render pass can
-exclude them from its hide logic."
+if hidden, and stack the floats above the tiling (the raised float,
+*raised-window*, on top while any window holds focus). Returns the
+floats actually rendered, so the render pass can exclude them from
+its hide logic."
   (let* ((workspace (current-workspace output))
          (floats (remove-if-not
                    (lambda (win)
@@ -273,10 +274,11 @@ exclude them from its hide logic."
                           (not (window-minimized-p win))
                           (eql (window-workspace win) workspace)))
                    (windows-on-output output)))
-         (focused (find-if #'window-focused-p floats)))
-    ;; Focused float renders last: it lands on top of the stack.
-    (when focused
-      (setf floats (append (remove focused floats) (list focused))))
+         (raised (and (find-if #'window-focused-p (all-windows))
+                      (find *raised-window* floats :test #'eq))))
+    ;; The raised float renders last: it lands on top of the stack.
+    (when raised
+      (setf floats (append (remove raised floats) (list raised))))
     (let ((below (let ((top (first (last tiled-wins))))
                    (and top (window-node top)))))
       (dolist (win floats)
