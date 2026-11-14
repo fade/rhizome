@@ -437,7 +437,10 @@ window positions, borders, and z-ordering here."
   (frame-outline-render-pass)
   ;; Float titlebars (river_decoration_v1 above the window).
   ;; Placeholder: redefined by titlebar.lisp, which loads later.
-  (titlebars-render-pass))
+  (titlebars-render-pass)
+  ;; fselect's frame labels (river_shell_surface_v1).
+  ;; Placeholder: redefined by fselect.lisp, which loads later.
+  (fselect-labels-render-pass))
 
 ;;; --- Manage dirty --
 
@@ -453,6 +456,10 @@ frame-outline.lisp)."
 
 (defun titlebars-render-pass ()
   "Float titlebars (placeholder: redefined by titlebar.lisp)."
+  nil)
+
+(defun fselect-labels-render-pass ()
+  "fselect frame labels (placeholder: redefined by fselect.lisp)."
   nil)
 
 (defun request-manage-dirty ()
