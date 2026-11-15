@@ -44,10 +44,27 @@
   "Seconds ipc-dispatch-line shows a command's reply (see
 show-command-reply).")
 
+(defun parse-command-line (line)
+  "Split a NAME ARGS... command LINE. Return the command keyword and
+its argument list. Arguments are split on whitespace and each one
+that reads as an integer becomes that integer; a command listed in
+*rest-of-line-commands* gets the rest of the line as one string."
+  (let* ((name-and-rest (cl-ppcre:split "\\s+" line :limit 2))
+         (command (intern (string-upcase (first name-and-rest)) :keyword))
+         (rest (second name-and-rest)))
+    (values command
+            (cond ((or (null rest) (zerop (length rest))) nil)
+                  ((member command *rest-of-line-commands*) (list rest))
+                  (t (mapcar (lambda (token)
+                               (or (ignore-errors (parse-integer token))
+                                   token))
+                             (cl-ppcre:split "\\s+" rest)))))))
+
 (defun ipc-dispatch-line (line)
   "Execute one command LINE and return the result as a string.
 A line starting with ( is evaluated as a Lisp form in the RHIZOME
-package; otherwise it is NAME ARGS..., looked up with find-command.
+package; otherwise it is NAME ARGS..., split by parse-command-line and
+looked up with find-command.
 A command's reply is shown on screen only when it is non-empty and the
 command showed no message of its own."
   (let ((line (string-trim " " (remove #\newline line))))
@@ -65,27 +82,22 @@ command showed no message of its own."
          (show-message result 1)
          result))
       (t
-       (let* ((tokens (cl-ppcre:split "\\s+" line))
-              (command (intern (string-upcase (first tokens)) :keyword))
-              (args (mapcar (lambda (token)
-                              (or (ignore-errors (parse-integer token))
-                                  token))
-                            (rest tokens)))
-              (handler (find-command command)))
-         (cond
-           (handler
-             (let ((serial *message-serial*)
-                    (result
-                      (handler-case
-                          (let ((r (funcall handler (current-output)
-                                                 args)))
-                            (format nil "~A" (or r "")))
-                        (error (e)
-                          (format nil "error: ~A" e)))))
-               (show-command-reply result serial *command-reply-seconds*)))
-           (t
-             (format nil "unknown command: ~A (try: ~{~A~^ ~})"
-                     command (command-names)))))))))
+       (multiple-value-bind (command args) (parse-command-line line)
+         (let ((handler (find-command command)))
+           (cond
+             (handler
+               (let ((serial *message-serial*)
+                      (result
+                        (handler-case
+                            (let ((r (funcall handler (current-output)
+                                                   args)))
+                              (format nil "~A" (or r "")))
+                          (error (e)
+                            (format nil "error: ~A" e)))))
+                 (show-command-reply result serial *command-reply-seconds*)))
+             (t
+               (format nil "unknown command: ~A (try: ~{~A~^ ~})"
+                       command (command-names))))))))))
 
 ;;; --- Unix domain socket via CFFI (no extra dependencies) ---
 
