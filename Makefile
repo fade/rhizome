@@ -29,7 +29,7 @@ SUITES    := animations decorations surface window-rules floating \
              display-brightness frame-outline titlebars \
              unfloat-placement float-centring dialog-placement fselect focus-empty-frames \
              bindings-overridable modules \
-             command-table active-screen
+             command-table active-screen bar-adoption
 
 .PHONY: all build test install docs clean help
 

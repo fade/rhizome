@@ -249,10 +249,7 @@
    #:config-pathname
    ;; User modules
    #:load-module
-   #:modules-directory
-   #:module-not-found
-   #:module-not-found-name
-   #:module-not-found-pathname
+   #:module-directory
    ;; Bar
    #:run-bar
    #:bar-switch-workspace

@@ -71,13 +71,6 @@ stubbed river requests. Run with:
   `:new-window` preferences (`:empty`, `:last`, `:unfocused`, functions),
   a custom policy class selected by name, the fallback for an unknown
   name, and the workspace focus history.
-- `modules.lisp` - user modules: `load-module` finds a module in its own
-  directory under `modules/` beside the config file, loads it once,
-  reloads changed sources while `defvar` state survives, loads from
-  `config.lisp` at startup and through `reload-config`, and signals
-  `module-not-found` with the path searched; the module's placement
-  policy, key binding, and hook work. The config pathname points into a
-  temporary directory, so the real `~/.config` is never read.
 - `split-focus.lisp` - the current frame after a split: it stays on
   the original half, with or without a focused window, so a second
   split divides that half again; the placement policy still fills the
@@ -266,3 +259,11 @@ stubbed river requests. Run with:
   configure. Also covers swapping C-t f and C-t F, a user key inside a
   default sub-keymap (C-t h, C-t M, C-t e), and an unbind on a literal
   modifier across set-user-mod.
+- `modules.lisp` - load-module: only .asd-carrying directories in
+  the module directory are registered with ASDF, an unknown module
+  fails quietly, the first load loads the system, the second is an
+  idempotent no-op, and the registry never duplicates an entry.
+- `bar-adoption.lisp` - a WM restart adopts a surviving bar instead
+  of cold-starting a fresh one: pgrep parsing, adoption in start-bar
+  (extras reaped, nothing launched), adopted liveness in bar-alive-p,
+  and the handover flag. All subprocess calls stubbed.
