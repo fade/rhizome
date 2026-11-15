@@ -292,9 +292,10 @@ query returns the candidates unchanged."
 ;;; config key stays the config file's own list and is matched first.
 
 (defvar *window-rule-sets* '()
-  "Alist of (source . rules) in registration order, for every source
-except the (:window-rules ...) config key. DEFVAR: a reload of this
-file keeps the sets.")
+  "Alist of (source . rules) for every source except the
+(:window-rules ...) config key, ordered by each source's first
+SET-WINDOW-RULES call. An emptied source keeps its entry and place.
+DEFVAR: a reload of this file keeps the sets.")
 
 (defvar *window-rules-source* :repl
   "The source SET-WINDOW-RULES uses when none is given. Bound to
@@ -307,16 +308,15 @@ keyword while LOAD-MODULE loads a module.")
 
 (defun set-window-rules (rules &key (source *window-rules-source*))
   "Make RULES the complete window-rule set of SOURCE, replacing any set
-SOURCE had. NIL RULES removes SOURCE. Other sources keep their sets.
-The new set takes effect at the next rule match; rules are not re-run
-over open windows. Returns RULES."
+SOURCE had. NIL RULES empties the set. A source keeps the place in the
+matching order it took when it first set rules, whether replaced or
+emptied. Other sources keep their sets. The new set takes effect at
+the next rule match; rules are not re-run over open windows. Returns
+RULES."
   (let ((entry (assoc source *window-rule-sets* :test #'equal)))
-    (cond ((null rules)
-           (setf *window-rule-sets*
-                 (remove source *window-rule-sets* :key #'car :test #'equal)))
-          (entry
+    (cond (entry
            (setf (cdr entry) (copy-tree rules)))
-          (t
+          (rules
            (setf *window-rule-sets*
                  (append *window-rule-sets*
                          (list (cons source (copy-tree rules))))))))
@@ -324,7 +324,10 @@ over open windows. Returns RULES."
 
 (defun window-rules ()
   "Every window rule in matching order: the (:window-rules ...) config
-list first, then each source's set in registration order."
+list first, then each source's set in the order of its first
+SET-WINDOW-RULES call. Rules a module sets while LOAD-MODULE loads it,
+including rules of a dependency that load loads for the first time,
+belong to the module's source."
   (append (config-get '(:window-rules))
           (loop for (nil . rules) in *window-rule-sets*
                 append rules)))

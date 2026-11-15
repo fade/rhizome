@@ -169,7 +169,35 @@
              (let ((*standard-output* (make-broadcast-stream)))
                (apply-window-rules win))
              (ok "another source's rule applies when no config rule matches"
-                 (lambda () (window-workspace win)) 7)))
+                 (lambda () (window-workspace win)) 7))
+
+           ;; --- a source keeps its place in the matching order ---
+           (let ((*window-rule-sets* '()))
+             (write-config
+               "(rhizome:set-window-rules '((:match \"ordered\" :workspace 1)))")
+             (quiet-reload)
+             (set-window-rules '((:match "ordered" :workspace 6))
+                               :source :rules-module)
+             (quiet-reload)
+             (quiet-reload)
+             (ok "after reloads the config file's set still matches before a module's"
+                 (lambda () (mapcar #'car *window-rule-sets*))
+                 '(:config :rules-module))
+             (let ((win (window-with-app-id :reload-w3 "ordered")))
+               (let ((*standard-output* (make-broadcast-stream)))
+                 (apply-window-rules win))
+               (ok "after reloads a config set-window-rules rule wins over a module's"
+                   (lambda () (window-workspace win)) 1))
+             (set-window-rules '((:match "first" :workspace 1)) :source :first)
+             (set-window-rules '((:match "second" :workspace 2)) :source :second)
+             (set-window-rules nil :source :first)
+             (set-window-rules '((:match "first" :workspace 3)) :source :first)
+             (ok "a source set to NIL and set again keeps its place"
+                 (lambda ()
+                   (remove-if-not (lambda (match) (member match '("first" "second")
+                                                          :test #'equal))
+                                  (reload-test-matches)))
+                 '("first" "second"))))
 
       ;; --- cleanup ---
       (setf (symbol-function 'config-pathname) real-config-pathname)
@@ -177,6 +205,7 @@
       (set-window-rules nil :source :rules-module)
       (remhash :reload-w1 *windows*)
       (remhash :reload-w2 *windows*)
+      (remhash :reload-w3 *windows*)
       (ignore-errors (uiop:delete-directory-tree
                        (pathname tmp) :validate t))))
 
