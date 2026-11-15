@@ -99,7 +99,7 @@ Returns (values value found-p)."
               ;; tiled. A dialog that opens on a hidden workspace
               ;; shows a notice for :notify-seconds in :notify-color.
               :notify-seconds 10
-              :notify-color "#ff9e64")
+              :notify-color "#ff5fd7")
     :windows (:decorations :server
               ;; :server asks every client that supports it for
               ;; server-side decorations (no client titlebar; rhizome

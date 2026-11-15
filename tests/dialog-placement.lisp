@@ -259,7 +259,7 @@
                  (list 1 t t t))
           (check "the notification uses the :dialogs length and colour"
                  (lambda () (rest (first *notes*)))
-                 (list 10 "#ff9e64"))
+                 (list 10 "#ff5fd7"))
           (check "a dialog placed on a hidden workspace is no longer pending"
                  (lambda () (window-placement-pending-p dlg)) nil)))
 

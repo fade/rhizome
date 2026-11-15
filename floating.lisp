@@ -305,7 +305,7 @@ layout order)."
              (or (window-app-id win) "unknown app")
              workspace screen index location)
      (config-getf '(:dialogs) :notify-seconds :default 10)
-     (config-getf '(:dialogs) :notify-color :default "#ff9e64"))))
+     (config-getf '(:dialogs) :notify-color :default "#ff5fd7"))))
 
 (defun float-place-new (win)
   "Place WIN when it awaits its first placement and its client has

@@ -1053,7 +1053,7 @@ A rule with =:float nil= keeps the matching app's dialogs tiled, and
 #+begin_src lisp
 (rhizome:configure
   '(:window-rules ((:match "inkscape" :float nil))
-    :dialogs (:float t :notify-seconds 10 :notify-color "#ff9e64")))
+    :dialogs (:float t :notify-seconds 10 :notify-color "#ff5fd7")))
 #+end_src
 
 A desktop portal's file picker carries the portal's app-id, such as
