@@ -37,7 +37,8 @@
 
     ;; Prompts: keep the candidates and the completion callback
     (setf (symbol-function 'prompt-open)
-          (lambda (title &key ((:candidates offered)) on-complete initial)
+          (lambda (title &key ((:candidates offered)) on-complete initial
+                       &allow-other-keys)
             (declare (ignore title initial))
             (setf candidates (copy-list offered)
                   complete on-complete)

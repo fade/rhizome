@@ -754,8 +754,13 @@ A prompt closes on its own after 30 seconds.
 - The window list shows each window's number, workspace, and title.
   Choosing a window switches to its workspace and focuses it.
 - The workspace picker switches to the chosen workspace.
-- The command palette runs a command from the command table. A
-  command's reply shows in the message window.
+- The command palette reads a command line, like StumpWM's =colon=.
+  The candidates complete the command name. Return runs the typed line
+  as written when it has arguments, for example =switch-workspace 3=, or
+  names a command exactly. A partial name runs the
+  selected command, and an empty line runs nothing. A command's reply
+  shows in the message window. The =colon= command opens the palette
+  with its arguments as the start of the line.
 
 =C-t != opens a prompt with no candidates. Type a shell command and
 press Return to run it with =bash -c=.

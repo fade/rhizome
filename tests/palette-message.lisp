@@ -25,8 +25,8 @@
               (funcall real text seconds))))
     ;; The palette's prompt: keep the completion callback
     (setf (symbol-function 'prompt-open)
-          (lambda (title &key candidates on-complete initial)
-            (declare (ignore title candidates initial))
+          (lambda (title &key candidates on-complete initial complete-line)
+            (declare (ignore title candidates initial complete-line))
             (setf (symbol-function 'palette-test-complete) on-complete)
             nil))
 

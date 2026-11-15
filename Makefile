@@ -37,7 +37,8 @@ SUITES    := animations decorations surface window-rules window-rules-reload flo
              example-config \
              xdg-paths workspace-numbering \
              fullscreen-toggle \
-             network-menu bar-reserved-per-output
+             network-menu bar-reserved-per-output \
+             colon-command
 
 .PHONY: all build test install docs clean help
 

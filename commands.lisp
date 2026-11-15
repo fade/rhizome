@@ -51,7 +51,7 @@ ARGS and return its value. An unknown COMMAND is logged and returns NIL."
         (funcall handler output args)
         (format t "~&; Rhizome: unknown command ~A~%" command))))
 
-(defvar *rest-of-line-commands* '(:wse :putsel)
+(defvar *rest-of-line-commands* '(:wse :putsel :colon)
   "Commands that take the rest of an IPC command line as one string
 argument, spaces included, instead of one argument per word.")
 

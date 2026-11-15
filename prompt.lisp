@@ -19,6 +19,12 @@
   "Index into the filtered candidates.")
 (defparameter *prompt-on-complete* nil
   "Function called with the selected string on Enter.")
+
+(defparameter *prompt-complete-line* nil
+  "When true, the prompt is a complete-line prompt: it filters on the
+first word of the query, and Enter may complete with the typed line
+(see prompt-choice).")
+
 (defparameter *prompt-state* nil
   "Surface state hash: surface, layer-surface, shm-*, wl-buffer,
 width, height.")
@@ -41,36 +47,68 @@ exclusive surface can never trap input. Called from the main loop."
     (format t "~&; Rhizome: prompt timed out~%")
     (prompt-close)))
 
+(defun prompt-query-words ()
+  "The query trimmed of spaces, split at its first space. Return two
+values: the first word, and the rest of the line or NIL when there is
+none."
+  (let* ((line (string-trim " " *prompt-query*))
+         (space (position #\Space line)))
+    (if space
+        (values (subseq line 0 space)
+                (string-left-trim " " (subseq line space)))
+        (values line nil))))
+
 (defun prompt-filtered ()
   "Candidates matching the current query (fuzzy: characters in
-order, case-insensitive; substring matches rank first)."
-  (fuzzy-filter *prompt-query* *prompt-candidates*))
+order, case-insensitive; substring matches rank first). A complete-line
+prompt matches on the first word of the query only."
+  (fuzzy-filter (if *prompt-complete-line*
+                    (values (prompt-query-words))
+                    *prompt-query*)
+                *prompt-candidates*))
 
 (defun prompt-selected ()
   "The currently selected candidate string, or NIL."
   (nth *prompt-selection* (prompt-filtered)))
 
+(defun prompt-choice ()
+  "The string Enter completes with, or NIL to complete with nothing.
+A prompt without candidates yields the query when it is non-empty.
+A candidates prompt yields the selected candidate, unless it was
+opened with COMPLETE-LINE. A complete-line prompt yields:
+- NIL for a blank query;
+- the trimmed query when it has arguments after its first word, or
+  when its first word names a candidate exactly, ignoring case;
+- otherwise the selected candidate."
+  (cond
+    ((null *prompt-candidates*)
+     (and (plusp (length *prompt-query*)) *prompt-query*))
+    ((not *prompt-complete-line*)
+     (prompt-selected))
+    (t
+     (multiple-value-bind (name arguments) (prompt-query-words)
+       (cond ((zerop (length name)) nil)
+             ((or arguments
+                  (member name *prompt-candidates* :test #'string-equal))
+              (string-trim " " *prompt-query*))
+             (t (prompt-selected)))))))
+
 ;;; --- Key handling ---
 
 (defun prompt-handle-key (keysym)
   "Handle KEYSYM while the prompt is open. Return T.
-Enter completes in one of two modes. A prompt opened with candidates
-calls the completion function with the selected candidate, and with
-nothing when no candidate matches. A prompt opened without candidates
-calls it with the typed query, and with nothing when the query is
-empty."
+Enter closes the prompt and calls the completion function with the
+string prompt-choice returns; when that is NIL the function is not
+called."
   (let ((filtered-count (length (prompt-filtered))))
     (cond
       ;; Escape — cancel
       ((= keysym 65307)
        (prompt-close))
-      ;; Enter — complete with the selection
+      ;; Enter: complete with prompt-choice (typed line, selection, or nothing)
       ((= keysym 65293)
        ;; Capture the callback before closing: prompt-close clears it
-       (let* ((choice (if *prompt-candidates*
-                          (prompt-selected)
-                          (and (plusp (length *prompt-query*))
-                               *prompt-query*)))
+       (let* ((choice (prompt-choice))
               (on-complete *prompt-on-complete*))
          (prompt-close)
          (when (and choice on-complete)
@@ -167,11 +205,15 @@ empty."
 
 ;;; --- Open / close ---
 
-(defun prompt-open (title &key candidates on-complete (initial ""))
+(defun prompt-open (title &key candidates on-complete (initial "")
+                              complete-line)
   "Open an interactive prompt titled TITLE, with INITIAL as the query.
 CANDIDATES is a list of strings. With candidates, Enter calls
 ON-COMPLETE with the selected candidate. Without candidates, the prompt
-takes free text and Enter calls ON-COMPLETE with the non-empty query."
+takes free text and Enter calls ON-COMPLETE with the non-empty query.
+COMPLETE-LINE makes a candidates prompt a complete-line prompt:
+candidates match the first word, and Enter may complete with the whole typed
+line (see prompt-choice)."
   (when *prompt-active*
     (prompt-close))
   (unless (and *compositor* *shm* *layer-shell*)
@@ -184,6 +226,7 @@ takes free text and Enter calls ON-COMPLETE with the non-empty query."
   (setf *prompt-title* title
         *prompt-query* initial
         *prompt-candidates* candidates
+        *prompt-complete-line* complete-line
         *prompt-selection* 0
         *prompt-on-complete* on-complete
         *prompt-state* (make-hash-table)
