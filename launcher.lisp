@@ -903,47 +903,15 @@ row. Reuses the bar's icon discovery/scaling (bar.lisp)."
   "The launcher's corner radius (px) — the fuzzel look."
   (config-getf '(:launcher) :corner-radius :default 12))
 
-(defun launcher-round-test (x y width height radius)
-  "For a pixel (X Y) in a WIDTHxHEIGHT surface with corner RADIUS:
-(values inside-p border-p). Corners are quarter circles; the
-border is the 1px ring at the rounded rect's edge."
-  (let ((cx (cond ((< x radius) radius)
-                  ((> x (- width radius 1)) (- width radius 1))
-                  (t x)))
-        (cy (cond ((< y radius) radius)
-                  ((> y (- height radius 1)) (- height radius 1))
-                  (t y)))
-        (edge (or (= x 0) (= x (1- width))
-                  (= y 0) (= y (1- height)))))
-    ;; when the pixel is inside the corner squares, the clamp above
-    ;; moved (cx,cy) to the arc center: outside the arc = outside
-    (let* ((in-corner (or (and (< x radius) (< y radius))
-                          (and (< x radius) (> y (- height radius 1)))
-                          (and (> x (- width radius 1)) (< y radius))
-                          (and (> x (- width radius 1))
-                               (> y (- height radius 1)))))
-           (d (sqrt (+ (expt (- cx x) 2) (expt (- cy y) 2)))))
-      (cond
-        ((and in-corner (> d radius)) (values nil nil))
-        ((or edge (and in-corner (>= d (- radius 1.5)))) (values t t))
-        (t (values t nil))))))
-
 (defun launcher-paint-background (ptr width height r g b)
   "The fuzzel look: a rounded-corner fill with a 1px hairline
-border, alpha-cut at the corners. Premultiplied ARGB."
+border, alpha-cut and antialiased at the corners (see
+paint-rounded-surface). Premultiplied ARGB."
   (multiple-value-bind (brd-r brd-g brd-b) (theme-rgb :launcher-border)
-    (let ((a (launcher-surface-alpha))
-          (radius (launcher-corner-radius)))
-      (loop for y below height
-            do (loop for x below width
-                     do (multiple-value-bind (inside border-p)
-                            (launcher-round-test x y width height radius)
-                          (when inside
-                            (if border-p
-                                (launcher-set-pixel ptr width height x y
-                                                     brd-b brd-g brd-r a)
-                                (launcher-set-pixel ptr width height x y
-                                                     b g r a)))))))))
+    (paint-rounded-surface ptr width height r g b
+                           :alpha (launcher-surface-alpha)
+                           :radius (launcher-corner-radius)
+                           :border-r brd-r :border-g brd-g :border-b brd-b)))
 
 (defun launcher-draw-entry-label (ptr width label x y r g b)
   "Draw an entry's LABEL at (X, Y) in (R, G, B). The first
@@ -1036,27 +1004,14 @@ text goes through the font module (see font.lisp)."
                         ;; (the fuzzel selection), inset from the
                         ;; padding, 6px radius
                         (when (= i *launcher-selection*)
-                          (let* ((pill-x (- *launcher-padding* 6))
-                                 (pill-w (- width (* 2 pill-x)))
-                                 (pill-r 6))
-                            (loop for dy below *launcher-line-height*
-                                  for py = (+ y dy)
-                                  while (< py height) do
-                              (loop for dx below pill-w
-                                    for px = (+ pill-x dx)
-                                    while (< px width) do
-                                (multiple-value-bind (inside border-p)
-                                    (launcher-round-test dx dy pill-w
-                                                         *launcher-line-height*
-                                                         pill-r)
-                                  (declare (ignore border-p))
-                                  (when (and inside
-                                             (< dy (- *launcher-line-height* 2))
-                                             (> dy 1))
-                                    (launcher-set-pixel
-                                      ptr width height px py
-                                      selb selg selr
-                                      (launcher-surface-alpha))))))))
+                          (let ((pill-x (- *launcher-padding* 6)))
+                            (fill-rounded-rect ptr width height
+                                               pill-x (+ y 2)
+                                               (- width (* 2 pill-x))
+                                               (- *launcher-line-height* 4)
+                                               selr selg selb
+                                               :alpha (launcher-surface-alpha)
+                                               :radius 6)))
                         ;; Draw entry text, centered in the row, past
                         ;; the entry's icon (aligned even when an
                         ;; entry has no icon). The typed query is

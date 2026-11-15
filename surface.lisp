@@ -96,86 +96,184 @@ icon antialiasing edges. ALPHA 0 leaves the destination intact."
 
 ;;; --- Rounded-rect primitives (the launcher treatment, shared) ---
 
-(declaim (inline rounded-rect-test))
+(defvar *rounded-rect-distance-calls* 0
+  "How many times rounded-rect-distance has run. A counter for tests
+and measurements; no drawing path reads it.")
 
-(defun rounded-rect-test (x y w h radius)
-  "For pixel (X Y) in a WxH rounded rect with corner RADIUS:
-(VALUES INSIDE-P BORDER-P). Corners are quarter circles; the
-border is the 1px ring at the rect's edge. The ONE definition —
-the launcher, menus, message window, prompts, and selection
-pills all route through it."
-  (let* ((rr (max 0 radius))
-         (cx (cond ((< x rr) rr)
-                   ((> x (- w rr 1)) (- w rr 1))
-                   (t x)))
-         (cy (cond ((< y rr) rr)
-                   ((> y (- h rr 1)) (- h rr 1))
-                   (t y)))
-         (edge (or (= x 0) (= x (1- w))
-                   (= y 0) (= y (1- h)))))
-    (let* ((in-corner (or (and (< x rr) (< y rr))
-                          (and (< x rr) (> y (- h rr 1)))
-                          (and (> x (- w rr 1)) (< y rr))
-                          (and (> x (- w rr 1)) (> y (- h rr 1)))))
-           (d (sqrt (+ (expt (- cx x) 2) (expt (- cy y) 2)))))
-      (cond
-        ((and in-corner (> d rr)) (values nil nil))
-        ((or edge (and in-corner (>= d (- rr 1.5)))) (values t t))
-        (t (values t nil))))))
+(declaim (type fixnum *rounded-rect-distance-calls*))
+
+(declaim (inline rounded-rect-distance edge-coverage))
+
+(defun rounded-rect-distance (x y w h radius)
+  "Signed distance in px from the point (X Y) to the outline of the
+W x H rect at the origin with corner RADIUS: negative inside, positive
+outside, exact everywhere. RADIUS is clamped to half the shorter side.
+Every rounded shape on a software surface derives its coverage from
+this one field."
+  (declare (type single-float x y w h radius)
+           (optimize (speed 3) (safety 0)))
+  (incf *rounded-rect-distance-calls*)
+  (let* ((hw (* 0.5 w))
+         (hh (* 0.5 h))
+         (r (max 0.0 (min radius hw hh)))
+         (qx (- (abs (- x hw)) (- hw r)))
+         (qy (- (abs (- y hh)) (- hh r)))
+         (ox (max qx 0.0))
+         (oy (max qy 0.0)))
+    (declare (type single-float hw hh r qx qy)
+             (type (single-float 0.0) ox oy))
+    (- (+ (sqrt (+ (* ox ox) (* oy oy)))
+          (min (max qx qy) 0.0))
+       r)))
+
+(defun edge-coverage (d)
+  "Area coverage of a pixel whose centre lies D px outside an edge:
+1.0 at D <= -0.5, 0.0 at D >= 0.5, linear between."
+  (declare (type single-float d)
+           (optimize (speed 3) (safety 0)))
+  (max 0.0 (min 1.0 (- 0.5 d))))
+
+(defun rounded-rect-coverage (px py w h radius &key (stroke 0))
+  "Coverage of pixel (PX PY) by the W x H rect at the origin with
+corner RADIUS, as (VALUES FILL STROKE), each 0.0 to 1.0. STROKE is a
+stroke width in px: the stroke is the fill less the fill of the shape
+inset by STROKE, so arcs and straights carry one even weight. FILL
+is 1.0 on every pixel inside a straight edge: the rect's edges lie on
+pixel boundaries, so only the arcs take partial coverage."
+  (let* ((d (rounded-rect-distance (+ (float px 1.0) 0.5)
+                                   (+ (float py 1.0) 0.5)
+                                   (float w 1.0) (float h 1.0)
+                                   (float radius 1.0)))
+         (fill (edge-coverage d)))
+    (values fill
+            (if (plusp stroke)
+                (- fill (edge-coverage (+ d (float stroke 1.0))))
+                0.0))))
+
+(defvar *coverage-masks* (make-hash-table :test #'equal)
+  "(W H RADIUS STROKE) -> (FILL . STROKE): cached coverage masks, see
+rounded-rect-masks.")
+
+(defvar *coverage-masks-lock* (bt:make-lock "coverage-masks")
+  "Guards *coverage-masks*: the bar's tick and dbus threads both draw.")
+
+(defparameter *coverage-mask-limit* 64
+  "Entries *coverage-masks* holds before it is emptied and refilled.")
+
+(defun rounded-rect-masks (w h radius &optional (stroke 0))
+  "The coverage of a W x H rect with corner RADIUS, as (VALUES FILL
+STROKE): two row-major (unsigned-byte 8) vectors of W*H bytes, 255
+for a covered pixel, from rounded-rect-coverage with STROKE. Cached
+per shape, so a redraw of a shape already drawn reads the cache and
+leaves the distance field alone."
+  (let ((key (list w h radius stroke)))
+    (bt:with-lock-held (*coverage-masks-lock*)
+      (let ((hit (gethash key *coverage-masks*)))
+        (if hit
+            (values (car hit) (cdr hit))
+            (let* ((w (max 0 w))
+                   (h (max 0 h))
+                   (fill (make-array (* w h) :element-type '(unsigned-byte 8)))
+                   (ring (make-array (* w h) :element-type '(unsigned-byte 8))))
+              (dotimes (y h)
+                (dotimes (x w)
+                  (multiple-value-bind (f s)
+                      (rounded-rect-coverage x y w h radius :stroke stroke)
+                    (setf (aref fill (+ x (* y w))) (round (* 255 f))
+                          (aref ring (+ x (* y w))) (round (* 255 s))))))
+              (when (>= (hash-table-count *coverage-masks*)
+                        *coverage-mask-limit*)
+                (clrhash *coverage-masks*))
+              (setf (gethash key *coverage-masks*) (cons fill ring))
+              (values fill ring)))))))
+
+(defun mix-argb (src dst c)
+  "Premultiplied pixel SRC weighted by coverage C (0-255) plus DST
+weighted by the rest: SRC where C is 255, DST where C is 0."
+  (declare (type (unsigned-byte 32) src dst)
+           (type (integer 0 255) c))
+  (let ((k (- 255 c)))
+    (flet ((channel (shift)
+             (round (+ (* c (ldb (byte 8 shift) src))
+                       (* k (ldb (byte 8 shift) dst)))
+                    255)))
+      (logior (ash (channel 24) 24) (ash (channel 16) 16)
+              (ash (channel 8) 8) (channel 0)))))
+
+(defun rounded-surface-pixel (fill stroke r g b border-r border-g border-b
+                              alpha)
+  "The premultiplied pixel of a fill in R G B under a border in
+BORDER-R BORDER-G BORDER-B, at FILL and STROKE coverage (0-255,
+STROKE <= FILL) and surface ALPHA (0-255)."
+  (let ((inner (- fill stroke)))
+    (flet ((channel (body border)
+             (round (* alpha (+ (* body inner) (* border stroke)))
+                    (* 255 255))))
+      (logior (ash (round (* alpha fill) 255) 24)
+              (ash (channel r border-r) 16)
+              (ash (channel g border-g) 8)
+              (channel b border-b)))))
 
 (defun fill-rounded-rect (ptr width height x y w h r g b
                               &key (alpha 255) (radius 0))
-  "Fill a (rounded when RADIUS > 0) rect at (X Y W H) — the
-selection-pill primitive. Bounds-checked; premultiplied."
-  (loop for dy below h
-        for py = (+ y dy)
-        while (< py height) do
-    (loop for dx below w
-          for px = (+ x dx)
-          while (and (< px width) (>= px 0) (>= py 0)) do
-      (when (and (>= px 0) (>= dy 0))
-        (multiple-value-bind (inside border-p)
-            (rounded-rect-test dx dy w h radius)
-          (declare (ignore border-p))
-          (when inside
-            (put-pixel-argb ptr width height px py
-                            (make-argb r g b :alpha alpha))))))))
+  "Paint the rect at (X Y W H), rounded when RADIUS > 0, in R G B at
+ALPHA: a covered pixel takes the colour, an edge pixel mixes it with
+the pixel below by its coverage. The selection-pill primitive.
+Clipped to the buffer; premultiplied."
+  (let ((src (make-argb r g b :alpha alpha))
+        (fill (rounded-rect-masks w h radius)))
+    (loop for dy from (max 0 (- y)) below (min h (- height y)) do
+      (loop for dx from (max 0 (- x)) below (min w (- width x))
+            for c = (aref fill (+ dx (* dy w)))
+            unless (zerop c) do
+              (let ((px (+ x dx)) (py (+ y dy)))
+                (put-pixel-argb ptr width height px py
+                                (if (= c 255)
+                                    src
+                                    (mix-argb src
+                                              (get-pixel-argb ptr width height
+                                                              px py)
+                                              c))))))))
 
 (defun blend-rounded-rect (ptr width height x y w h r g b
                            &key (alpha 255) (radius 0))
-  "Blend a (rounded when RADIUS > 0) translucent rect OVER the
-existing pixels (source-over) — unlike fill-rounded-rect, which
-REPLACES them: the bar's hover veil must keep the module pixels
-it covers, not punch a transparent hole through the bar.
-Bounds-checked; premultiplied."
-  (loop for dy below h
-        for py = (+ y dy)
-        while (< py height) do
-    (loop for dx below w
-          for px = (+ x dx)
-          while (and (< px width) (>= px 0) (>= py 0)) do
-      (when (and (>= px 0) (>= dy 0))
-        (multiple-value-bind (inside border-p)
-            (rounded-rect-test dx dy w h radius)
-          (declare (ignore border-p))
-          (when inside
-            (blend-pixel ptr width height px py r g b :alpha alpha)))))))
+  "Blend the rect at (X Y W H), rounded when RADIUS > 0, OVER the
+existing pixels (source-over) at ALPHA scaled by each pixel's
+coverage. Unlike fill-rounded-rect, which replaces covered pixels, it
+keeps what lies below: the bar's hover veil must not punch a hole
+through the modules it covers. Clipped to the buffer; premultiplied."
+  (let ((fill (rounded-rect-masks w h radius)))
+    (loop for dy from (max 0 (- y)) below (min h (- height y)) do
+      (loop for dx from (max 0 (- x)) below (min w (- width x))
+            for c = (aref fill (+ dx (* dy w)))
+            unless (zerop c) do
+              (blend-pixel ptr width height (+ x dx) (+ y dy) r g b
+                           :alpha (round (* alpha c) 255))))))
 
 (defun paint-rounded-surface (ptr width height r g b
                               &key (alpha 255) (radius 0)
                                 (border-r 255) (border-g 255)
-                                (border-b 255))
-  "Full-surface rounded fill with a 1px hairline border — the
-launcher/menu/message/prompt background. Alpha-cut corners;
-premultiplied."
-  (loop for y below height
-        do (loop for x below width
-                 do (multiple-value-bind (inside border-p)
-                        (rounded-rect-test x y width height radius)
-                      (when inside
-                        (if border-p
-                            (put-pixel-argb ptr width height x y
-                                            (make-argb border-r border-g border-b
-                                                       :alpha alpha))
-                            (put-pixel-argb ptr width height x y
-                                            (make-argb r g b :alpha alpha))))))))
+                                (border-b 255) (border-width 1))
+  "Paint the whole surface as a rect with corner RADIUS, filled in
+R G B under a BORDER-WIDTH px border in BORDER-R BORDER-G BORDER-B,
+both at ALPHA. It paints the background of the bar and the launcher,
+and of each menu, message window, and prompt. Every pixel is written; a pixel outside the shape becomes
+transparent and an edge pixel takes its coverage. Premultiplied."
+  (multiple-value-bind (fill ring)
+      (rounded-rect-masks width height radius border-width)
+    (let ((body (rounded-surface-pixel 255 0 r g b border-r border-g border-b
+                                       alpha))
+          (edge (rounded-surface-pixel 255 255 r g b
+                                       border-r border-g border-b alpha)))
+      (dotimes (y height)
+        (dotimes (x width)
+          (let* ((i (+ x (* y width)))
+                 (f (aref fill i))
+                 (s (aref ring i)))
+            (put-pixel-argb ptr width height x y
+                            (cond ((zerop f) 0)
+                                  ((and (= f 255) (zerop s)) body)
+                                  ((and (= f 255) (= s 255)) edge)
+                                  (t (rounded-surface-pixel
+                                      f s r g b border-r border-g border-b
+                                      alpha))))))))))
