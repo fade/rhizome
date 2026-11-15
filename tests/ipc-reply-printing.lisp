@@ -1,8 +1,9 @@
 ;;; ipc-reply-printing.lisp: IPC and eval-prompt replies print any
-;;; result without killing or hanging the WM and keep ordinary replies
-;;; unchanged. Each case runs in a thread with a deadline, so a reply
-;;; path that loops or exhausts the stack fails its case instead of
-;;; the run.
+;;; result without killing or hanging the WM, keep ordinary replies
+;;; unchanged, and reach the client whole when they hold non-ASCII
+;;; text or run past one read. Each case runs in a thread with a
+;;; deadline, so a reply path that loops or exhausts the stack fails
+;;; its case instead of the run.
 (ql:quickload :rhizome)
 
 (in-package #:rhizome)
@@ -85,6 +86,55 @@ first newline octet. The caller drains the command queue meanwhile."
         (sb-thread:terminate-thread reader))
       (cffi:foreign-funcall "close" :int fd :int)
       (coerce received '(simple-array (unsigned-byte 8) (*))))))
+
+(defun client-reply (path line &optional (seconds 3))
+  "Send LINE with IPC-SEND-COMMAND from a second thread and return its
+reply, :CRASHED when the client signals an error, or :TIMEOUT. The
+calling thread drains the command queue meanwhile."
+  (let* ((reply :timeout)
+         (client (sb-thread:make-thread
+                  (lambda ()
+                    (setf reply (handler-case (ipc-send-command path line)
+                                  (error () :crashed))))
+                  :name "ipc-client")))
+    (loop with deadline = (+ (get-internal-real-time)
+                             (* seconds internal-time-units-per-second))
+          while (and (sb-thread:thread-alive-p client)
+                     (< (get-internal-real-time) deadline))
+          do (ipc-drain) (sleep 0.01))
+    (when (sb-thread:thread-alive-p client)
+      (sb-thread:terminate-thread client))
+    reply))
+
+(defun socketpair-transfer (string)
+  "Write STRING with %IPC-WRITE-STRING into one end of a socket pair
+while a second thread reads the other end to EOF. Return the value
+%IPC-WRITE-STRING returned and the octets received."
+  (cffi:with-foreign-object (fds :int 2)
+    (assert (zerop (cffi:foreign-funcall "socketpair" :int 1 :int 1 :int 0
+                                         :pointer fds :int)))
+    (let* ((writer-fd (cffi:mem-aref fds :int 0))
+           (reader-fd (cffi:mem-aref fds :int 1))
+           (received (make-array 0 :element-type '(unsigned-byte 8)
+                                   :adjustable t :fill-pointer 0))
+           (reader
+             (sb-thread:make-thread
+              (lambda ()
+                (cffi:with-foreign-object (buf :uint8 4096)
+                  (loop
+                    (let ((n (cffi:foreign-funcall "read" :int reader-fd
+                                                   :pointer buf
+                                                   :long 4096 :long)))
+                      (when (<= n 0) (return))
+                      (dotimes (i n)
+                        (vector-push-extend (cffi:mem-aref buf :uint8 i)
+                                            received))))))
+              :name "socketpair-reader"))
+           (written (%ipc-write-string writer-fd string)))
+      (cffi:foreign-funcall "close" :int writer-fd :int)
+      (sb-thread:join-thread reader :timeout 10 :default nil)
+      (cffi:foreign-funcall "close" :int reader-fd :int)
+      (values written (coerce received '(simple-array (unsigned-byte 8) (*)))))))
 
 (let ((pass 0) (fail 0))
   (flet ((ok (name actual expected)
@@ -211,6 +261,33 @@ status keyword when the dispatch crashed or timed out."
                           (sb-ext:octets-to-string octets
                                                    :external-format :utf-8))))
           t)
+      (ok "non-ASCII reply arrives whole with its newline"
+          (coerce (raw-ipc-reply path "(identity \"café ✓\")") 'list)
+          (coerce (sb-ext:string-to-octets (format nil "café ✓~%")
+                                           :external-format :utf-8)
+                  'list))
+      (ok "ASCII reply arrives with the same octets as before"
+          (coerce (raw-ipc-reply path "(+ 1 2)") 'list)
+          (list 51 10))
+      (let ((long (make-string 3000 :initial-element #\LATIN_SMALL_LETTER_E_WITH_ACUTE)))
+        (ok "non-ASCII reply longer than one read arrives whole"
+            (equalp (raw-ipc-reply path "(make-string 3000 :initial-element (code-char 233))")
+                    (sb-ext:string-to-octets (format nil "~A~%" long)
+                                             :external-format :utf-8))
+            t)
+        (ok "client decodes a non-ASCII reply longer than one read"
+            (client-reply path "(make-string 3000 :initial-element (code-char 233))")
+            long))
+      ;; --- A reply larger than the socket buffer is written in full ---
+      (let* ((big (with-output-to-string (s)
+                    (dotimes (i 400000) (write-string "é✓" s))))
+             (expected (sb-ext:string-to-octets (format nil "~A~%" big)
+                                                :external-format :utf-8)))
+        (multiple-value-bind (written received) (socketpair-transfer big)
+          (ok "large reply reports every encoded octet written"
+              written (length expected))
+          (ok "large reply arrives byte for byte"
+              (equalp received expected) t)))
       (stop-ipc-server)
       (cffi:foreign-funcall "unlink" :string path :int)))
 

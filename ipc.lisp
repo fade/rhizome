@@ -122,10 +122,23 @@ command showed no message of its own."
     (cffi:foreign-funcall "bind" :int fd :pointer addr :uint 110 :int)))
 
 (defun %ipc-write-string (fd string)
-  "Write STRING (utf-8) to FD, newline-terminated."
-  (cffi:with-foreign-string (buf (concatenate 'string string (string #\newline)))
-    (cffi:foreign-funcall "write" :int fd :pointer buf :long
-                          (1+ (length string)) :long)))
+  "Write STRING to FD as UTF-8 followed by a newline. Write every
+encoded octet, retrying short writes and writes interrupted by a
+signal. Return the number of octets written, or NIL when write fails."
+  (let* ((octets (sb-ext:string-to-octets
+                  (concatenate 'string string (string #\newline))
+                  :external-format :utf-8))
+         (total (length octets)))
+    (cffi:with-pointer-to-vector-data (ptr octets)
+      (loop with offset = 0
+            while (< offset total)
+            do (let ((n (cffi:foreign-funcall "write" :int fd
+                                              :pointer (cffi:inc-pointer ptr offset)
+                                              :long (- total offset) :long)))
+                 (cond ((plusp n) (incf offset n))
+                       ((and (minusp n) (= (sb-alien:get-errno) sb-unix:eintr)))
+                       (t (return nil))))
+            finally (return total)))))
 
 (defun ipc-handle-connection (client-fd)
   "Read newline-terminated commands from CLIENT-FD until EOF,
@@ -217,16 +230,21 @@ given)."
                (error "cannot connect to ~A" path)))
            (%ipc-write-string fd line)
            ;; Read the reply (up to newline)
+           ;; Decode once all octets are in: a multi-octet character
+           ;; can straddle two reads
            (cffi:with-foreign-object (buf :uint8 4096)
-             (let ((acc ""))
+             (let ((acc (make-array 0 :element-type '(unsigned-byte 8)
+                                      :adjustable t :fill-pointer 0)))
                (loop
                  (let ((n (cffi:foreign-funcall "read" :int fd :pointer buf
                                                 :long 4096 :long)))
                    (when (<= n 0) (return))
-                   (setf acc (concatenate 'string
-                                          acc
-                                          (cffi:foreign-string-to-lisp buf :count n)))
-                   (when (position #\newline acc) (return))))
-               (string-trim " " (subseq acc 0 (or (position #\newline acc)
-                                                  (length acc)))))))
+                   (dotimes (i n)
+                     (vector-push-extend (cffi:mem-aref buf :uint8 i) acc))
+                   (when (find 10 acc :start (- (length acc) n)) (return))))
+               (let ((reply (sb-ext:octets-to-string
+                             (coerce acc '(simple-array (unsigned-byte 8) (*)))
+                             :external-format :utf-8)))
+                 (string-trim " " (subseq reply 0 (or (position #\newline reply)
+                                                      (length reply))))))))
       (cffi:foreign-funcall "close" :int fd :int))))
