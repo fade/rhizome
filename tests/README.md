@@ -169,3 +169,9 @@ stubbed river requests. Run with:
   of cold-starting a fresh one: pgrep parsing, adoption in start-bar
   (extras reaped, nothing launched), adopted liveness in bar-alive-p,
   and the handover flag. All subprocess calls stubbed.
+- `ipc-command-args.lisp` - IPC command lines reach their handlers
+  with each argument parsed once: select-window, pull, move-marked,
+  and resize-split take an integer argument over IPC or a string one
+  from execute-command; wse and putsel take the rest of the line,
+  spaces included; scratchpad with no argument keeps the default
+  scratchpad. Downstream calls stubbed.
