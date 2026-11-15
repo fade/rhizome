@@ -223,7 +223,9 @@ stubbed river requests. Run with:
   splits and removals), when it hides (fullscreen, scroll and floating
   workspaces, switched off), the theme settings, the ring pixels, and
   the shell surface lifecycle (one per output, redraw only on change,
-  destroyed with its output).
+  destroyed with its output), and the empty-frame colour: default,
+  configured, `nil` falling back to the outline colour, and the redraw
+  when a window arrives in or leaves the focused frame.
 - `titlebars.lisp` - float titlebars: which windows carry one (a plain
   float does; a tiled window, a window with a parent, a fixed-size
   window, a CSD-only window, a window whose rule sets `:titlebar nil`,

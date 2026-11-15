@@ -108,6 +108,34 @@
              (multiple-value-list (frame-outline-style))
              '(#x7a #xa2 #xf7 2))
 
+      ;; --- empty focused frame colour ---
+      (check "the default config declares the empty-frame colour"
+             (config-getf '(:theme) :frame-outline-empty :default :absent)
+             "#ff9e64")
+      (check "empty frame: orange by default"
+             (multiple-value-list (frame-outline-style t))
+             '(#xff #x9e #x64 2))
+      (check "occupied frame: the normal outline colour"
+             (multiple-value-list (frame-outline-style nil))
+             '(#x7a #xa2 #xf7 2))
+      (configure '(:theme (:frame-outline-empty "#00ff00")))
+      (check "configured empty-frame colour"
+             (multiple-value-list (frame-outline-style t))
+             '(0 255 0 2))
+      (configure '(:theme (:frame-outline-empty nil)))
+      (check ":frame-outline-empty nil: the focused-border colour"
+             (multiple-value-list (frame-outline-style t))
+             '(#x7a #xa2 #xf7 2))
+      (configure '(:theme (:frame-outline "#00ffff")))
+      (check ":frame-outline-empty nil: the :frame-outline colour"
+             (multiple-value-list (frame-outline-style t))
+             '(0 255 255 2))
+      (configure '(:theme (:frame-outline nil :frame-outline-empty "#ff9e64")))
+      (check "outline off: off for empty frames too"
+             (multiple-value-list (frame-outline-style t))
+             '(nil))
+      (configure '(:theme (:frame-outline t)))
+
       ;; --- which frame and output ---
       (fresh-world)
       (stub-protocol)
@@ -314,7 +342,59 @@
         (check "removed output: state dropped"
                (gethash out2 *frame-outlines*) nil)
         (check "the outline moves to the remaining output"
-               (getf (gethash out1 *frame-outlines*) :mapped) t)))
+               (getf (gethash out1 *frame-outlines*) :mapped) t))
+
+      ;; --- empty/occupied transition in the render pass ---
+      (fresh-world)
+      (stub-protocol)
+      (configure '(:theme (:frame-outline t :focused-border "#7aa2f7"
+                           :frame-outline-empty "#ff9e64")))
+      (let ((out (make-instance 'rhizome-output :proxy :fe-out
+                                                :x 0 :y 0
+                                                :width 800 :height 600))
+            (win (make-instance 'rhizome-window :proxy :fe-win)))
+        (setf (gethash :fe-out *outputs*) out)
+        (flet ((ring-pixel ()
+                 (let ((state (gethash out *frame-outlines*)))
+                   (get-pixel-argb (getf state :ptr) (getf state :w)
+                                   (getf state :h) 0 0)))
+               (frame ()
+                 (current-frame-for out (current-workspace out))))
+          (check "a frame with no window is empty"
+                 (frame-outline-empty-p (frame)) t)
+          (frame-outline-render-pass)
+          (check "empty focused frame: the ring is the empty colour"
+                 (ring-pixel) #xffff9e64)
+          ;; A window arrives in the focused frame
+          (setf (gethash :fe-win *windows*) win
+                (window-output win) out)
+          (assign-window-workspace win (current-workspace out))
+          (frame-push-window win (frame))
+          (check "a frame holding a window is not empty"
+                 (frame-outline-empty-p (frame)) nil)
+          (setf calls '())
+          (frame-outline-render-pass)
+          (check "window arrives: one redraw"
+                 (length (calls-of :commit)) 1)
+          (check "window arrives: the ring is the normal colour"
+                 (ring-pixel) #xff7aa2f7)
+          ;; Minimized, the window leaves the frame showing nothing
+          (setf (window-minimized-p win) t)
+          (check "a frame holding only a minimized window is empty"
+                 (frame-outline-empty-p (frame)) t)
+          (setf (window-minimized-p win) nil)
+          ;; The window leaves the focused frame
+          (frame-remove-window win)
+          (setf calls '())
+          (frame-outline-render-pass)
+          (check "window leaves: one redraw"
+                 (length (calls-of :commit)) 1)
+          (check "window leaves: the ring is the empty colour again"
+                 (ring-pixel) #xffff9e64)
+          (setf calls '())
+          (frame-outline-render-pass)
+          (check "unchanged empty frame: no redraw"
+                 (length (calls-of :commit)) 0))))
 
     (format t "~&=== ~D passed, ~D failed ===~%" pass fail)
     (unless (zerop fail)
