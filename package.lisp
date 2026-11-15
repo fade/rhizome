@@ -253,6 +253,11 @@
    ;; User modules
    #:load-module
    #:module-directory
+   ;; Where rhizome keeps its files (XDG base directories)
+   #:config-directory
+   #:data-directory
+   #:cache-directory
+   #:state-directory
    ;; Bar
    #:run-bar
    #:bar-switch-workspace

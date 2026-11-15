@@ -2,7 +2,14 @@
 # river runs this at compositor startup with WAYLAND_DISPLAY already set.
 # Start rhizome (Common Lisp window manager) in the background.
 export PATH="/usr/local/bin:$PATH"
-mkdir -p "$HOME/.cache/rhizome"
+
+# The cache base directory, resolved the way rhizome resolves it: an
+# unset, empty, or relative XDG_CACHE_HOME means ~/.cache.
+case "${XDG_CACHE_HOME:-}" in
+  /*) CACHE_HOME="$XDG_CACHE_HOME" ;;
+  *)  CACHE_HOME="$HOME/.cache" ;;
+esac
+mkdir -p "$CACHE_HOME/rhizome"
 
 # Import the session environment into systemd and the D-Bus
 # activation environment — any Wayland session must do this (uwsm
@@ -19,6 +26,7 @@ if [ "$XDG_CURRENT_DESKTOP" = "river" ]; then
   # along; OMARCHY_PATH is one example (Omarchy's sleep-lock
   # checks it). Imported only when set — a no-op elsewhere.
   EXTRA_ENV=""
+  # shellcheck disable=SC2043  # a list of one today; more names can join it
   for v in OMARCHY_PATH; do
     eval "test -n \"\${$v:-}\"" && EXTRA_ENV="$EXTRA_ENV $v"
   done
@@ -46,7 +54,7 @@ fi
 
 # A failed compile can leave empty/corrupt FASL files that make every
 # subsequent load fail. Purge them so a bad build never blocks startup.
-find "$HOME/.cache/common-lisp" -name '*.fasl' -size 0 -delete 2>/dev/null
+find "$CACHE_HOME/common-lisp" -name '*.fasl' -size 0 -delete 2>/dev/null
 
 # --non-interactive makes sbcl exit instead of sitting in the debugger
 # if rhizome hits an unhandled error, so the session fails cleanly.
@@ -62,7 +70,7 @@ find "$HOME/.cache/common-lisp" -name '*.fasl' -size 0 -delete 2>/dev/null
   while [ -S "$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY" ]; do
     sbcl --non-interactive \
          --eval '(ql:quickload :rhizome)' --eval '(rhizome:run)' \
-      >> "$HOME/.cache/rhizome/rhizome.log" 2>&1
+      >> "$CACHE_HOME/rhizome/rhizome.log" 2>&1
     sleep 1
   done
 ) &

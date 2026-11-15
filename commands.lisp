@@ -256,7 +256,8 @@ Usage: pull <n>"
 
 (define-command :dump-frame (output args)
   "Save the current workspace's frame layout to a file.
-Usage: dump-frame <name> (files live in ~/.local/share/rhizome/frame-dumps/)"
+Usage: dump-frame <name> (files live in frame-dumps/ in the data directory,
+by default ~/.local/share/rhizome/frame-dumps/)"
   (when args
     (dump-frame output (current-workspace output)
                 (frame-dump-pathname (first args)))))

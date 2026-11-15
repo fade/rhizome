@@ -403,6 +403,35 @@ sleep-lock, crash-watch, taildrop, bt-agent, owed, voxtype); the
 portal pin to =omanta= gives the Omarchy file picker. Nothing in
 rhizome itself depends on any of these.
 
+** Where rhizome keeps its files
+
+Rhizome follows the XDG base directory specification. Each directory
+below is =rhizome/= under the named base directory; an unset, empty,
+or relative variable falls back to the default shown.
+
+| Directory | Variable (default)                 | Files                                                      |
+|-----------+------------------------------------+------------------------------------------------------------|
+| config    | =XDG_CONFIG_HOME= (=~/.config=)      | =config.lisp=, =modules/=                                  |
+| data      | =XDG_DATA_HOME= (=~/.local/share=)   | =frame-dumps/=                                             |
+| cache     | =XDG_CACHE_HOME= (=~/.cache=)        | =rhizome.log=, =bar.log=, =snapshot.sexp=                  |
+| state     | =XDG_STATE_HOME= (=~/.local/state=)  | =takeover.sexp=, =window-state.sexp=, =launcher-history.sexp= |
+
+The WM reads the variables once at start, and the bar process and
+=session/river-init= resolve the same directories. From Lisp,
+=(rhizome:config-directory)=, =(rhizome:data-directory)=,
+=(rhizome:cache-directory)=, and =(rhizome:state-directory)= return
+them.
+
+Older versions kept their files under =~/.config=, =~/.local/share=,
+and =~/.cache=, whatever the XDG variables held. At start the WM
+moves each config, data, and state file whose place has changed into
+its new directory, once, and logs one line in =rhizome.log= naming
+each move; a move that fails logs a warning. With default variables,
+that moves the three state files from =~/.local/share/rhizome/= to
+=~/.local/state/rhizome/=. When a file exists in both places, the WM
+leaves both and reads the new one, and each start logs one warning
+naming both.
+
 ** WSLg-specific notes
 
 - Windows hijacks the Super key, so use (rhizome:set-user-mod :alt) under WSLg; on real hardware the default Super modifier applies
@@ -695,7 +724,7 @@ configurable breathing room between numbers
 ((:bar :workspaces :gap 8), default 8px). The WM exports its
 state (layout, window count, workspace, per-workspace occupancy,
 focused title) to the bar via an atomic snapshot file,
-~~/.cache/rhizome/snapshot.sexp~.
+=snapshot.sexp= in the cache directory.
 
 Each workspace has its own TYPE and its own LAYOUT:
 
@@ -914,9 +943,9 @@ its own =:on-click= / =:on-scroll-up= / =:on-scroll-down= actions
 through the same hitbox chain as text modules.
 
 The target applications are user choices, not hard dependencies —
-see the optional package list above. The user config file lives at
-~~/.config/rhizome/config.lisp~; the bar process logs to
-~~/.cache/rhizome/bar.log~. MOD+B toggles the bar.
+see the optional package list above. The user config file is
+=config.lisp= in the config directory; the bar process logs to
+=bar.log= in the cache directory (see [[Where rhizome keeps its files]]). MOD+B toggles the bar.
 
 *** Active screen
 
@@ -1006,8 +1035,8 @@ lives in =examples/config.lisp=.
 
 ** Modules
 
-A module is an ASDF system in its own directory under
-=~/.config/rhizome/modules/=:
+A module is an ASDF system in its own directory under =modules/= in
+the config directory, by default =~/.config/rhizome/modules/=:
 
 #+begin_example
 ~/.config/rhizome/modules/
@@ -1416,7 +1445,8 @@ Rules match =:key :app-id= (default), =:title=, =:any=, or
 =:identifier= (river v4's stable window IDs). Windows WITH an
 identifier are also *remembered*: their workspace and float state
 persist across WM restarts and relogins
-(~/.local/share/rhizome/window-state.sexp=), restored before rules
+(=window-state.sexp= in the state directory, by default
+=~/.local/state/rhizome/=), restored before rules
 run so explicit rules still win. Disable with
 =(configure '(:window-state (:enabled nil)))=.
 
@@ -1459,6 +1489,7 @@ rhizome/
   rhizome.asd                        — ASDF system definition
   river-protocol.lisp                 — Wayflan scanner for all protocol XMLs
   package.lisp                        — Package definition and exports
+  paths.lisp                          - Where files live (XDG base directories) and the one-time move from old places
   config.lisp                         — Configuration system (defaults, user file, live overrides)
   ipc.lisp                            — IPC command socket (stumpish equivalent, rhizome-cmd)
   prompt.lisp                         — Generalized input prompt (filtering, selection)
@@ -1599,7 +1630,7 @@ manual, 180 commands). Where rhizome stands:
       readable sexp with window numbers; restore rebuilds the tree,
       places windows by number, skips the missing, scales when the
       output changed (rhizome-cmd dump-frame / restore-frame <name>;
-      files in ~/.local/share/rhizome/frame-dumps/)
+      files in frame-dumps/ in the data directory)
 - [X] Window marks: C-t # tags windows (marked ones show * in the
       windowlist); =rhizome-cmd '(rhizome:move-marked-to-workspace N)'=
       moves them all and clears marks

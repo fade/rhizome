@@ -320,7 +320,7 @@ whole list.
 
 | Key        | Type    | Default | Applies | Effect                                                                                                                     |
 |------------+---------+---------+---------+----------------------------------------------------------------------------------------------------------------------------|
-| =:enabled= | boolean | =t=     | live    | Remember the workspace and float state of windows with a stable identifier, in =~/.local/share/rhizome/window-state.sexp=. |
+| =:enabled= | boolean | =t=     | live    | Remember the workspace and float state of windows with a stable identifier, in =~/.local/state/rhizome/window-state.sexp=. |
 
 #+begin_src lisp
 (rhizome:configure '(:window-state (:enabled nil)))

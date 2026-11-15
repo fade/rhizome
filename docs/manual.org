@@ -742,7 +742,7 @@ applications, are left out. An entry with =Terminal=true= runs in
 
 With no text typed, the applications you start most often and most
 recently come first. Launch counts live in
-=~/.local/share/rhizome/launcher-history.sexp=.
+=~/.local/state/rhizome/launcher-history.sexp=.
 
 ** Prompts
 
@@ -1042,7 +1042,7 @@ The regular expressions here are case-sensitive; begin one with
 
 River gives some windows a stable identifier. When such a window
 closes, the window manager records its workspace and whether it
-floats in =~/.local/share/rhizome/window-state.sexp=, and restores
+floats in =~/.local/state/rhizome/window-state.sexp=, and restores
 both when a window with the same identifier opens again, even after a
 restart or a new login. The remembered placement applies first and the window
 rules after it, so a rule wins. Turn this off with
@@ -1192,7 +1192,7 @@ version 4 it sends river =SIGTERM= instead.
 =rhizome-cmd detach= stops the window manager without ending the
 session. Before it exits, the window manager:
 
-- saves the session state to =~/.local/share/rhizome/takeover.sexp=,
+- saves the session state to =~/.local/state/rhizome/takeover.sexp=,
 - records the placement of every window that has an identifier,
 - closes its own surfaces, and
 - stops the bar.

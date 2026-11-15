@@ -1,8 +1,9 @@
 ;;; Rhizome configuration
 ;;;
 ;;; Configuration is a nested plist stored in *config*. Defaults are
-;;; defined by DEFAULT-CONFIG; user overrides live in
-;;; ~/.config/rhizome/config.lisp, which typically contains calls to
+;;; defined by DEFAULT-CONFIG; user overrides live in config.lisp in
+;;; the config directory ($XDG_CONFIG_HOME/rhizome/, by default
+;;; ~/.config/rhizome/), which typically contains calls to
 ;;; (rhizome:configure '(...)). Configuration can be changed live from
 ;;; the REPL - the bar and other consumers pick changes up immediately.
 
@@ -299,9 +300,9 @@ user config would otherwise spawn bars — see *bar-process-mode*)."
           (format t "~&; Rhizome: display layout failed: ~A~%" e))))))
 
 (defun config-pathname ()
-  "Pathname of the user config file."
-  (merge-pathnames #P".config/rhizome/config.lisp"
-                   (user-homedir-pathname)))
+  "Pathname of the user config file, config.lisp in the config
+directory."
+  (merge-pathnames #P"config.lisp" (config-directory)))
 
 ;;; --- Modifier keys (define once, use many) ---
 ;;;

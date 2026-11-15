@@ -1459,6 +1459,9 @@ Runs in *bar-process-mode*: this process never spawns or stops bars,
 no matter what the user config asks for."
   (setf *bar-process-mode* t)
   (setf *bar-running* t)
+  ;; the WM's environment, so the WM's directories; only the WM moves
+  ;; files
+  (resolve-base-directories)
   (load-user-config)
   (font-ensure-initialized)
   ;; The tray lives here: this process owns the StatusNotifierWatcher
@@ -1507,9 +1510,8 @@ process follows both from the WM snapshot, so neither needs a restart."
     group))
 
 (defun bar-log-path ()
-  "Pathname of the bar process's log file."
-  (merge-pathnames #P".cache/rhizome/bar.log"
-                   (user-homedir-pathname)))
+  "Pathname of the bar process's log file, in the cache directory."
+  (merge-pathnames #P"bar.log" (cache-directory)))
 
 (defun start-bar ()
   "Start the bar as its own process (no-op if one is running or being

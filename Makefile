@@ -33,7 +33,8 @@ SUITES    := animations decorations surface window-rules window-rules-reload flo
              ipc-command-args \
              layout-rule-frames \
              ipc-socket-path \
-             example-config
+             example-config \
+             xdg-paths
 
 .PHONY: all build test install docs clean help
 

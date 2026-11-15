@@ -59,9 +59,9 @@ killing the user's live bar on every test run. Only the WM process
 may start, stop, or reap bars.")
 
 (defun snapshot-pathname ()
-  "Pathname of the WM snapshot file read by the bar process."
-  (merge-pathnames #P".cache/rhizome/snapshot.sexp"
-                   (user-homedir-pathname)))
+  "Pathname of the WM snapshot file read by the bar process, in the
+cache directory."
+  (merge-pathnames #P"snapshot.sexp" (cache-directory)))
 
 (defun bar-write-snapshot (snapshot)
   "Persist the WM snapshot for the bar process (atomic write).
@@ -72,8 +72,8 @@ bar read the empty fallback, re-rendered, and each bar commit
 opened a new river sequence: a render->snapshot->bar->render
 feedback storm)."
   (handler-case
-      (let ((tmp (merge-pathnames #P".cache/rhizome/snapshot.sexp.tmp"
-                                  (user-homedir-pathname))))
+      (let ((tmp (merge-pathnames #P"snapshot.sexp.tmp"
+                                  (snapshot-pathname))))
         (ensure-directories-exist tmp)
         (with-open-file (s tmp :direction :output
                            :if-exists :supersede)
@@ -521,7 +521,11 @@ window management updates."
   ;; the supervisor below keeps the bar alive
   (setf *wm-process-mode* t)
 
-  ;; Load user configuration (~/.config/rhizome/config.lisp)
+  ;; Where every file lives, read once from the XDG variables; then
+  ;; move files left in their pre-XDG places, before anything reads them
+  (resolve-base-directories)
+  (migrate-legacy-files)
+  ;; Load user configuration (config.lisp in the config directory)
   (load-user-config)
   ;; Resolve the configured TrueType font for the in-process surfaces
   ;; (launcher, message window, prompts); falls back to the bitmap

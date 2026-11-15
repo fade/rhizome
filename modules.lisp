@@ -1,7 +1,8 @@
 ;;; modules.lisp — user modules: load-module, the StumpWM way
 ;;;
 ;;; A module is an ASDF system that lives in its own directory under
-;;; the user's module directory:
+;;; the user's module directory, modules/ in the config directory
+;;; ($XDG_CONFIG_HOME/rhizome/, by default ~/.config/rhizome/):
 ;;;
 ;;;   ~/.config/rhizome/modules/
 ;;;     my-placement/
@@ -28,13 +29,13 @@
 rebind it in tests. Defaults to the config directory's modules/.")
 
 (defun module-directory ()
-  "The user's module directory (see *module-directory*): a sibling
-of the config file — ~/.config/rhizome/modules/."
+  "The user's module directory (see *module-directory*): modules/ in
+the config directory, beside config.lisp."
   (or *module-directory*
       (setf *module-directory*
-            (make-pathname
-              :directory (append (pathname-directory (config-pathname))
-                                 '("modules"))))))
+            (merge-pathnames (make-pathname :directory
+                                            '(:relative "modules"))
+                             (config-directory)))))
 
 (defun module-subdirectories ()
   "One directory per module in the module directory, in name order."

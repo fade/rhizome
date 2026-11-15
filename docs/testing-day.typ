@@ -398,7 +398,7 @@ Exercise expose, splits, and workspace switches while the video plays.
   to workspace 5, float it, close it — then reopen it: it must
   land back on workspace 5, floating, without any rule. Log out
   and back in with it open: same result. `cat
-  ~/.local/share/rhizome/window-state.sexp` after closing shows
+  ~/.local/state/rhizome/window-state.sexp` after closing shows
   the entry.
 - *Presentation mode:* `(rhizome:configure '(:output
   (:presentation-mode :async)))` — the log must show the mode sent
@@ -512,7 +512,7 @@ Exercise expose, splits, and workspace switches while the video plays.
   the boot (river keeps rendering; the mouse works), then the
   desktop back EXACTLY as it was — same workspace showing, same
   windows in the same workspaces and frames, focus restored, bar
-  back. The takeover file (~/.local/share/rhizome/takeover.sexp)
+  back. The takeover file (~/.local/state/rhizome/takeover.sexp)
   is consumed by the restore. The same loop recovers a crashed
   WM — a WM death is a blip, not a hard reboot.
 
