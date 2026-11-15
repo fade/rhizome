@@ -66,7 +66,9 @@ session-local, and Quicklisp's own registrations are untouched."
   "Load the module (an ASDF system) NAME from the user's module
 directory. Returns :LOADED, or :ALREADY-LOADED for a system that is
 loaded, or NIL after logging why a load failed. Safe from
-config.lisp at startup and live from the REPL."
+config.lisp at startup and live from the REPL. Window rules the
+module sets with SET-WINDOW-RULES belong to the source named by the
+module's name as a keyword, so a config reload keeps them."
   (let ((system (string-downcase (string name))))
     (cond ((module-loaded-p system)
            :already-loaded)
@@ -77,7 +79,9 @@ config.lisp at startup and live from the REPL."
            ;; ASDF sees both the registry AND quicklisp's dists
            (handler-case
                (progn
-                 (asdf:load-system system)
+                 (let ((*window-rules-source*
+                         (intern (string-upcase system) :keyword)))
+                   (asdf:load-system system))
                  (format t "~&; Rhizome: module ~A loaded~%" system)
                  :loaded)
              (error (e)

@@ -256,7 +256,7 @@ cleared when none is left (see refocus-after-close)."
   "Apply the first matching window rule to WIN: assign its workspace
 or output, optionally switch the output's layout and/or follow the
 window. Returns the matched rule, if any."
-  (dolist (rule (config-get '(:window-rules)))
+  (dolist (rule (window-rules))
     (when (window-rule-matches-p win rule)
       (let ((workspace (getf rule :workspace))
             (layout (getf rule :layout))

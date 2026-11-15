@@ -282,21 +282,72 @@ query returns the candidates unchanged."
                 ((fuzzy-match-p query c) (push c fuzzy))))
         (nconc (nreverse direct) (nreverse fuzzy)))))
 
+;;; --- Window rules by source ---
+;;;
+;;; Each source of window rules owns one complete set: the config file
+;;; (:config), a module (its name as a keyword), or any other key a
+;;; caller names. Setting a source's rules replaces that source's whole
+;;; set, so a reload of the source drops a removed rule and replaces a
+;;; changed one without touching other sources. The (:window-rules ...)
+;;; config key stays the config file's own list and is matched first.
+
+(defvar *window-rule-sets* '()
+  "Alist of (source . rules) in registration order, for every source
+except the (:window-rules ...) config key. DEFVAR: a reload of this
+file keeps the sets.")
+
+(defvar *window-rules-source* :repl
+  "The source SET-WINDOW-RULES uses when none is given. Bound to
+:config while the config file loads, and to the module's name as a
+keyword while LOAD-MODULE loads a module.")
+
+(defun window-rules-for-source (source)
+  "The rule list SOURCE set with SET-WINDOW-RULES, or NIL."
+  (cdr (assoc source *window-rule-sets* :test #'equal)))
+
+(defun set-window-rules (rules &key (source *window-rules-source*))
+  "Make RULES the complete window-rule set of SOURCE, replacing any set
+SOURCE had. NIL RULES removes SOURCE. Other sources keep their sets.
+The new set takes effect at the next rule match; rules are not re-run
+over open windows. Returns RULES."
+  (let ((entry (assoc source *window-rule-sets* :test #'equal)))
+    (cond ((null rules)
+           (setf *window-rule-sets*
+                 (remove source *window-rule-sets* :key #'car :test #'equal)))
+          (entry
+           (setf (cdr entry) (copy-tree rules)))
+          (t
+           (setf *window-rule-sets*
+                 (append *window-rule-sets*
+                         (list (cons source (copy-tree rules))))))))
+  rules)
+
+(defun window-rules ()
+  "Every window rule in matching order: the (:window-rules ...) config
+list first, then each source's set in registration order."
+  (append (config-get '(:window-rules))
+          (loop for (nil . rules) in *window-rule-sets*
+                append rules)))
+
 (defun load-user-config ()
-  "Load the user's config file if it exists."
+  "Load the user's config file if it exists. Window rules the file
+sets with SET-WINDOW-RULES belong to the :config source."
   (let ((path (config-pathname)))
     (when (probe-file path)
       (format t "~&; Rhizome: loading config from ~A~%" path)
       (handler-case
-          (load path)
+          (let ((*window-rules-source* :config))
+            (load path))
         (error (e)
           (format t "~&; Rhizome: error loading config: ~A~%" e))))))
 
 (defun reload-config ()
-  "Reset to defaults, clear the user keymaps, reload the user config
-file, and re-apply. A binding the file no longer makes is gone; the
-default keymaps stay in force."
+  "Reset to defaults, clear the user keymaps and the config file's
+window rules, reload the user config file, and re-apply. A binding or
+rule the file no longer makes is gone; the default keymaps and the
+rule sets of other sources stay in force."
   (setf *config* (default-config))
+  (set-window-rules nil :source :config)
   (when (fboundp 'clear-user-keymaps)
     (funcall 'clear-user-keymaps))
   (load-user-config)
