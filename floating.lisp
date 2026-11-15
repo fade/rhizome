@@ -290,14 +290,14 @@ output."
 
 (defun frame-location (output workspace frame)
   "FRAME's location as (VALUES STRING SCREEN INDEX). STRING is
-\"group:screen:frame\": the workspace number, SCREEN (OUTPUT's 1-based
-position left to right), and INDEX (FRAME's 0-based position in
-layout order)."
+\"group:screen:frame\": the workspace's display number (see
+WORKSPACE-TO-DISPLAY), SCREEN (OUTPUT's 1-based position left to
+right), and INDEX (FRAME's 0-based position in layout order)."
   (let ((screen (1+ (or (position output (all-outputs-sorted)) 0)))
         (index (or (position frame
                              (frame-leaves (frame-tree-for output workspace)))
                    0)))
-    (values (format nil "~D:~D:~D" workspace screen index) screen index)))
+    (values (format nil "~D:~D:~D" (workspace-to-display workspace) screen index) screen index)))
 
 (defvar *last-dialog-elsewhere* nil
   "The most recent dialog that opened on a workspace its output was not
@@ -311,10 +311,10 @@ and record WIN as *last-dialog-elsewhere* for goto-last-dialog."
   (multiple-value-bind (location screen index)
       (frame-location output workspace frame)
     (show-message
-     (format nil "Dialog ~S (~A) opened on workspace ~D, screen ~D, frame ~D (~A)"
+     (format nil "Dialog ~S (~A) opened on workspace ~A, screen ~D, frame ~D (~A)"
              (or (window-title win) "untitled")
              (or (window-app-id win) "unknown app")
-             workspace screen index location)
+             (workspace-label output workspace) screen index location)
      (config-getf '(:dialogs) :notify-seconds :default 10)
      (theme-color :dialog-notice))))
 

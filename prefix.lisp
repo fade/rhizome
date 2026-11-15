@@ -439,12 +439,14 @@ commands act on. Skips when no output exists."
          ,@body))))
 
 (defun switch-workspace-relative (delta)
-  "Switch to the workspace DELTA steps away (clamped to the range)."
+  "Switch to the workspace DELTA steps away, wrapping within the
+output's workspaces."
   (let ((out (current-output)))
     (when out
-      (let ((target (+ (current-workspace out) delta)))
-        (when (<= 1 target *workspace-count*)
-          (switch-workspace target out))))))
+      (let ((count (workspace-count out)))
+        (switch-workspace (1+ (mod (+ (current-workspace out) delta -1)
+                                   count))
+                          out)))))
 
 (defun focus-frame-direction* (direction)
   "Prefix-chain wrapper: move frame focus in DIRECTION."
@@ -725,10 +727,11 @@ by setup-default-prefix-bindings, which directs the writes to
                          "next workspace")                        ; N
   (define-prefix-key 80 (lambda () (switch-workspace-relative -1))
                          "previous workspace")                    ; P
-  ;; C-t 1..9 — switch workspace directly (groups-map parity)
-  (dolist (n '(1 2 3 4 5 6 7 8 9))
+  ;; C-t 0..9: switch to the workspace with that display number
+  ;; (groups-map parity)
+  (dolist (n '(0 1 2 3 4 5 6 7 8 9))
     (define-prefix-key (+ 48 n)
-                       (lambda () (switch-workspace n (current-output)))
+                       (lambda () (switch-to-workspace-number n (current-output)))
                        (format nil "workspace ~D" n)))
   ;; C-t ' — select window by number (StumpWM's select)
   (define-prefix-key 39 (lambda () (select-window-by-number-prompt))

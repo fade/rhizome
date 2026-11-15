@@ -83,11 +83,11 @@
         (ok "workspaces count"
             (length parts) 9)
         (ok "active occupied workspace: accent pill, bold, dot"
-            (third parts) '("3" "#7aa2f7" :pill t :bold t :dot t :gap 8))
+            (third parts) '("3" "#7aa2f7" :pill t :bold t :dot t :gap 8 :cell (3 nil)))
         (ok "occupied workspace: foreground, bold, dot, no underline"
-            (second parts) '("2" "#c0caf5" :bold t :dot t :gap 8))
+            (second parts) '("2" "#c0caf5" :bold t :dot t :gap 8 :cell (2 nil)))
         (ok "empty workspace muted"
-            (first parts) '("1" "#565f89" :gap 8))
+            (first parts) '("1" "#565f89" :gap 8 :cell (1 nil)))
         (ok "every workspace part carries the gap"
             (every (lambda (p)
                      (= (getf (bar-part-flags p) :gap 0) 8))

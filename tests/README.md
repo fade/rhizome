@@ -189,6 +189,13 @@ stubbed river requests. Run with:
   through the exported API runs through execute-command, the IPC
   dispatcher, and the command palette, and describe-command shows its
   docstring; redefining it replaces the handler and the docstring.
+- `workspace-numbering.lisp` - workspace numbers, counts, and names:
+  the display base (0 or 1) at the keys, IPC, the picker, window
+  rules, and `:types`; per-screen counts and names keyed by connector
+  name; a smaller configured count moving windows to the screen's
+  last workspace; add-workspace and remove-workspace; reload-config
+  restoring the configured count; and the bar's per-screen cells and
+  clicks.
 - `shm-buffers.lisp` - layer-surface shm buffers: repeated configures
   of one surface hold one shm file, and tearing down the bar, the
   message window, the prefix capture surface, the prompt or the eval

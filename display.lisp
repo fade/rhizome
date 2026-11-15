@@ -53,7 +53,11 @@ offers it (or after the manager says finished).")
        ;; Heads are named now: a restore waiting on connector names
        ;; resolves in the next manage pass
        (when (and *wm-proxy* (saved-outputs-awaited-p))
-         (request-manage-dirty))))
+         (request-manage-dirty))
+       ;; Connector names are known now: per-screen workspace
+       ;; counts from (:workspaces :screens) apply
+       (when (fboundp 'reconcile-workspace-counts)
+         (funcall 'reconcile-workspace-counts))))
     (:finished
      (setf *output-manager* nil))))
 

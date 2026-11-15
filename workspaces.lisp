@@ -1,9 +1,9 @@
 ;;; Workspaces for Rhizome
 ;;;
-;;; StumpWM-style workspaces (groups): each output has N workspaces
-;;; (configurable via *workspace-count*), windows are stamped with the
-;;; workspace they were opened on, and switching workspaces changes
-;;; which windows the tiling engine lays out (windows on other
+;;; StumpWM-style workspaces (groups): each output has its own number
+;;; of workspaces (see workspace-numbers.lisp), windows are stamped
+;;; with the workspace they were opened on, and switching workspaces
+;;; changes which windows the tiling engine lays out (windows on other
 ;;; workspaces are hidden by the render pass, like monocle overflow).
 ;;;
 ;;; The current workspace per output is exported to the bar via the
@@ -12,7 +12,8 @@
 (in-package #:rhizome)
 
 (defparameter *workspace-count* 9
-  "Number of workspaces per output.")
+  "Number of workspaces on an output that neither (:workspaces
+:count) nor a (:workspaces :screens) entry sets.")
 
 (defparameter *workspace-layouts* (make-hash-table :test 'equal)
   "Frame-key → the workspace's tiling layout name (master-stack,
@@ -21,7 +22,8 @@ clobbers every workspace on the output. DEFVAR: reloading must
 not forget layouts.")
 
 (defvar *output-workspace* (make-hash-table)
-  "Maps outputs to their current workspace index (1..*workspace-count*).")
+  "Maps outputs to their current workspace index (1-based, up to the
+output's workspace-count).")
 
 (defvar *window-workspace* (make-hash-table)
   "Maps windows to their workspace index.")
@@ -35,7 +37,7 @@ because they are on another workspace.")
 (defun current-workspace (output)
   "The current workspace index of OUTPUT (1-based)."
   (let ((ws (gethash output *output-workspace*)))
-    (if (and ws (<= 1 ws *workspace-count*))
+    (if (and ws (<= 1 ws (workspace-count output)))
         ws
         1)))
 
@@ -102,7 +104,7 @@ registration number (the newest)."
 seat (see workspace-focus-target). When WORKSPACE has no unminimized
 window, each
 seat focused on a window of OUTPUT has its focus cleared."
-  (unless (and (<= 1 workspace *workspace-count*) output)
+  (unless (and output (valid-workspace-p output workspace))
     (return-from switch-workspace))
   (let ((old-workspace (gethash output *output-workspace*)))
     (setf (gethash output *output-workspace*) workspace)
@@ -124,7 +126,7 @@ seat focused on a window of OUTPUT has its focus cleared."
           (unless (window-minimized-p win)
             (animation-start win :dx (- (* dir slide)) :duration 160)))))
     (format t "~&; Rhizome: switched to workspace ~D~%" workspace)
-    (message "workspace ~D" workspace)
+    (message "workspace ~A" (workspace-label output workspace))
     (run-hook :workspace-changed workspace output)
     ;; Focus the workspace's window; with none, no seat may keep a
     ;; window the output no longer shows
@@ -154,7 +156,9 @@ seat focused on a window of OUTPUT has its focus cleared."
 
 (defun move-window-to-workspace (win workspace &optional output)
   "Move WIN to WORKSPACE (1-based), switching to it if OUTPUT is given."
-  (unless (<= 1 workspace *workspace-count*)
+  (unless (valid-workspace-p (or output (window-output win)
+                                 (current-output))
+                             workspace)
     (return-from move-window-to-workspace))
   ;; Leave the old workspace's frame tree; adopted into the target
   ;; workspace's current frame on its next manage pass
@@ -208,7 +212,7 @@ cleared when none is left (see refocus-after-close)."
               (move-window-to-workspace win workspace)))
           (clear-window-marks)
           (message "~D moved to workspace ~D"
-                   (length marked) workspace)))))
+                   (length marked) (workspace-to-display workspace))))))
 
 ;;; --- Window rules ---
 ;;;
@@ -321,7 +325,10 @@ focuses the window."
           ;; Place on a specific output (1-based index)
           (setf (window-output win)
                 (nth (1- output-index) (all-outputs-sorted))))
-        (when (and workspace (<= 1 workspace *workspace-count*))
+        (when workspace
+          ;; :workspace is a display number or a name
+          (setf workspace (window-rule-workspace win workspace)))
+        (when workspace
           (let ((out (or (window-output win) (find-output-for-window win))))
             ;; Leave any tree the window already joined
             (unless (and (eql (window-workspace win) workspace)
@@ -501,7 +508,10 @@ takeover/relogin clustering bug."
                    (not (window-floating-p win)))
           (float-window win :animate nil))
         (when (getf state :workspace)
-          (assign-window-workspace win (getf state :workspace))
+          (assign-window-workspace
+            win (fit-saved-workspace (getf state :workspace)
+                                     (or (window-output win)
+                                         (current-output))))
           (setf (window-minimized-p win) nil)
           ;; Stamp the output so the manage pass adopts the window
           ;; onto ITS remembered output and workspace

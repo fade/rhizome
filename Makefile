@@ -35,7 +35,7 @@ SUITES    := animations decorations surface window-rules window-rules-reload flo
              layout-rule-frames \
              ipc-socket-path \
              example-config \
-             xdg-paths
+             xdg-paths workspace-numbering
 
 .PHONY: all build test install docs clean help
 

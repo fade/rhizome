@@ -456,8 +456,8 @@ pointer grabs. Change it live:
 | MOD+J          | Focus next window                   |
 | MOD+K          | Focus previous window               |
 | MOD+Space      | Cycle layout (master-stack/even/monocle) |
-| MOD+1..9       | Switch to workspace 1..9               |
-| MOD+Shift+1..9 | Move focused window to workspace N    |
+| MOD+0..9       | Switch to the workspace with that number |
+| MOD+Shift+0..9 | Move focused window to that workspace    |
 | MOD+E          | Launch Emacs                        |
 | MOD+D          | Application launcher                |
 | MOD+B          | Toggle the status bar               |
@@ -613,7 +613,7 @@ Default chains (the StumpWM classics, mapped to rhizome features):
 | C-t B   | Balance all splits     |
 | C-t n/p | Pull next/previous hidden window into the frame |
 | C-t '   | Select window by number (prompt) |
-| C-t 1-9 | Switch workspace       |
+| C-t 0-9 | Switch workspace       |
 | C-t N/P | Next/previous workspace|
 | C-t ←↑↓→| Move focus between frames |
 | C-t M ←↑↓→ | Move the focused window to that frame |
@@ -713,18 +713,61 @@ started so far.
 
 ** Workspaces
 
-Nine StumpWM-style workspaces per output. Windows open on the current
-workspace; =MOD+1..9= switches workspaces, =MOD+Shift+1..9= moves the focused
-window (and follows it). Windows on other workspaces are hidden and reappear
-on return. The current workspace is shown in the bar's =:workspaces=
-module with the active number on an accent pill,
-occupied workspaces bold, in the foreground colour, with a small dot
-below the number, empty ones muted, and
-configurable breathing room between numbers
+StumpWM-style workspaces, nine per output by default. Windows open on
+the current workspace; =MOD+0..9= switches workspaces, =MOD+Shift+0..9=
+moves the focused window (and follows it). Windows on other workspaces
+are hidden and reappear on return. The current workspace is shown in
+the bar's =:workspaces= module on an accent pill, occupied workspaces
+bold, in the foreground colour, with a small dot below the number,
+empty ones muted, and configurable breathing room between cells
 ((:bar :workspaces :gap 8), default 8px). The WM exports its
 state (layout, window count, workspace, per-workspace occupancy,
 focused title) to the bar via an atomic snapshot file,
 =snapshot.sexp= in the cache directory.
+
+*** Numbers, counts, and names
+
+#+begin_src lisp
+(rhizome:configure
+  '(:workspaces (:index-base 0
+                 :count 9
+                 :screens (("DVI-D-1" :count 6 :names ("mail" "web"))
+                           ("HDMI-A-1" :count 4)))))
+#+end_src
+
+- =:index-base= (0 or 1, default 1) is the number the first workspace
+  shows as. Keys, the bar, IPC, the workspace picker, menus, messages,
+  window rule =:workspace= values, and =:types= keys all use it. With
+  base 0, =MOD+0= shows the first workspace. The Lisp API
+  (=switch-workspace=, =current-workspace=, =window-workspace=, the
+  =:workspace-changed= hook) numbers from 1 whatever the base;
+  =workspace-to-display= and =workspace-from-display= convert, and
+  =switch-to-workspace-number= takes a displayed number.
+- =:count= is the number of workspaces on a screen without its own
+  entry (default 9, from =*workspace-count*=).
+- =:screens= entries are keyed by connector name (as =wlr-randr=
+  prints it) and set that screen's =:count= and =:names=. A name
+  replaces the number in the bar cell and the picker; a workspace
+  without a name shows its number. A window rule's =:workspace= and
+  =rhizome-cmd switch-workspace= take a name as well as a number.
+- The digit keys reach displayed numbers 0 to 9 only. Further
+  workspaces are reached with =C-t N= and =C-t P= (which wrap within
+  the screen), the picker (=MOD+G=, numbers or names), and IPC. A
+  number the screen does not have shows a message naming its range;
+  a window rule naming one places nothing and logs a line.
+- Lowering a screen's count in the config moves the windows on the
+  workspaces that no longer exist to the screen's last workspace, with
+  one log line. Saved window state is not rewritten: a saved workspace
+  past the count restores to the last one.
+- =add-workspace= and =remove-workspace= (command palette,
+  =rhizome-cmd add-workspace [CONNECTOR]=, or Lisp with an output)
+  add a workspace to a screen or remove its last one. The windows of
+  a removed workspace move to the workspace before it, and a screen
+  keeps at least one. The change lasts until rhizome restarts or
+  =reload-config= runs, when the configured count applies again.
+- =rhizome-cmd switch-workspace N [CONNECTOR]= and
+  =rhizome-cmd current-workspace [CONNECTOR]= act on the named screen;
+  without one they act on the first.
 
 Each workspace has its own TYPE and its own LAYOUT:
 
@@ -756,7 +799,7 @@ with the commands below; failing that, the output under the pointer;
 failing that, the first output.
 
 New windows open on the current output, in its current frame. Prefix
-commands, =MOD+1..9=, =MOD+J/K=, =MOD+Space= and every IPC command act
+commands, =MOD+0..9=, =MOD+J/K=, =MOD+Space= and every IPC command act
 on the current output too. IPC commands that report or change a
 workspace therefore follow the output you are working on.
 

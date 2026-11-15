@@ -213,10 +213,13 @@ window. All keys apply live.
 
 Replaced whole by each =configure= call.
 
-| Key               | Type    | Default         | Applies | Effect                                                                                                       |
-|-------------------+---------+-----------------+---------+--------------------------------------------------------------------------------------------------------------|
-| =:types=          | plist   | =nil=           | live    | Group types by workspace number, for example =(2 :floating 5 :floating)=. A workspace not listed is =:tile=. |
-| =:default-layout= | keyword | =:master-stack= | live    | Layout of a workspace that has not had one set.                                                              |
+| Key               | Type    | Default         | Applies | Effect                                                                                                                                                |
+|-------------------+---------+-----------------+---------+-------------------------------------------------------------------------------------------------------------------------------------------------------|
+| =:types=          | plist   | =nil=           | live    | Group types by workspace number, for example =(2 :floating 5 :floating)=. A workspace not listed is =:tile=.                                          |
+| =:default-layout= | keyword | =:master-stack= | live    | Layout of a workspace that has not had one set.                                                                                                       |
+| =:index-base=     | integer | =1=             | live    | The number the first workspace shows as, 0 or 1, on the keys, the bar, IPC, the picker, messages, window rule =:workspace= values, and =:types= keys. |
+| =:count=          | integer | =9= (unset)     | live    | Workspaces on a screen without its own =:screens= entry.                                                                                              |
+| =:screens=        | list    | =nil= (unset)   | live    | Per screen, keyed by connector name: =(("HDMI-A-1" :count 6 :names ("mail" "web")))=. A missing name shows the number.                                |
 
 #+begin_src lisp
 (rhizome:configure '(:workspaces (:types (9 :floating)

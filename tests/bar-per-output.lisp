@@ -279,7 +279,11 @@
          (head (bar-head root 11)))
     (setf *po-snapshot* (po-snap) *po-commands* nil
           (gethash :surface head) :dvi-surface
-          (gethash :hitboxes head) (list (list :workspaces 0 72))
+          ;; the workspaces module, and the cell of workspace 3 in it
+          (gethash :hitboxes head) (list (list :workspaces 0 72)
+                                         (list (list :workspace-cell
+                                                     (list 3 nil))
+                                               16 24))
           (gethash :hitboxes (bar-head root 10)) nil
           (gethash :surface (bar-head root 10)) :hdmi-surface
           *bar-state* root)

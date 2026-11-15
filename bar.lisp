@@ -309,23 +309,30 @@ segment while shown unless the bar configuration places :echo itself."
         "")))
 
 (defun bar-module-workspaces ()
-  "Workspace numbers of the bar's output with breathing room, coloured
-by the :bar-workspace-current, :bar-workspace-occupied, and
-:bar-workspace-empty elements. Occupancy comes from the output's
-:occupied list (workspace numbers with visible windows). Each state
-also takes its non-hue cue from *state-cues*: the current workspace
-sits on a pill, and an occupied one (current or not) is bold with a
-dot below it."
+  "One cell per workspace of the bar's output, labelled by name or
+display number, coloured by the :bar-workspace-current,
+:bar-workspace-occupied, and :bar-workspace-empty elements. Occupancy
+comes from the output's :occupied list (workspace numbers with visible
+windows). Each state also takes its non-hue cue from *state-cues*: the
+current workspace sits on a pill, and an occupied one (current or not)
+is bold with a dot below it. Each part carries :cell (DISPLAY-NUMBER
+CONNECTOR) for clicks."
   (let* ((snapshot (bar-view))
          (current (getf snapshot :workspace 1))
          (count (getf snapshot :workspace-count 9))
+         (base (getf snapshot :index-base 1))
+         (connector (getf snapshot :connector))
+         (labels (or (getf snapshot :labels)
+                     (loop for i from 1 to count
+                           collect (princ-to-string (+ i base -1)))))
          (occupied (getf snapshot :occupied))
          (accent (theme-color :bar-workspace-current))
          (fg (theme-color :bar-workspace-occupied))
          (muted (theme-color :bar-workspace-empty))
          (gap (config-getf '(:bar :workspaces) :gap :default 8)))
-    (loop for i from 1 to count
-          collect (list* (format nil "~A" i)
+    (loop for label in labels
+          for i from 1
+          collect (list* label
                          (cond ((= i current) accent)
                                ((member i occupied) fg)
                                (t muted))
@@ -334,7 +341,9 @@ dot below it."
                                  (if (member i occupied)
                                      (state-cue-flags :workspace-occupied)
                                      (state-cue-flags :workspace-empty))
-                                 (list :gap gap))))))
+                                 (list :gap gap
+                                       :cell (list (+ i base -1)
+                                                   connector)))))))
 
 (defun bar-module-battery ()
   "Battery percentage from /sys/class/power_supply, e.g. \"75%\"."
@@ -884,6 +893,15 @@ for MODULE. Returns the x after the module plus gap."
                 (dotimes (dx 2)
                   (bar-set-pixel ptr width height (+ dx0 dx) (+ dy0 dy)
                                  r g b)))))
+          ;; A workspace cell's click region: its drawn text plus
+          ;; half the gap on either side
+          (when (getf flags :cell)
+            (let* ((gap (or (getf flags :gap) 0))
+                   (half (floor gap 2)))
+              (push (list (list :workspace-cell (getf flags :cell))
+                          (- x half)
+                          (+ x tw (- gap half)))
+                    *bar-hitboxes*)))
           ;; The active-workspace marker: a rounded accent PILL
           ;; blended behind the text (radius 4, inset).
           (when (getf flags :pill)
@@ -986,7 +1004,10 @@ after it."
                      (>= *bar-pointer-x* 0) (< *bar-pointer-x* width))
             (multiple-value-bind (ar ag ab) (theme-rgb :bar-hover)
               (dolist (hb *bar-hitboxes*)
-                (when (and (<= (second hb) *bar-pointer-x*)
+                ;; workspace cells sit inside their module's box
+                (when (and (not (and (consp (first hb))
+                                     (eq (first (first hb)) :workspace-cell)))
+                           (<= (second hb) *bar-pointer-x*)
                            (< *bar-pointer-x* (third hb)))
                   (fill-rounded-rect ptr width height
                                      (second hb) 2
@@ -1198,24 +1219,36 @@ entries carry their actions inline."
 (defun bar-handle-click (x)
   "Handle a left click at X: run the module's :on-click command."
   (let* ((hit (bar-hit-at x))
-         (module (first hit)))
-    (when module
+         (module (first hit))
+         (cell (find-if (lambda (hb)
+                          (and (consp (first hb))
+                               (eq (first (first hb)) :workspace-cell)
+                               (<= (second hb) x)
+                               (< x (third hb))))
+                        (if *bar-pointer-head*
+                            (gethash :hitboxes *bar-pointer-head*)
+                            *bar-hitboxes*))))
+    (when (or module cell)
       (cond
+        ;; Workspace cell: switch to it on this bar's screen via IPC,
+        ;; by connector name, else by wl_output global name
+        (cell
+         (destructuring-bind (number connector) (second (first cell))
+           (let ((entry (bar-pointer-entry)))
+             (format t "~&; Rhizome: bar: click workspace ~A~%" number)
+             (bar-run-command
+               (if (or connector (null (getf entry :wl-output)))
+                   (format nil "rhizome-cmd switch-workspace ~A~@[ ~A~]"
+                           number connector)
+                   (format nil "rhizome-cmd \"(rhizome:bar-switch-workspace ~D ~D)\""
+                           (- number (getf entry :index-base 1) -1)
+                           (getf entry :wl-output)))))))
         ;; Tray item: Activate / SecondaryActivate on the item
         ((and (listp module) (getf module :name))
          (format t "~&; Rhizome: bar: tray click ~A~%" (getf module :name))
          (tray-click module))
-        ;; Workspace numbers: switch to the clicked workspace via IPC
-        ((eq module :workspaces)
-         (let ((workspace (1+ (floor (- x (second hit)) 8)))
-               (output (getf (bar-pointer-entry) :wl-output)))
-           (when (<= 1 workspace (getf (bar-snapshot) :workspace-count 9))
-             (format t "~&; Rhizome: bar: click workspace ~D~%" workspace)
-             (bar-run-command
-               (if output
-                   (format nil "rhizome-cmd \"(rhizome:bar-switch-workspace ~D ~D)\""
-                           workspace output)
-                   (format nil "rhizome-cmd switch-workspace ~D" workspace))))))
+        ;; The workspaces module outside any cell does nothing
+        ((eq module :workspaces))
         (t
          (format t "~&; Rhizome: bar: click on ~A~%" module)
          (let ((command (bar-module-action module :on-click)))

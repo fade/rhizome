@@ -77,7 +77,7 @@ geometry and trees are live values."
               (and f (window-identifier f)))
             :trees
             (loop for out in (all-outputs-sorted)
-                  append (loop for ws from 1 to *workspace-count*
+                  append (loop for ws from 1 to (workspace-count out)
                                 for tree = (ignore-errors
                                              (frame-tree-for out ws))
                                 when (and tree
@@ -147,9 +147,9 @@ monitor unplugged mid-swap) are skipped."
   (when *takeover-state*
     (dolist (pair (getf *takeover-state* :outputs))
       (let ((out (find-output-by-connector (car pair))))
-        (when (and out (cdr pair)
-                   (<= 1 (cdr pair) *workspace-count*))
-          (setf (gethash out *output-workspace*) (cdr pair))
+        (when (and out (integerp (cdr pair)) (<= 1 (cdr pair)))
+          (setf (gethash out *output-workspace*)
+                (fit-saved-workspace (cdr pair) out))
           (format t "~&; Rhizome: takeover: output ~A → workspace ~D~%"
                   (car pair) (cdr pair)))))))
 
@@ -166,9 +166,6 @@ registered; see RESTORE-WINDOW-OUTPUT."
       (when entry
         (handler-case
             (progn
-              (when (and (getf entry :workspace)
-                         (<= 1 (getf entry :workspace) *workspace-count*))
-                (assign-window-workspace win (getf entry :workspace)))
               ;; Stamp the output so the manage pass adopts the
               ;; window onto its remembered output and workspace,
               ;; not the current ones
@@ -176,6 +173,11 @@ registered; see RESTORE-WINDOW-OUTPUT."
               ;; The takeover entry supersedes a deferred window-state
               ;; output; apply-takeover-trees re-homes the window
               (remhash win *pending-window-outputs*)
+              (when (and (integerp (getf entry :workspace))
+                         (<= 1 (getf entry :workspace)))
+                (assign-window-workspace
+                  win (fit-saved-workspace (getf entry :workspace)
+                                           (window-output win))))
               (when (getf entry :minimized)
                 (setf (window-minimized-p win) t))
               (when (getf entry :float)

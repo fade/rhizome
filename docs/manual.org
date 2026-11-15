@@ -228,8 +228,8 @@ Windows takes the Super key, so use =:alt= there.
 | MOD+J            | Focus the next window in the current frame.                       |
 | MOD+K            | Focus the previous window in the current frame.                   |
 | MOD+Space        | Cycle the layout: master-stack, even, monocle.                    |
-| MOD+1 to MOD+9   | Switch to workspace 1 to 9.                                       |
-| MOD+Shift+1 to 9 | Move the focused window to that workspace and follow it.          |
+| MOD+0 to MOD+9   | Switch to the workspace with that display number.                 |
+| MOD+Shift+0 to 9 | Move the focused window to that workspace and follow it.          |
 | MOD+B            | Hide or show the bar.                                             |
 | MOD+W            | Open the window list.                                             |
 | MOD+G            | Open the workspace picker.                                        |
@@ -292,9 +292,9 @@ Move the prefix with =set-prefix-key= (see [[*Changing key bindings][Changing ke
 | C-t p           | Show the previous hidden window in the current frame.             |
 | C-t '           | Prompt for a window number and focus that window.                 |
 | C-t #           | Mark or unmark the focused window.                                |
-| C-t 1 to C-t 9  | Switch to workspace 1 to 9.                                       |
-| C-t N           | Switch to the next workspace.                                     |
-| C-t P           | Switch to the previous workspace.                                 |
+| C-t 0 to C-t 9  | Switch to the workspace with that display number.                 |
+| C-t N           | Switch to the next workspace, wrapping after the last.            |
+| C-t P           | Switch to the previous workspace, wrapping before the first.      |
 | C-t l           | Cycle the workspace's group type: tile, scroll, floating.         |
 | C-t v           | Turn the scroll ribbon on or off for the workspace.               |
 | C-t , and C-t . | Focus the ribbon column to the left or right.                     |

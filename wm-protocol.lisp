@@ -104,8 +104,14 @@ pass, where find-output-for-window calls current-output instead.")
 :workspace, :layout, :windows and :occupied describe what OUTPUT shows.
 :current is true when OUTPUT is CURRENT.
 :bar is true when OUTPUT carries a bar.
-:primary is true when OUTPUT is PRIMARY, the bar holding the tray."
+:primary is true when OUTPUT is PRIMARY, the bar holding the tray.
+:connector is OUTPUT's connector name, or NIL while unknown.
+:index-base is the display base (see WORKSPACE-INDEX-BASE).
+:workspace-count is OUTPUT's number of workspaces.
+:labels holds one label per workspace: its name, else its display
+number."
   (let ((workspace (current-workspace output))
+        (count (workspace-count output))
         (occupied nil))
     (dolist (win (windows-on-output output))
       (let ((ws (window-workspace win)))
@@ -119,7 +125,12 @@ pass, where find-output-for-window calls current-output instead.")
           :occupied (sort occupied #'<)
           :current (eq output current)
           :bar (bar-output-selected-p output)
-          :primary (eq output primary))))
+          :primary (eq output primary)
+          :connector (output-connector-name output)
+          :index-base (workspace-index-base)
+          :workspace-count count
+          :labels (loop for ws from 1 to count
+                        collect (workspace-label output ws)))))
 
 (defvar *pushed-settings-memo* nil
   "(CONFIG THEME SETTINGS) from the last BAR-PUSHED-SETTINGS call. The
@@ -174,7 +185,7 @@ spans every output. :settings holds the bar's configuration and theme
     (list :layout (getf here :layout)
           :windows (getf here :windows 0)
           :workspace (getf here :workspace)
-          :workspace-count *workspace-count*
+          :workspace-count (getf here :workspace-count *workspace-count*)
           :bar-hidden (not (config-getf '(:bar) :enabled :default t))
           :echo *bar-echo*
           :occupied (let ((occ nil))

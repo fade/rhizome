@@ -21,12 +21,13 @@ and :tile is the absence of both.")
 (defun workspace-type (output workspace)
   "The workspace's group type: :SCROLL, :FLOATING or :TILE. The
 in-session hash wins; config-declared defaults come next via
-(:workspaces (:types (2 :floating)))."
+(:workspaces (:types (2 :floating))), keyed by display number (see
+workspace-index-base)."
   (cond ((scroll-workspace-p output workspace) :scroll)
         ((gethash (frame-key output workspace) *workspace-types*)
          :floating)
         ((let ((types (config-getf '(:workspaces) :types)))
-           (getf types workspace)))
+           (getf types (workspace-to-display workspace))))
         (t :tile)))
 
 (defun unfloat-all (output workspace)
@@ -63,7 +64,7 @@ the ribbon, :floating un-ribbons into a cascade of floats."
      (setf (gethash (frame-key output workspace) *workspace-types*)
            :floating)
      (float-all output workspace)
-     (message "workspace ~D: floating" workspace)
+     (message "workspace ~A: floating" (workspace-label output workspace))
      (run-hook :layout-changed output :floating)
      (request-manage-dirty))
     (:tile
@@ -71,7 +72,7 @@ the ribbon, :floating un-ribbons into a cascade of floats."
      (when (scroll-workspace-p output workspace)
        (scroll-exit output workspace))
      (unfloat-all output workspace)
-     (message "workspace ~D: tiling" workspace)
+     (message "workspace ~A: tiling" (workspace-label output workspace))
      (run-hook :layout-changed output :tile)
      (request-manage-dirty))
     (t (message "group type must be :tile, :scroll or :floating"))))

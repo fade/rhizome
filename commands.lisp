@@ -252,7 +252,8 @@ Usage: pull <n>"
   (when args
     (let ((ws (or (command-integer-argument (first args))
                   -1)))
-      (move-marked-to-workspace ws))))
+      ;; WS is a display number.
+      (move-marked-to-workspace (workspace-from-display ws)))))
 
 (define-command :dump-frame (output args)
   "Save the current workspace's frame layout to a file.
@@ -579,15 +580,51 @@ The brightnessctl exit status is ignored."
 ;;; --- IPC-facing commands (see ipc.lisp) ---
 
 (define-command :switch-workspace (output args)
-  "Switch to workspace N. Usage: switch-workspace <n>"
+  "Switch to workspace N, a display number or a workspace name, on
+the screen with connector CONNECTOR if given.
+Usage: switch-workspace <n|name> [connector]"
   (when args
-    (switch-workspace (first args) output)
-    (format nil "workspace ~A" (first args))))
+    (let ((target (command-target-output output (second args))))
+      (if (null target)
+          (format nil "no output ~A" (second args))
+          (let ((workspace (workspace-from-designator (first args) target)))
+            (if (valid-workspace-p target workspace)
+                (progn
+                  (switch-workspace workspace target)
+                  (format nil "workspace ~A"
+                          (workspace-label target workspace)))
+                (workspace-range-text target (first args))))))))
 
 (define-command :current-workspace (output args)
-  "Report the current workspace number."
-  (declare (ignore args))
-  (format nil "~A" (current-workspace (or output (current-output)))))
+  "Report the current workspace's display number, on the screen with
+connector CONNECTOR if given. Usage: current-workspace [connector]"
+  (let ((target (command-target-output (or output (current-output))
+                                       (first args))))
+    (if (and (null target) args)
+        (format nil "no output ~A" (first args))
+        (format nil "~A" (workspace-to-display (current-workspace target))))))
+
+(define-command :add-workspace (output args)
+  "Add a workspace to the screen with connector CONNECTOR, or the
+current screen, until the next restart or reload-config.
+Usage: add-workspace [connector]"
+  (let ((target (command-target-output (or output (current-output))
+                                       (first args))))
+    (if target
+        (format nil "~D workspaces" (add-workspace target))
+        (format nil "no output ~A" (first args)))))
+
+(define-command :remove-workspace (output args)
+  "Remove the last workspace of the screen with connector CONNECTOR,
+or the current screen, until the next restart or reload-config. Its
+windows move to the workspace before it; a screen keeps at least one.
+Usage: remove-workspace [connector]"
+  (let ((target (command-target-output (or output (current-output))
+                                       (first args))))
+    (if target
+        (format nil "~D workspaces"
+                (or (remove-workspace target) (workspace-count target)))
+        (format nil "no output ~A" (first args)))))
 
 ;;; --- Multiple outputs (heads.lisp) ---
 

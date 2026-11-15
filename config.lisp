@@ -128,6 +128,13 @@ Returns (values value found-p)."
                  :default-layout :master-stack
                  ;; the layout untouched workspaces use;
                  ;; switch-layout stores per-workspace
+                 :index-base 1
+                 ;; the number the first workspace shows as (0 or
+                 ;; 1) wherever a workspace number is shown or typed.
+                 ;; Also :count N (workspaces on a screen without
+                 ;; its own entry) and :screens (("HDMI-A-1" :count
+                 ;; 6 :names ("mail" "web"))), keyed by connector
+                 ;; name; see workspace-numbers.lisp
                  )
     :gaps (:inner 6
            ;; Pixels of breathing room around each tiled window.
@@ -286,6 +293,8 @@ user config would otherwise spawn bars — see *bar-process-mode*)."
       (handler-case (funcall (symbol-function 'display-apply-layout))
         (error (e)
           (format t "~&; Rhizome: display layout failed: ~A~%" e))))
+    (when (fboundp 'reconcile-workspace-counts)
+      (funcall (symbol-function 'reconcile-workspace-counts)))
     (when (fboundp 'theme-apply-config)
       (funcall (symbol-function 'theme-apply-config)))))
 
@@ -426,9 +435,13 @@ rules the file sets with SET-WINDOW-RULES belong to the :config source."
 window rules, forget loaded themes so theme files are read again,
 reload the user config file, and re-apply. A binding or rule the file
 no longer makes is gone; the default keymaps and the rule sets of other
-sources stay in force."
+sources stay in force. Workspace counts set by add-workspace and
+remove-workspace return to the configured ones."
   (setf *config* (default-config))
   (set-window-rules nil :source :config)
+  ;; Counts set by add-workspace and remove-workspace end here
+  (when (fboundp 'clear-workspace-count-overrides)
+    (funcall 'clear-workspace-count-overrides))
   (when (fboundp 'clear-user-keymaps)
     (funcall 'clear-user-keymaps))
   (when (fboundp 'clear-theme-cache)

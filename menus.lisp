@@ -70,9 +70,11 @@
                   (lambda (w) (toggle-fullscreen w)))
             (cons "Close" (lambda (w) (close-window w))))
       ;; Move-to-workspace entries, skipping the window's own
-      (loop for n from 1 to *workspace-count*
+      (loop with out = (or (and win (window-output win)) (current-output))
+            for n from 1 to (workspace-count out)
             unless (eql n cur)
-              collect (cons (format nil "Move to workspace ~D" n)
+              collect (cons (format nil "Move to workspace ~A"
+                                    (workspace-label out n))
                             (lambda (w)
                               (assign-window-workspace w n)
                               (setf (window-minimized-p w) nil)
