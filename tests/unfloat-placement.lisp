@@ -70,6 +70,26 @@
                         *windows*))
              (leaves (out)
                (frame-leaves (frame-tree-for out 1)))
+             (grid (out a)
+               ;; Split A's root into four quarters, tree order
+               ;; top-left (A), bottom-left, top-right, bottom-right
+               (focus-only a)
+               (split-current-frame out 1 :horizontal)
+               (split-current-frame out 1 :vertical)
+               (setf (gethash (frame-key out 1) *current-frames*)
+                     (third (leaves out)))
+               (focus-only nil)
+               (split-current-frame out 1 :vertical)
+               (apply-layout-for-output out))
+             (forget-size (win)
+               ;; No committed or float size: the centre is unknown
+               (setf (window-width win) 0
+                     (window-height win) 0
+                     (window-float-width win) nil
+                     (window-float-height win) nil))
+             (siblings-p (w1 w2)
+               (eq (frame-parent (window-frame w1))
+                   (frame-parent (window-frame w2))))
              (leaf-index (out win)
                (position (window-frame win) (leaves out)))
              (retile (out win)
@@ -134,10 +154,95 @@
         (apply-layout-for-output out)
         (let ((b (float-at :up-d2 out 1300 300)))
           (retile out b)
-          (ok "with no empty frame the focused frame splits as before"
+          (ok "with no empty frame the only frame splits"
               (list (length (leaves out)) (leaf-index out a)
                     (leaf-index out b))
               '(2 0 1))))
+
+      ;; --- F: two empty frames equally near the centre ---
+
+      (let* ((out (mk-out :up-f-out))
+             (a (root-win :up-f1 out)))
+        (grid out a)
+        (let ((d (mk-win :up-f2 out)))
+          (frame-push-window d (fourth (leaves out))))
+        (apply-layout-for-output out)
+        ;; Centre (760, 340): 200 px from bottom-left and top-right
+        (let ((b (float-at :up-f3 out 560 190)))
+          (retile out b)
+          (ok "a tie on distance goes to the first empty frame in tree order"
+              (list (length (leaves out)) (leaf-index out b))
+              '(4 1))))
+
+      ;; --- G: no known centre ---
+
+      (let* ((out (mk-out :up-g-out))
+             (a (root-win :up-g1 out)))
+        (grid out a)
+        ;; Its last position sits over the bottom-right frame
+        (let ((b (float-at :up-g2 out 1500 800)))
+          (forget-size b)
+          (retile out b)
+          (ok "a float with no known centre takes the first empty frame"
+              (list (length (leaves out)) (leaf-index out b))
+              '(4 1))))
+
+      ;; --- H: no empty frame splits the largest, not the focused ---
+
+      (let* ((out (mk-out :up-h-out))
+             (a (root-win :up-h1 out)))
+        (focus-only a)
+        (split-current-frame out 1 :horizontal 1/4)
+        (let ((c (mk-win :up-h2 out)))
+          (frame-push-window c (second (leaves out)))
+          (apply-layout-for-output out)
+          (focus-only a)
+          ;; Centre (300, 450): over A's narrow frame
+          (let ((b (float-at :up-h3 out 100 300)))
+            (retile out b)
+            (ok "with no empty frame the largest frame splits"
+                (list (length (leaves out)) (frame-width (window-frame a))
+                      (siblings-p b c) (leaf-index out b))
+                '(3 480 t 2)))))
+
+      ;; --- I: equal largest frames, the one nearest the centre ---
+
+      (let* ((out (mk-out :up-i-out))
+             (a (root-win :up-i1 out)))
+        (focus-only a)
+        (split-current-frame out 1 :horizontal)
+        (let ((c (mk-win :up-i2 out)))
+          (frame-push-window c (second (leaves out)))
+          (apply-layout-for-output out)
+          (focus-only a)
+          ;; Centre (1500, 450): over C's frame
+          (let ((b (float-at :up-i3 out 1300 300)))
+            (retile out b)
+            (ok "of equal largest frames the one nearest the centre splits"
+                (list (length (leaves out)) (siblings-p b c)
+                      (leaf-index out b))
+                '(3 t 2)))))
+
+      ;; --- J: equal largest frames, no known centre ---
+
+      (let* ((out (mk-out :up-j-out))
+             (a (root-win :up-j1 out)))
+        (focus-only a)
+        (split-current-frame out 1 :horizontal)
+        (let ((c (mk-win :up-j2 out)))
+          (frame-push-window c (second (leaves out)))
+          (apply-layout-for-output out)
+          ;; C's frame is the command frame
+          (focus-only c)
+          (setf (gethash (frame-key out 1) *current-frames*)
+                (window-frame c))
+          (let ((b (float-at :up-j3 out 1300 300)))
+            (forget-size b)
+            (retile out b)
+            (ok "of equal largest frames with no known centre the first splits"
+                (list (length (leaves out)) (siblings-p b a)
+                      (leaf-index out b))
+                '(3 t 1)))))
 
       ;; --- E: the float's own output decides ---
 

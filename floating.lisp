@@ -79,11 +79,11 @@ and maximize ride this)."
         (request-manage-dirty))))
 
 (defun unfloat-window (win)
-  "Return WIN to the tiling. WIN enters an empty frame of its
-workspace on its output: the one under its centre, else the one
-nearest its centre (see retile-empty-frame). With no empty frame the
-next manage pass places it as a new window, in the frame the
-placement policy picks."
+  "Return WIN to the tiling, on its workspace and output: into the
+empty frame under its centre, else the empty frame nearest its
+centre, else a new half of the largest frame (see
+retile-target-frame). When no frame qualifies, the next manage pass
+places WIN as a new window, in the frame the placement policy picks."
   (unless (window-floating-p win)
     (return-from unfloat-window))
   (remhash win *float-centre-pending*)
