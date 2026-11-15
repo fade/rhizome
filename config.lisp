@@ -78,6 +78,10 @@ Returns (values value found-p)."
           :padding 6
           :opacity 0.9
           :background "#1a1b26"
+          ;; with more than one output, the current output's bar
+          ;; takes :background-active; the others take
+          ;; :background-inactive, or :background when it is unset
+          :background-active "#392e7a"
           :foreground "#c0caf5"
           :accent "#7aa2f7"
           :muted "#565f89"
@@ -139,6 +143,14 @@ Returns (values value found-p)."
     ;; pointer jumps bother you. xcursor theme/size default to the
     ;; XCURSOR_THEME/XCURSOR_SIZE the session exports.
     :pointer (:warp-on-switch t)
+    ;; With more than one output, a line along one edge of the
+    ;; current output when it carries no bar. :active-edge is :top,
+    ;; :left, :bottom or :right (anything else turns it off);
+    ;; :active-edge-width is 1 to 5 px; :active-edge-color is
+    ;; "#rrggbb", or T for the :theme :focused-border colour.
+    :screens (:active-edge :top
+              :active-edge-width 3
+              :active-edge-color t)
     :theme (:font-family "monospace"
             :font-size 14
             :focused-border "#7aa2f7"

@@ -415,13 +415,21 @@ window positions, borders, and z-ordering here."
            *outputs*)
   ;; Pseudo-shadows on floating windows (river_decoration_v1).
   ;; Placeholder: redefined by decorations.lisp, which loads later.
-  (decorations-render-pass))
+  (decorations-render-pass)
+  ;; The active-screen edge line (river_shell_surface_v1).
+  ;; Placeholder: redefined by active-edge.lisp, which loads later.
+  (active-edge-render-pass))
 
 ;;; --- Manage dirty --
 
 (defun decorations-render-pass ()
   "Decoration surfaces (placeholder: redefined by
 decorations.lisp)."
+  nil)
+
+(defun active-edge-render-pass ()
+  "The active-screen edge line (placeholder: redefined by
+active-edge.lisp)."
   nil)
 
 (defun request-manage-dirty ()
