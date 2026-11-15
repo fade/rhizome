@@ -57,17 +57,18 @@ release; each prints a warning naming its element.
 
 The status bar.
 
-| Key                  | Type    | Default             | Applies     | Effect                                                                                                                           |
-|----------------------+---------+---------------------+-------------+----------------------------------------------------------------------------------------------------------------------------------|
-| =:enabled=           | boolean | =t=                 | live        | Show the bar. =nil= hides it without stopping its process; MOD+B toggles this key.                                               |
-| =:height=            | pixels  | =20=                | live        | Height of the bar. The window manager reserves this plus twice =:margin= at the top of the output.                               |
-| =:margin=            | pixels  | =8= (unset)         | live        | Space between the bar and the output's top, left, and right edges, and below the bar.                                            |
-| =:padding=           | pixels  | =6=                 | live        | Inset of the left and right segments. With a non-zero =:corner-radius= the inset is the radius plus this.                        |
-| =:corner-radius=     | pixels  | =10= (unset)        | live        | Corner radius of the bar; 0 draws a plain rectangle. Also the corner radius of the message window and the prompts, 8 when unset. |
-| =:opacity=           | number  | =0.9=               | live        | Opacity from 0.0 to 1.0 of the bar, the message window, and the prompts.                                                         |
-| =:interval=          | seconds | =0.15=              | live        | How often the bar checks its modules for changes. The bar redraws only when a module's text changes.                             |
-| =:modules=           | plist   | see below           | live        | The modules of each segment: =(:left (...) :center (...) :right (...))=.                                                         |
-| =:workspaces= =:gap= | pixels  | =8= (unset)         | live        | Space after each workspace number. Set it as =(:bar (:workspaces (:gap 8)))=.                                                    |
+| Key                       | Type    | Default             | Applies     | Effect                                                                                                                           |
+|---------------------------+---------+---------------------+-------------+----------------------------------------------------------------------------------------------------------------------------------|
+| =:enabled=                | boolean | =t=                 | live        | Show the bar. =nil= hides it without stopping its process; MOD+B toggles this key.                                               |
+| =:height=                 | pixels  | =20=                | live        | Height of the bar. The window manager reserves this plus twice =:margin= at the top of the output.                               |
+| =:margin=                 | pixels  | =8= (unset)         | live        | Space between the bar and the output's top, left, and right edges, and below the bar.                                            |
+| =:padding=                | pixels  | =6=                 | live        | Inset of the left and right segments. With a non-zero =:corner-radius= the inset is the radius plus this.                        |
+| =:corner-radius=          | pixels  | =10= (unset)        | live        | Corner radius of the bar; 0 draws a plain rectangle. Also the corner radius of the message window and the prompts, 8 when unset. |
+| =:opacity=                | number  | =0.9=               | live        | Opacity from 0.0 to 1.0 of the bar, the message window, and the prompts.                                                         |
+| =:interval=               | seconds | =0.15=              | live        | How often the bar checks its modules for changes. The bar redraws only when a module's text changes.                             |
+| =:active-underline-width= | pixels  | =2=                 | live        | Width, 1 to 5, of the line along the lower edge of the current output's bar under =(:bar (:active-screen t))=.                   |
+| =:modules=                | plist   | see below           | live        | The modules of each segment: =(:left (...) :center (...) :right (...))=.                                                         |
+| =:workspaces= =:gap=      | pixels  | =8= (unset)         | live        | Space after each workspace number. Set it as =(:bar (:workspaces (:gap 8)))=.                                                    |
 
 Colours are theme elements; see Colours above.
 

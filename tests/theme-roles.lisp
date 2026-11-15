@@ -56,6 +56,7 @@
     :menu-hover-foreground "#f0e6ff"
     :bar-background-active "#392e7a"
     :bar-background-inactive "#1a1b26"
+    :bar-active-underline "#c0caf5"
     :screen-active-edge "#7aa2f7"
     :frame-outline "#7aa2f7"
     :frame-outline-empty "#ff9e64"

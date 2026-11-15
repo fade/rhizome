@@ -61,9 +61,10 @@ read from the snapshot file. Refreshed at most once per tick."
 ;;; By default every bar draws the same content. Opt-in (:bar ...)
 ;;; keys: :per-output-content (each bar shows its own output),
 ;;; :active-screen (the current output's bar takes the active
-;;; background), :tray-output :primary and :global-modules :primary
-;;; (other bars drop the tray, or every global module), and :outputs
-;;; (which outputs carry a bar).
+;;; background and an underline :active-underline-width px wide),
+;;; :tray-output :primary and :global-modules :primary (other bars
+;;; drop the tray, or every global module), and :outputs (which
+;;; outputs carry a bar).
 
 (defparameter *bar-output-states* (make-hash-table)
   "Per-output bar state: output proxy -> the ostate hash holding that
@@ -228,6 +229,34 @@ follows :bar-background unless set."
   (theme-color (if active-p
                    :bar-background-active
                    :bar-background-inactive)))
+
+(defun bar-active-underline-width ()
+  "The active bar's underline width in pixels: (:bar
+:active-underline-width) clamped to 1-5. A value that is not an
+integer gives 2."
+  (let ((width (config-getf '(:bar) :active-underline-width :default 2)))
+    (if (integerp width) (max 1 (min 5 width)) 2)))
+
+(defun bar-active-underline-rows (height line-width)
+  "The underline's rows in a bar HEIGHT px tall, as (VALUES FIRST-ROW
+ROWS): LINE-WIDTH rows along the edge that faces the windows. The bar
+is anchored to the top of its output, so that edge is the bottom."
+  (let ((rows (max 0 (min line-width height))))
+    (values (- height rows) rows)))
+
+(defun bar-draw-active-underline (ptr width height radius r g b alpha)
+  "Draw the active bar's underline into the WIDTH x HEIGHT buffer at
+PTR: R G B rows at ALPHA, the bar surface alpha, across the bar's full
+width along its window-facing edge, clipped to the bar's shape of
+corner RADIUS. Returns NIL."
+  (multiple-value-bind (first-row rows)
+      (bar-active-underline-rows height (bar-active-underline-width))
+    (let ((pixel (make-argb r g b :alpha alpha)))
+      (loop for y from first-row below (+ first-row rows)
+            do (loop for x below width
+                     when (rounded-rect-test x y width height radius)
+                       do (put-pixel-argb ptr width height x y pixel)))))
+  nil)
 
 ;;; --- Pointer state (module click/scroll support) ---
 
@@ -1097,7 +1126,13 @@ after it."
                                         :border-r rdr :border-g rdg
                                         :border-b rdb))
               ;; margin 0: the classic full-strip bar
-              (bar-clear ptr width height br bg bb)))
+              (bar-clear ptr width height br bg bb))
+          (when (bar-ostate-active-p)
+            (multiple-value-bind (ur ug ub) (theme-rgb :bar-active-underline)
+              (bar-draw-active-underline
+               ptr width height
+               (max 0 (config-getf '(:bar) :corner-radius :default 10))
+               ur ug ub (bar-surface-alpha)))))
         (let ((y (floor (- height (font-line-height)) 2))
               (*bar-hitboxes* nil))
           ;; Left segment

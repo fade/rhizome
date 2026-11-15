@@ -1031,6 +1031,15 @@ and =:bar-background-inactive= follows =:bar-background=. The
 =tokyo-night= colours keep the bar foreground at 7:1 contrast or
 better on both backgrounds.
 
+The active bar also carries a line along its lower edge, the edge
+that faces the windows, so it differs from the other bars by shape as
+well as by colour. The line takes the =:bar-active-underline= theme
+element, which follows =:bar-foreground= unless set.
+
+#+begin_src lisp
+(rhizome:configure '(:bar (:active-underline-width 2)))   ; 1 to 5 px (default 2)
+#+end_src
+
 A current output without a bar shows a line along one of its edges
 instead, above every window. The line is hidden on the other outputs,
 on an output that carries a bar, and when only one output exists.
@@ -1111,7 +1120,8 @@ follow the window borders; =:frame-outline= follows =:border-focused=,
 and =:fselect-label= follows =:frame-outline=; =:frame-outline-empty=
 follows =:warning=; =:screen-active-edge= follows =:border-focused=;
 =:bar-background-active= follows =:selection= and
-=:bar-background-inactive= follows =:bar-background=; =:dialog-notice=
+=:bar-background-inactive= follows =:bar-background=;
+=:bar-active-underline= follows =:bar-foreground=; =:dialog-notice=
 follows =:notice=.
 
 Themes are files named =NAME.theme=. rhizome looks for them in

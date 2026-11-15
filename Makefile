@@ -30,7 +30,7 @@ SUITES    := animations decorations surface window-rules window-rules-reload flo
              display-brightness frame-outline titlebars \
              unfloat-placement float-centring dialog-placement fselect focus-empty-frames \
              bindings-overridable modules \
-             command-table active-screen bar-adoption \
+             command-table active-screen bar-underline bar-adoption \
              ipc-command-args \
              layout-rule-frames \
              ipc-socket-path \

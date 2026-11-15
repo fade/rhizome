@@ -100,6 +100,7 @@
     (:menu-hover-foreground :selection-foreground (:menus :hover-color))
     (:bar-background-active :selection (:bar :background-active))
     (:bar-background-inactive :bar-background (:bar :background-inactive))
+    (:bar-active-underline :bar-foreground nil)
     (:screen-active-edge :border-focused (:screens :active-edge-color))
     (:frame-outline :border-focused (:theme :frame-outline))
     (:frame-outline-empty :warning (:theme :frame-outline-empty))

@@ -94,6 +94,10 @@ Returns (values value found-p)."
           :interval 0.15
           :padding 6
           :opacity 0.9
+          ;; Under :active-screen t, the current output's bar carries
+          ;; a line this many px wide (1 to 5) along its lower edge,
+          ;; in the :bar-active-underline theme element.
+          :active-underline-width 2
           :modules (:left (:workspaces :layout :windows)
                     :center (:clock)
                     :right (:tray :network :volume :battery)))
