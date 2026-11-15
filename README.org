@@ -1498,19 +1498,22 @@ Any value other than =:sloppy= reads as =:click=.
 
 ** Pseudo-shadows on floats (decorations)
 
-river_decoration_v1, used as intended: every floating window gets
-a decoration_below surface — a soft alpha-gradient shadow band
-(12px default, eased falloff, rounded corners), accent-tinted when
-the window is focused. The shadow follows resizes; un-floating or
-closing the window destroys it. Tiled windows keep river's crisp
-borders — the shadow belongs to floats.
+river_decoration_v1, used as intended: every floating window gets a
+decoration_below surface holding a soft shadow. The shadow surrounds
+the size the client committed, with its border and title bar, falls
+off over 16 px by default, sits 4 px low, and is cut out under the
+window. It takes the =:decoration-shadow= colour, which follows the
+=:shadow= role, at =:alpha= under an unfocused float and
+=:focused-alpha= under the focused one. It follows resizes;
+un-floating or closing the window destroys it. Tiled windows keep
+river's crisp borders, and the focused one a narrow glow in the gap.
 
 #+begin_src lisp
 (rhizome:configure
   '(:decorations (:enabled t     ; default on
-                 :radius 12
-                 :alpha 0.4
-                 :focused-alpha 0.6)))
+                 :radius 16
+                 :alpha 0.3
+                 :focused-alpha 0.4)))
 #+end_src
 
 * Frame trees (the StumpWM layout model)

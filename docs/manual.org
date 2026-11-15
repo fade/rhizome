@@ -618,8 +618,10 @@ does when a window closes.
 
 ** Shadows and focus glow
 
-Every floating window gets a soft shadow drawn around it, tinted with
-the focused border colour when the window has the focus. The focused
+Every floating window gets a soft neutral shadow, sitting a few pixels
+below it and darker under the window with the focus. The shadow
+surrounds the window at the size it actually drew, its border and
+title bar included, and never shows through under it. The focused
 tiled window gets a narrow glow in the gap around it. Both come from
 the =:decorations= group; =(:decorations (:enabled nil))= turns both
 off.
