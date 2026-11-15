@@ -809,7 +809,8 @@ Configure scratchpads by name:
 #+end_src
 
 =rhizome-cmd scratchpad music= shows or hides the scratchpad named
-=music=, and =rhizome-cmd scratchpad list= lists them.
+=music=, =rhizome-cmd scratchpad= with no name shows or hides =term=,
+and =rhizome-cmd scratchpad list= lists them.
 
 * Controlling rhizome from a shell
 
@@ -828,8 +829,9 @@ rhizome-cmd '(+ 1 2)'
 A line that starts with =(= is read and evaluated as Lisp in the
 =RHIZOME= package, and the reply is the printed values. Any other line
 is a command name followed by arguments separated by spaces. Each
-argument that reads as an integer arrives as one. An unknown command
-replies with the list of command names.
+argument that reads as an integer arrives as one. =wse= and =putsel=
+take the rest of the line as one argument, spaces included. An
+unknown command replies with the list of command names.
 
 Commands run on the window manager's main thread, so a command can
 safely change any window state. The socket is disabled with
@@ -839,69 +841,73 @@ safely change any window state. The socket is disabled with
 
 The same commands run from the command palette.
 
-| Command                                                           | Arguments | Effect                                                        |
-|-------------------------------------------------------------------+-----------+---------------------------------------------------------------|
-| =switch-workspace=                                                | N         | Switch to workspace N.                                        |
-| =current-workspace=                                               |           | Reply with the current workspace number.                      |
-| =switch-layout=                                                   | NAME      | Apply the named layout to the current workspace.              |
-| =list-layouts=                                                    |           | Write the layout names to the log.                            |
-| =group-type=                                                      |           | Reply with the workspace's group type.                        |
-| =set-group-type=                                                  | TYPE      | Set the group type: =tile=, =scroll=, or =floating=.          |
-| =cycle-group-type=                                                |           | Cycle the group type, as =C-t l= does.                        |
-| =split-horizontal=                                                |           | Split the current frame side by side.                         |
-| =split-vertical=                                                  |           | Split the current frame into top and bottom.                  |
-| =remove-split=                                                    |           | Remove the current split.                                     |
-| =only=                                                            |           | Collapse the workspace to one frame.                          |
-| =balance=                                                         |           | Make every split even.                                        |
-| =fclear=                                                          |           | Move the current frame's windows to the other frames.         |
-| =focus-left=, =focus-right=, =focus-up=, =focus-down=             |           | Focus the frame in that direction.                            |
-| =exchange-left=, =exchange-right=, =exchange-up=, =exchange-down= |           | Swap windows with the frame in that direction.                |
-| =focus-next=, =focus-previous=                                    |           | Cycle the windows of the current frame.                       |
-| =pull-next=, =pull-prev=                                          |           | Show the next or previous hidden window in the current frame. |
-| =renumber=                                                        |           | Renumber the workspace's windows from 1.                      |
-| =repack-window-numbers=                                           |           | Close the gaps in the workspace's window numbers.             |
-| =mark=                                                            |           | Mark or unmark the focused window.                            |
-| =clear-window-marks=                                              |           | Clear every mark.                                             |
-| =toggle-float=                                                    |           | Float or tile the focused window.                             |
-| =maximize=                                                        |           | Maximize or restore the focused window.                       |
-| =toggle-fullscreen=                                               |           | Toggle fullscreen on the focused window.                      |
-| =list-windows=                                                    |           | Reply with every window's title.                              |
-| =wse=                                                             | EXPR      | Reply with the windows matching a selection expression.       |
-| =dump-frame=                                                      | NAME      | Save the workspace's frame tree.                              |
-| =restore-frame=                                                   | NAME      | Restore a saved frame tree.                                   |
-| =scroll-toggle=                                                   |           | Turn the scroll ribbon on or off.                             |
-| =scroll-focus-left=, =scroll-focus-right=                         |           | Focus the next ribbon column.                                 |
-| =scroll-viewport-left=, =scroll-viewport-right=                   |           | Scroll the ribbon viewport.                                   |
-| =iresize=                                                         |           | Start interactive resize.                                     |
-| =command-mode=                                                    |           | Start command mode.                                           |
-| =set-prefix-key=                                                  | SPEC      | Move the prefix key, for example =set-prefix-key C-z=.        |
-| =enable-minor-mode=                                               | NAME      | Enable a minor mode.                                          |
-| =disable-minor-mode=                                              | NAME      | Disable a minor mode.                                         |
-| =list-minor-modes=                                                |           | Reply with the enabled minor modes.                           |
-| =toggle-bar=                                                      |           | Hide or show the bar.                                         |
-| =display-menu=                                                    |           | Open the display menu.                                        |
-| =tray-show-menu=                                                  | ...       | Open a tray item's menu. The bar sends this command.          |
-| =scratchpad=                                                      | NAME      | Show or hide the named scratchpad; =list= lists them.         |
-| =screenshot=                                                      | [region]  | Take a screenshot; =region= selects an area first.            |
-| =getsel=                                                          |           | Show the clipboard contents.                                  |
-| =putsel=                                                          | TEXT      | Put TEXT on the clipboard.                                    |
-| =copy-last-message=                                               |           | Copy the last message to the clipboard.                       |
-| =lastmsg=                                                         |           | Show the last message again.                                  |
-| =time=                                                            |           | Show the date and time.                                       |
-| =help=                                                            |           | Write the command names to the log.                           |
-| =lock=                                                            |           | Lock the session.                                             |
-| =logout=                                                          |           | Log out. Send it twice within 3 seconds.                      |
-| =suspend=                                                         |           | Run =systemctl suspend=.                                      |
-| =hibernate=                                                       |           | Run =systemctl hibernate=.                                    |
-| =detach=                                                          |           | Stop managing the session without ending it.                  |
-| =quit=                                                            |           | Stop the window manager. River keeps running.                 |
+| Command                                                           | Arguments | Effect                                                                                                  |
+|-------------------------------------------------------------------+-----------+---------------------------------------------------------------------------------------------------------|
+| =switch-workspace=                                                | N         | Switch to workspace N.                                                                                  |
+| =current-workspace=                                               |           | Reply with the current workspace number.                                                                |
+| =switch-layout=                                                   | NAME      | Apply the named layout to the current workspace.                                                        |
+| =list-layouts=                                                    |           | Write the layout names to the log.                                                                      |
+| =group-type=                                                      |           | Reply with the workspace's group type.                                                                  |
+| =set-group-type=                                                  | TYPE      | Set the group type: =tile=, =scroll=, or =floating=.                                                    |
+| =cycle-group-type=                                                |           | Cycle the group type, as =C-t l= does.                                                                  |
+| =split-horizontal=                                                |           | Split the current frame side by side.                                                                   |
+| =split-vertical=                                                  |           | Split the current frame into top and bottom.                                                            |
+| =remove-split=                                                    |           | Remove the current split.                                                                               |
+| =only=                                                            |           | Collapse the workspace to one frame.                                                                    |
+| =balance=                                                         |           | Make every split even.                                                                                  |
+| =resize-split=                                                    | [PIXELS]  | Move the current split's dividing line by PIXELS (default 30); a negative value moves it the other way. |
+| =fclear=                                                          |           | Move the current frame's windows to the other frames.                                                   |
+| =focus-left=, =focus-right=, =focus-up=, =focus-down=             |           | Focus the frame in that direction.                                                                      |
+| =exchange-left=, =exchange-right=, =exchange-up=, =exchange-down= |           | Swap windows with the frame in that direction.                                                          |
+| =focus-next=, =focus-previous=                                    |           | Cycle the windows of the current frame.                                                                 |
+| =pull-next=, =pull-prev=                                          |           | Show the next or previous hidden window in the current frame.                                           |
+| =select-window=                                                   | N         | Focus the window with number N.                                                                         |
+| =pull=                                                            | N         | Pull the window with number N into the current frame.                                                   |
+| =renumber=                                                        |           | Renumber the workspace's windows from 1.                                                                |
+| =repack-window-numbers=                                           |           | Close the gaps in the workspace's window numbers.                                                       |
+| =mark=                                                            |           | Mark or unmark the focused window.                                                                      |
+| =clear-window-marks=                                              |           | Clear every mark.                                                                                       |
+| =move-marked=                                                     | WORKSPACE | Move every marked window to WORKSPACE and clear the marks.                                              |
+| =toggle-float=                                                    |           | Float or tile the focused window.                                                                       |
+| =maximize=                                                        |           | Maximize or restore the focused window.                                                                 |
+| =toggle-fullscreen=                                               |           | Toggle fullscreen on the focused window.                                                                |
+| =list-windows=                                                    |           | Reply with every window's title.                                                                        |
+| =wse=                                                             | EXPR      | Reply with the windows matching a selection expression. The outer parentheses are optional.             |
+| =dump-frame=                                                      | NAME      | Save the workspace's frame tree.                                                                        |
+| =restore-frame=                                                   | NAME      | Restore a saved frame tree.                                                                             |
+| =scroll-toggle=                                                   |           | Turn the scroll ribbon on or off.                                                                       |
+| =scroll-focus-left=, =scroll-focus-right=                         |           | Focus the next ribbon column.                                                                           |
+| =scroll-viewport-left=, =scroll-viewport-right=                   |           | Scroll the ribbon viewport.                                                                             |
+| =iresize=                                                         |           | Start interactive resize.                                                                               |
+| =command-mode=                                                    |           | Start command mode.                                                                                     |
+| =set-prefix-key=                                                  | SPEC      | Move the prefix key, for example =set-prefix-key C-z=.                                                  |
+| =enable-minor-mode=                                               | NAME      | Enable a minor mode.                                                                                    |
+| =disable-minor-mode=                                              | NAME      | Disable a minor mode.                                                                                   |
+| =list-minor-modes=                                                |           | Reply with the enabled minor modes.                                                                     |
+| =toggle-bar=                                                      |           | Hide or show the bar.                                                                                   |
+| =display-menu=                                                    |           | Open the display menu.                                                                                  |
+| =tray-show-menu=                                                  | ...       | Open a tray item's menu. The bar sends this command.                                                    |
+| =scratchpad=                                                      | [NAME]    | Show or hide the named scratchpad, or =term= with no name; =list= lists them.                           |
+| =screenshot=                                                      | [region]  | Take a screenshot; =region= selects an area first.                                                      |
+| =getsel=                                                          |           | Show the clipboard contents.                                                                            |
+| =putsel=                                                          | TEXT      | Put TEXT on the clipboard.                                                                              |
+| =copy-last-message=                                               |           | Copy the last message to the clipboard.                                                                 |
+| =lastmsg=                                                         |           | Show the last message again.                                                                            |
+| =time=                                                            |           | Show the date and time.                                                                                 |
+| =help=                                                            |           | Write the command names to the log.                                                                     |
+| =lock=                                                            |           | Lock the session.                                                                                       |
+| =logout=                                                          |           | Log out. Send it twice within 3 seconds.                                                                |
+| =suspend=                                                         |           | Run =systemctl suspend=.                                                                                |
+| =hibernate=                                                       |           | Run =systemctl hibernate=.                                                                              |
+| =detach=                                                          |           | Stop managing the session without ending it.                                                            |
+| =quit=                                                            |           | Stop the window manager. River keeps running.                                                           |
 
-Arguments are separated by spaces, so =putsel= receives only the
-first word of the text, and =wse= receives only the first word of the
-expression. To pass longer values, send a Lisp form instead:
+An expression or text with spaces reaches =wse= or =putsel= whole:
 
 #+begin_src sh
-rhizome-cmd '(rhizome:wse-count (quote (:app-id "foot")))'
+rhizome-cmd wse '(:and (:app-id "foot") (:float t))'
+rhizome-cmd wse ':app-id "foot"'
+rhizome-cmd putsel hello world
 #+end_src
 
 Most commands act on the first output.
@@ -1240,9 +1246,10 @@ trace is large while windows animate.
   appears when the bar next starts, as after a window manager restart.
 - =rhizome-cmd= reports no socket :: The window manager is not
   running, or =(:ipc (:enabled nil))= is set. The socket is
-  =$XDG_RUNTIME_DIR/rhizome.sock=; when =XDG_RUNTIME_DIR= is unset the
-  window manager uses =/tmp/rhizome-UID.sock= while =rhizome-cmd= looks
-  for =/tmp/rhizome.sock=, so set =XDG_RUNTIME_DIR=.
+  =$XDG_RUNTIME_DIR/rhizome.sock=, or =/tmp/rhizome-UID.sock= when
+  =XDG_RUNTIME_DIR= is unset or empty. =rhizome-cmd= looks in the same
+  place, so it must run with the same =XDG_RUNTIME_DIR= as the window
+  manager.
 - An application never receives Control+T :: Control+T is the prefix
   key. Move it with =(rhizome:set-prefix-key "C-z")=.
 - Text uses the bitmap font :: Install freetype and fontconfig and
