@@ -96,7 +96,9 @@
            ;; --- the hue-only check, over every theme on the path ---
            (ok "the themes checked: shipped and fixture"
                (available-theme-names)
-               '("test-fixture-light" "tokyo-night"))
+               '("deepsky-moonunit" "ef-summer" "kusanagi"
+                 "modus-operandi" "modus-vivendi" "test-fixture-light"
+                 "tokyo-night" "tokyo-night-emacs"))
            (dolist (name (available-theme-names))
              (set-theme name)
              (ok (format nil "~A: no state pair differs in hue alone" name)

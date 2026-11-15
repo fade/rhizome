@@ -848,6 +848,60 @@ back to =tokyo-night= with a warning when the theme does not exist.
 From a shell, =rhizome-cmd set-theme NAME= switches over IPC, and
 =rhizome-cmd list-themes= lists the themes.
 
+*** Shipped themes
+
+| Theme               | Background | Source                                       | Licence                                   |
+|---------------------+------------+----------------------------------------------+-------------------------------------------|
+| =tokyo-night=       | dark       | rhizome's own colours, Tokyo Night palette   | MIT palette                               |
+| =tokyo-night-emacs= | dark       | Emacs =tokyo-night= (night), Bozhidar Batsov | GPL-3.0-or-later, with Enkia's MIT notice |
+| =deepsky-moonunit=  | dark       | Emacs =deepsky-moonunit=, Brian O'Reilly     | GPL-3.0-or-later                          |
+| =kusanagi=          | dark       | Emacs =kusanagi=, Rahul Martim Juliato       | GPL-3.0-or-later                          |
+| =modus-vivendi=     | dark       | Emacs =modus-vivendi=, Protesilaos Stavrou   | GPL-3.0-or-later                          |
+| =modus-operandi=    | light      | Emacs =modus-operandi=, Protesilaos Stavrou  | GPL-3.0-or-later                          |
+| =ef-summer=         | light      | Emacs =ef-summer=, Protesilaos Stavrou       | GPL-3.0-or-later                          |
+
+Every theme except =tokyo-night= is converted from an Emacs theme and
+keeps that theme's licence. rhizome is AGPL-3.0-or-later; section 13
+of the GPLv3 and section 13 of the AGPLv3 permit combining the two.
+=tokyo-night-emacs= differs from =tokyo-night=: its accent is teal
+(=#73daca=), and its launcher and menus are dark blue rather than
+purple. Each file's header lists its contrast ratios; pairs below 7:1
+are kept as the Emacs theme renders them.
+
+*** Converting an Emacs theme
+
+=tools/theme-convert/= converts an Emacs colour theme to a rhizome
+theme file. It is a developer tool: rhizome never runs it, and the
+files it writes are committed under =themes/=. Each file's header
+names the Emacs version and the source version it was generated from.
+
+#+begin_src sh
+emacs -Q --batch -l tools/theme-convert/theme-convert.el \
+      tools/theme-convert/recipes/modus-operandi.el ~/src/modus-themes
+#+end_src
+
+The first argument is a recipe: a plist naming the Emacs theme, the
+rhizome theme name, and the header lines (origin, authors, and
+licence). The next is the directory holding the Emacs theme, followed
+by the directory of any package it requires, such as =modus-themes=
+for the Modus derivatives. =TC_OUT= names the output directory.
+=tools/theme-convert/convert-all.sh= regenerates every converted
+theme from the source checkouts its environment variables name.
+
+The converter loads the theme into a batch Emacs and resolves each
+face as a 24-bit graphic display shows it, with inheritance and the
+default face applied. Each rhizome role takes its colour from the
+first face in a fixed list that the theme styles: =:accent= from
+=link=, =:selection= from =vertico-current=, =:match= from
+=completions-common-part=, and so on. A role with no styled face
+follows another role, and the file's header lists it. A recipe can
+also apply the theme author's own settings and correct named defects
+in the source; the header lists both.
+
+The converter refuses a theme in which any pair in =*state-cues*=
+differs by colour alone, and exits with status 2. Set
+=TC_ALLOW_HUE_ONLY= to write the file anyway, flagged in its header.
+
 *** States without colour
 
 No state is shown by colour alone. Each state differs from the state

@@ -16,3 +16,63 @@ tokyo-night.theme
   Licence: the palette is MIT, "Copyright (c) 2018-present Enkia"; the
     full MIT notice is in tokyo-night.theme. The file is part of
     rhizome, AGPL-3.0-or-later.
+
+The themes below are converted from Emacs colour themes by
+tools/theme-convert. Each keeps the licence of the Emacs theme it
+derives from, GPL-3.0-or-later. rhizome is AGPL-3.0-or-later; section
+13 of the GPLv3 and section 13 of the AGPLv3 permit combining the two.
+
+deepsky-moonunit.theme
+  Origin: the Emacs theme deepsky-moonunit
+    (https://github.com/fade/deepsky-themes-moonunit), as it renders
+    with its author's theme settings, with four corrections to the
+    source listed in the file's header.
+  Authors: Brian O'Reilly, built on the Modus themes by Protesilaos
+    Stavrou. Copyright (C) 2020-2026 Brian O'Reilly; Copyright (C)
+    2019-2026 Free Software Foundation, Inc.
+  Licence: GPL-3.0-or-later.
+
+ef-summer.theme
+  Origin: the Emacs theme ef-summer, from ef-themes 2.2.1
+    (https://github.com/protesilaos/ef-themes).
+  Authors: Protesilaos Stavrou. Copyright (C) 2022-2026 Free Software
+    Foundation, Inc.
+  Licence: GPL-3.0-or-later.
+
+kusanagi.theme
+  Origin: the Emacs theme kusanagi 0.1.1
+    (https://github.com/LionyxML/kusanagi-theme).
+  Authors: Rahul Martim Juliato, built on the Modus themes by
+    Protesilaos Stavrou (Copyright (C) 2019-2026 Free Software
+    Foundation, Inc.).
+  Copyright: the kusanagi source names its author and maintainer and
+    carries SPDX-License-Identifier GPL-3.0-or-later, but no copyright
+    line of its own.
+  Licence: GPL-3.0-or-later.
+
+modus-operandi.theme
+  Origin: the Emacs theme modus-operandi, from modus-themes 5.2.0
+    (https://github.com/protesilaos/modus-themes).
+  Authors: Protesilaos Stavrou. Copyright (C) 2019-2026 Free Software
+    Foundation, Inc.
+  Licence: GPL-3.0-or-later.
+
+modus-vivendi.theme
+  Origin: the Emacs theme modus-vivendi, from modus-themes 5.2.0
+    (https://github.com/protesilaos/modus-themes).
+  Authors: Protesilaos Stavrou. Copyright (C) 2019-2026 Free Software
+    Foundation, Inc.
+  Licence: GPL-3.0-or-later.
+
+tokyo-night-emacs.theme
+  Origin: the Emacs theme tokyo-night (night variant), from
+    tokyo-night-emacs 1.1.0 (https://github.com/bbatsov/tokyo-night-emacs).
+    rhizome's default theme, tokyo-night.theme, keeps its own colours.
+  Authors: Emacs port by Bozhidar Batsov, Copyright (C) 2026 Bozhidar
+    Batsov. Tokyo Night palette by Enkia
+    (https://github.com/tokyo-night/tokyo-night-vscode-theme), also
+    carried by folke's tokyonight.nvim
+    (https://github.com/folke/tokyonight.nvim, Apache-2.0).
+  Licence: GPL-3.0-or-later, with Enkia's MIT notice for the palette,
+    "Copyright (c) 2018-present Enkia"; the full notice is in
+    tokyo-night-emacs.theme.
