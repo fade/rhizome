@@ -169,3 +169,9 @@ stubbed river requests. Run with:
   of cold-starting a fresh one: pgrep parsing, adoption in start-bar
   (extras reaped, nothing launched), adopted liveness in bar-alive-p,
   and the handover flag. All subprocess calls stubbed.
+- `layout-rule-frames.lisp` - a window rule's :layout: the rule's
+  workspace stores the layout and its frame tree is rebuilt from the
+  layout's template, with the matching window in it even before it
+  has an output; the output's layout mirror follows only the
+  showing workspace; a repeated match keeps the frames; an unknown
+  layout changes nothing.
