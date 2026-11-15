@@ -169,3 +169,7 @@ stubbed river requests. Run with:
   of cold-starting a fresh one: pgrep parsing, adoption in start-bar
   (extras reaped, nothing launched), adopted liveness in bar-alive-p,
   and the handover flag. All subprocess calls stubbed.
+- `ipc-socket-path.lisp` - the WM and session/rhizome-cmd name the
+  same socket: $XDG_RUNTIME_DIR/rhizome.sock, or /tmp/rhizome-UID.sock
+  when XDG_RUNTIME_DIR is unset or empty. The client's path is read
+  from its "no socket" message; no socket is opened.
