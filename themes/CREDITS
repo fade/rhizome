@@ -64,6 +64,34 @@ modus-vivendi.theme
     Foundation, Inc.
   Licence: GPL-3.0-or-later.
 
+modus-operandi-deuteranopia.theme
+  Origin: the Emacs theme modus-operandi-deuteranopia, from modus-themes 5.2.0
+    (https://github.com/protesilaos/modus-themes).
+  Authors: Protesilaos Stavrou. Copyright (C) 2019-2026 Free Software
+    Foundation, Inc.
+  Licence: GPL-3.0-or-later.
+
+modus-operandi-tritanopia.theme
+  Origin: the Emacs theme modus-operandi-tritanopia, from modus-themes 5.2.0
+    (https://github.com/protesilaos/modus-themes).
+  Authors: Protesilaos Stavrou. Copyright (C) 2019-2026 Free Software
+    Foundation, Inc.
+  Licence: GPL-3.0-or-later.
+
+modus-vivendi-deuteranopia.theme
+  Origin: the Emacs theme modus-vivendi-deuteranopia, from modus-themes 5.2.0
+    (https://github.com/protesilaos/modus-themes).
+  Authors: Protesilaos Stavrou. Copyright (C) 2019-2026 Free Software
+    Foundation, Inc.
+  Licence: GPL-3.0-or-later.
+
+modus-vivendi-tritanopia.theme
+  Origin: the Emacs theme modus-vivendi-tritanopia, from modus-themes 5.2.0
+    (https://github.com/protesilaos/modus-themes).
+  Authors: Protesilaos Stavrou. Copyright (C) 2019-2026 Free Software
+    Foundation, Inc.
+  Licence: GPL-3.0-or-later.
+
 tokyo-night-emacs.theme
   Origin: the Emacs theme tokyo-night (night variant), from
     tokyo-night-emacs 1.1.0 (https://github.com/bbatsov/tokyo-night-emacs).

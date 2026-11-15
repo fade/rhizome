@@ -35,8 +35,10 @@
            (ok "available-theme-names lists shipped and fixture themes"
                (available-theme-names)
                '("deepsky-moonunit" "ef-summer" "kusanagi"
-                 "modus-operandi" "modus-vivendi" "test-fixture-light"
-                 "tokyo-night" "tokyo-night-emacs"))
+                 "modus-operandi" "modus-operandi-deuteranopia"
+                 "modus-operandi-tritanopia" "modus-vivendi"
+                 "modus-vivendi-deuteranopia" "modus-vivendi-tritanopia"
+                 "test-fixture-light" "tokyo-night" "tokyo-night-emacs"))
 
            ;; --- set-theme from Lisp ---
            (ok "default theme draws the tokyo-night background"
@@ -83,14 +85,14 @@
            (ok "IPC set-theme names the choices for an unknown theme"
                (ipc-dispatch-line "set-theme no-such-theme")
                (format nil "no theme no-such-theme (themes: ~A)"
-                       "deepsky-moonunit ef-summer kusanagi modus-operandi modus-vivendi test-fixture-light tokyo-night tokyo-night-emacs"))
+                       "deepsky-moonunit ef-summer kusanagi modus-operandi modus-operandi-deuteranopia modus-operandi-tritanopia modus-vivendi modus-vivendi-deuteranopia modus-vivendi-tritanopia test-fixture-light tokyo-night tokyo-night-emacs"))
            (ok "IPC set-theme with no name gives its usage"
                (ipc-dispatch-line "set-theme")
                (format nil "usage: set-theme NAME (themes: ~A)"
-                       "deepsky-moonunit ef-summer kusanagi modus-operandi modus-vivendi test-fixture-light tokyo-night tokyo-night-emacs"))
+                       "deepsky-moonunit ef-summer kusanagi modus-operandi modus-operandi-deuteranopia modus-operandi-tritanopia modus-vivendi modus-vivendi-deuteranopia modus-vivendi-tritanopia test-fixture-light tokyo-night tokyo-night-emacs"))
            (ok "IPC list-themes marks the current theme"
                (ipc-dispatch-line "list-themes")
-               "deepsky-moonunit ef-summer kusanagi modus-operandi modus-vivendi test-fixture-light* tokyo-night tokyo-night-emacs")
+               "deepsky-moonunit ef-summer kusanagi modus-operandi modus-operandi-deuteranopia modus-operandi-tritanopia modus-vivendi modus-vivendi-deuteranopia modus-vivendi-tritanopia test-fixture-light* tokyo-night tokyo-night-emacs")
            (ok "an IPC Lisp form switches the theme"
                (progn (ipc-dispatch-line "(set-theme \"tokyo-night\")")
                       (config-getf '(:theme) :name))
@@ -114,7 +116,10 @@
                (setf (symbol-function 'prompt-open) real-open))
              (ok "select-theme offers every theme"
                  opened '("Theme:" ("deepsky-moonunit" "ef-summer" "kusanagi"
-                             "modus-operandi" "modus-vivendi"
+                             "modus-operandi" "modus-operandi-deuteranopia"
+                             "modus-operandi-tritanopia" "modus-vivendi"
+                             "modus-vivendi-deuteranopia"
+                             "modus-vivendi-tritanopia"
                              "test-fixture-light" "tokyo-night"
                              "tokyo-night-emacs")))
              (ok "choosing in the picker switches the theme"
