@@ -256,11 +256,36 @@ cleared when none is left (see refocus-after-close)."
   "Window -> the rule applied to it. A rule applies once per window:
 river resends app-id and title, and clients retitle at will.")
 
+(defun apply-window-rule-layout (win layout-name)
+  "Give the workspace WIN is on the layout LAYOUT-NAME, for a window
+rule's :layout. The output is WIN's own, else find-output-for-window's;
+the workspace is WIN's own, else that output's current one. A WIN with
+no output or workspace yet is stamped with them first, so it takes a
+frame in the rebuilt tree. Does nothing when LAYOUT-NAME is not a
+defined layout. Leaves the frames alone when the workspace shows the
+scroll ribbon or already has that layout set."
+  (let* ((output (or (window-output win) (find-output-for-window win)))
+         (workspace (and output
+                         (or (window-workspace win)
+                             (current-workspace output)))))
+    (when (and output (gethash layout-name *layouts*))
+      (unless (window-output win)
+        (setf (window-output win) output))
+      (unless (window-workspace win)
+        (assign-window-workspace win workspace))
+      (unless (or (scroll-workspace-p output workspace)
+                  (eq (gethash (frame-key output workspace)
+                               *workspace-layouts*)
+                      layout-name))
+        (apply-layout-to-workspace output workspace layout-name)
+        (when (eql workspace (current-workspace output))
+          (run-hook :layout-changed output layout-name))))))
+
 (defun apply-window-rules (win)
   "Apply the first matching window rule to WIN, once per window: assign
-its workspace or output, optionally switch the output's layout and/or
-follow the window. Returns the matched rule, if any; NIL once a rule
-has applied to WIN.
+its workspace or output, optionally give its workspace a layout (see
+apply-window-rule-layout) and/or follow the window. Returns the
+matched rule, if any; NIL once a rule has applied to WIN.
 A :workspace rule from 1 to *WORKSPACE-COUNT* also sets the output
 (the :output rule's, else the arrival output), so the manage pass
 keeps the workspace instead of adopting the window onto the one
@@ -318,12 +343,9 @@ focuses the window."
                           (floating-workspace-p out workspace)
                           (scroll-workspace-p out workspace))
                 (frame-adopt-window win out workspace)))))
-        ;; :layout and :follow act on the output the window opens on
+        ;; :layout acts on the window's workspace, :follow on its output
         (when layout
-          (let ((out (or (window-output win) (find-output-for-window win))))
-            (when (and out (gethash (find-layout-symbol layout) *layouts*))
-              (setf (output-current-layout out)
-                    (find-layout-symbol layout)))))
+          (apply-window-rule-layout win (find-layout-symbol layout)))
         (when (and follow workspace)
           (let ((out (or (window-output win) (find-output-for-window win))))
             (when out

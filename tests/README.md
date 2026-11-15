@@ -273,3 +273,9 @@ stubbed river requests. Run with:
   from execute-command; wse and putsel take the rest of the line,
   spaces included; scratchpad with no argument keeps the default
   scratchpad. Downstream calls stubbed.
+- `layout-rule-frames.lisp` - a window rule's :layout: the rule's
+  workspace stores the layout and its frame tree is rebuilt from the
+  layout's template, with the matching window in it even before it
+  has an output; the output's layout mirror follows only the
+  showing workspace; a repeated match keeps the frames; an unknown
+  layout changes nothing.
