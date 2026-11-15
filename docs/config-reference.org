@@ -66,6 +66,8 @@ The status bar.
 | =:padding=           | pixels  | =6=                 | live        | Inset of the left and right segments. With a non-zero =:corner-radius= the inset is the radius plus this.                        |
 | =:corner-radius=     | pixels  | =10= (unset)        | live        | Corner radius of the bar; 0 draws a plain rectangle. Also the corner radius of the message window and the prompts, 8 when unset. |
 | =:opacity=           | number  | =0.9=               | live        | Opacity from 0.0 to 1.0 of the bar, the message window, and the prompts.                                                         |
+| =:active-glow=       | boolean | =nil= (unset)       | live        | With =:active-screen=, light a glow in the =:bar-outline-active= colour around the current output's bar.                         |
+| =:active-glow-radius= | pixels | =8= (unset)         | live        | How far the glow reaches past the bar, from 4 to 12.                                                                             |
 | =:interval=          | seconds | =0.15=              | live        | How often the bar checks its modules for changes. The bar redraws only when a module's text changes.                             |
 | =:modules=           | plist   | see below           | live        | The modules of each segment: =(:left (...) :center (...) :right (...))=.                                                         |
 | =:workspaces= =:gap= | pixels  | =8= (unset)         | live        | Space after each workspace number. Set it as =(:bar (:workspaces (:gap 8)))=.                                                    |
