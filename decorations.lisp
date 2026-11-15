@@ -145,6 +145,55 @@ buffer. get_decoration_below is anytime-legal."
                         (getf state :buffer) buffer)
                   state)))))))
 
+(defun decoration-band-pixel (dx dy radius alpha-0 cr cg cb)
+  "Premultiplied ARGB u32 of the shadow DX, DY pixels outside the
+window rect: transparent at RADIUS and beyond, otherwise ALPHA-0
+eased quadratically toward the rim, with the straight colour
+CR CG CB scaled by the alpha."
+  (let ((dist (sqrt (+ (* dx dx) (* dy dy)))))
+    (if (>= dist radius)
+        0
+        (let* ((fall (if (zerop radius)
+                         0.0
+                         (- 1.0 (/ dist radius))))
+               (k (* fall fall))
+               (a (round (* alpha-0 k)))
+               (sr (min 255 (round (* cr a) 255)))
+               (sg (min 255 (round (* cg a) 255)))
+               (sb (min 255 (round (* cb a) 255))))
+          (logior (ash a 24) (ash sr 16) (ash sg 8) sb)))))
+
+(defun decoration-fill (ptr width height radius alpha-0 cr cg cb)
+  "Fill the WIDTH x HEIGHT shadow buffer at PTR: a band of RADIUS
+around the window rect, see DECORATION-BAND-PIXEL. Every row
+across the window's height is the same, so one is computed and
+copied to the others; the cost grows with the perimeter, not the
+area, which keeps a redraw inside a render sequence short."
+  (let* ((left radius) (right (- width radius))
+         (top radius) (bottom (- height radius))
+         (row-bytes (* width 4))
+         (middle nil))
+    (dotimes (py height)
+      (let ((dy (max 0 (cond ((< py top) (- top py))
+                             ((> py bottom) (- py bottom))
+                             (t 0)))))
+        (if (and (zerop dy) middle)
+            (cffi:foreign-funcall "memcpy"
+                                  :pointer (cffi:inc-pointer ptr (* py row-bytes))
+                                  :pointer (cffi:inc-pointer ptr (* middle row-bytes))
+                                  :unsigned-long row-bytes
+                                  :pointer)
+            (progn
+              (dotimes (px width)
+                (let ((dx (max 0 (cond ((< px left) (- left px))
+                                       ((> px right) (- px right))
+                                       (t 0)))))
+                  (put-pixel-argb ptr width height px py
+                                  (decoration-band-pixel dx dy radius alpha-0
+                                                         cr cg cb))))
+              (when (zerop dy)
+                (setf middle py))))))))
+
 (defun decoration-draw (state width height radius base-alpha
                                  focus-alpha r g b)
   "The pseudo-shadow: a soft alpha-gradient band of width RADIUS
@@ -154,47 +203,14 @@ windows tint toward (r g b). Premultiplied ARGB: channels are
 scaled by the alpha, so c* ≤ a always holds."
   (let ((ptr (getf state :ptr)))
     (unless (cffi:null-pointer-p ptr)
-      (let* ((win-w (- width (* 2 radius)))
-             (win-h (- height (* 2 radius)))
-             (left radius) (right (+ radius win-w))
-             (top radius) (bottom (+ radius win-h))
-             (alpha-0 (* 255 (if (getf state :focused)
+      (let* ((alpha-0 (* 255 (if (getf state :focused)
                                  focus-alpha base-alpha)))
              ;; Straight shadow color: dark grey, tinted halfway
              ;; toward the accent
              (cr (+ 30 (* (- r 30) 0.5)))
              (cg (+ 30 (* (- g 30) 0.5)))
              (cb (+ 36 (* (- b 36) 0.5))))
-        (loop for py below height
-              do (let* ((dy (max 0
-                                 (cond ((< py top) (- top py))
-                                       ((> py bottom) (- py bottom))
-                                       (t 0)))))
-                   (loop for px below width
-                         do (let* ((dx (max 0
-                                             (cond ((< px left) (- left px))
-                                                   ((> px right) (- px right))
-                                                   (t 0))))
-                                    (dist (sqrt (+ (* dx dx) (* dy dy)))))
-                              (if (>= dist radius)
-                                  ;; Outside the band: transparent
-                                  (put-pixel-argb ptr width height px py 0)
-                                  ;; Inside: falloff over the band,
-                                  ;; eased quadratic — premultiplied
-                                  (let* ((fall (if (zerop radius)
-                                                   0.0
-                                                   (- 1.0 (/ dist radius))))
-                                         (k (* fall fall))
-                                         (a (round (* alpha-0 k)))
-                                         ;; premultiplied channels
-                                         (sr (min 255 (round (* cr a) 255)))
-                                         (sg (min 255 (round (* cg a) 255)))
-                                         (sb (min 255 (round (* cb a) 255))))
-                                    (put-pixel-argb ptr width height px py
-                                                    (logior (ash a 24)
-                                                            (ash sr 16)
-                                                            (ash sg 8)
-                                                            sb))))))))))))
+        (decoration-fill ptr width height radius alpha-0 cr cg cb)))))
 
 ;;; --- Render pass (render-sequence only) ---
 
@@ -257,6 +273,12 @@ render_finish. Returns NIL."
             (handler-case (theme-border-rgb t)
               (error () (values ar ag ab)))
           (loop for win being the hash-values of *windows*
+                ;; A fullscreen window covers its decoration and river
+                ;; clips it to the output: keep it as it is, undrawn,
+                ;; until the window leaves fullscreen
+                if (window-fullscreen-p win)
+                  do (progn)
+                else
                 if (and (window-floating-p win)
                         (not (window-minimized-p win))
                         (gethash (window-proxy win) *windows*))

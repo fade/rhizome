@@ -204,34 +204,73 @@ or NIL for no preference."
   (pushnew win *pending-fullscreen-requests*)
   (request-manage-dirty))
 
+(defun displace-fullscreen-windows (pending)
+  "Clear the fullscreen flag of every window that would share an
+output and workspace with another fullscreen window, so that at
+most one is fullscreen on each. A window in PENDING with the flag
+claims its output and workspace. PENDING is newest first, and the
+newest claim wins.
+Return the windows to send: the displaced ones, then PENDING."
+  (let ((claims '())
+        (displaced '()))
+    (labels ((slot (win)
+               (let ((output (fullscreen-output win)))
+                 (and output (cons output (window-workspace win)))))
+             (claimed-p (slot)
+               (and slot (assoc slot claims :test #'equal)))
+             (demote (win)
+               (setf (window-fullscreen-p win) nil
+                     (window-fullscreen-request-output win) nil)))
+      (dolist (win pending)
+        (when (window-fullscreen-p win)
+          (let ((slot (slot win)))
+            (cond ((null slot))
+                  ((claimed-p slot) (demote win))
+                  (t (push (cons slot win) claims))))))
+      (dolist (win (all-windows))
+        (when (and (window-fullscreen-p win)
+                   (not (member win pending))
+                   (claimed-p (slot win)))
+          (demote win)
+          (push win displaced)))
+      (append (nreverse displaced) pending))))
+
 (defun flush-fullscreen-requests ()
   "Send each queued window's fullscreen state to river and empty the
 queue. Call inside a manage sequence.
 A window with the fullscreen flag gets fullscreen on FULLSCREEN-OUTPUT
 and inform_fullscreen.
 Any other window gets exit_fullscreen and inform_not_fullscreen.
+A window going fullscreen takes the output and workspace over: any
+other fullscreen window there leaves fullscreen in the same pass
+(see DISPLACE-FULLSCREEN-WINDOWS).
 A fullscreen request with no known output is dropped, and the
 window's fullscreen flag and requested output are cleared.
 A request that signals an error is logged and dropped."
-  (dolist (win *pending-fullscreen-requests*)
-    (handler-case
-        (let ((proxy (window-proxy win)))
-          (if (window-fullscreen-p win)
-              (let ((output (fullscreen-output win)))
-                (cond (output
-                       (rwm:river-window-v1.fullscreen proxy output)
-                       (rwm:river-window-v1.inform-fullscreen proxy))
-                      (t
-                       ;; River never saw it: match its state
-                       (setf (window-fullscreen-p win) nil
-                             (window-fullscreen-request-output win) nil)
-                       (format t "~&; Rhizome: no output for fullscreen request~%"))))
-              (progn
-                (rwm:river-window-v1.exit-fullscreen proxy)
-                (rwm:river-window-v1.inform-not-fullscreen proxy))))
-      (error (e)
-        (format t "~&; Rhizome: fullscreen request failed: ~A~%" e))))
-  (setf *pending-fullscreen-requests* nil))
+  (let ((queue (handler-case
+                   (displace-fullscreen-windows *pending-fullscreen-requests*)
+                 (error (e)
+                   (format t "~&; Rhizome: fullscreen handover failed: ~A~%" e)
+                   *pending-fullscreen-requests*))))
+    (setf *pending-fullscreen-requests* nil)
+    (dolist (win queue)
+      (handler-case
+          (let ((proxy (window-proxy win)))
+            (if (window-fullscreen-p win)
+                (let ((output (fullscreen-output win)))
+                  (cond (output
+                         (rwm:river-window-v1.fullscreen proxy output)
+                         (rwm:river-window-v1.inform-fullscreen proxy))
+                        (t
+                         ;; River never saw it: match its state
+                         (setf (window-fullscreen-p win) nil
+                               (window-fullscreen-request-output win) nil)
+                         (format t "~&; Rhizome: no output for fullscreen request~%"))))
+                (progn
+                  (rwm:river-window-v1.exit-fullscreen proxy)
+                  (rwm:river-window-v1.inform-not-fullscreen proxy))))
+        (error (e)
+          (format t "~&; Rhizome: fullscreen request failed: ~A~%" e))))))
 
 (defun toggle-fullscreen (win)
   "Toggle WIN's fullscreen (StumpWM's C-t F11) on the next manage pass.
