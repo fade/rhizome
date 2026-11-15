@@ -16,10 +16,14 @@
 
 (in-package #:rhizome)
 
-(defparameter *takeover-state-path*
-  (merge-pathnames #P".local/share/rhizome/takeover.sexp"
-                   (user-homedir-pathname))
-  "Where the hot-swap session state lives. LET-bindable for tests.")
+(defparameter *takeover-state-path* nil
+  "Where the hot-swap session state lives, or NIL for takeover.sexp in
+the state directory. LET-bindable for tests.")
+
+(defun takeover-state-path ()
+  "Pathname of the hot-swap session state file."
+  (or *takeover-state-path*
+      (merge-pathnames #P"takeover.sexp" (state-directory))))
 
 (defvar *takeover-state* nil
   "The loaded takeover state, or NIL (fresh boot / consumed).")
@@ -80,18 +84,17 @@ geometry and trees are live values."
                                                       ws)
                                                 (frame-tree-to-sexp tree)))))))
     (handler-case
-        (progn
-          (ensure-directories-exist *takeover-state-path*)
+        (let ((path (takeover-state-path)))
+          (ensure-directories-exist path)
           ;; atomic: write beside, rename over (SBCL's rename-file
           ;; does not overwrite — delete the old target first)
-          (let ((tmp (merge-pathnames "takeover.sexp.tmp"
-                                      *takeover-state-path*)))
+          (let ((tmp (merge-pathnames "takeover.sexp.tmp" path)))
             (with-open-file (s tmp :direction :output
                                :if-exists :supersede)
               (write state :stream s :readably t))
-            (when (probe-file *takeover-state-path*)
-              (delete-file *takeover-state-path*))
-            (rename-file tmp *takeover-state-path*))
+            (when (probe-file path)
+              (delete-file path))
+            (rename-file tmp path))
           (format t "~&; Rhizome: takeover state written (~D windows)~%"
                   (length (getf state :windows))))
       (error (e)
@@ -105,8 +108,8 @@ fresh boot (or a crash) — normal behavior, no takeover."
   (setf *takeover-state* nil
         *takeover-manage-passes* 0)
   (handler-case
-      (when (probe-file *takeover-state-path*)
-        (with-open-file (s *takeover-state-path*)
+      (when (probe-file (takeover-state-path))
+        (with-open-file (s (takeover-state-path))
           (setf *takeover-state* (read s)))
         (format t "~&; Rhizome: takeover state found (~D windows) — hot swap~%"
                 (length (getf *takeover-state* :windows))))
@@ -119,7 +122,7 @@ fresh boot (or a crash) — normal behavior, no takeover."
 The file is deleted so a later fresh boot sees nothing."
   (setf *takeover-state* nil
         *takeover-manage-passes* 0)
-  (ignore-errors (delete-file *takeover-state-path*)))
+  (ignore-errors (delete-file (takeover-state-path))))
 
 (defun find-output-by-wl-name (name)
   "The output whose wl_output name is NAME (the stable key across

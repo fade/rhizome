@@ -316,11 +316,14 @@ window. Returns the matched rule, if any."
   "Identifier → plist (:workspace N :float T) for remembered
 windows. DEFVAR: reloading this file must not forget placements.")
 
-(defparameter *window-state-path*
-  (merge-pathnames #P".local/share/rhizome/window-state.sexp"
-                   (user-homedir-pathname))
-  "Where the remembered window placements live. LET-bindable for
-tests.")
+(defparameter *window-state-path* nil
+  "Where the remembered window placements live, or NIL for
+window-state.sexp in the state directory. LET-bindable for tests.")
+
+(defun window-state-path ()
+  "Pathname of the remembered window placements file."
+  (or *window-state-path*
+      (merge-pathnames #P"window-state.sexp" (state-directory))))
 
 (defun window-state-changed-p ()
   "Whether (:window-state :enabled) is on."
@@ -333,8 +336,8 @@ tests.")
         (let ((entries
                 (loop for id being the hash-keys of *window-state*
                       collect (cons id (gethash id *window-state*)))))
-          (ensure-directories-exist *window-state-path*)
-          (with-open-file (s *window-state-path*
+          (ensure-directories-exist (window-state-path))
+          (with-open-file (s (window-state-path)
                              :direction :output :if-exists :supersede)
             (write entries :stream s)))
       (error (e)
@@ -344,9 +347,9 @@ tests.")
   "Load remembered placements. Missing file = nothing remembered."
   (when (window-state-changed-p)
     (handler-case
-        (when (probe-file *window-state-path*)
+        (when (probe-file (window-state-path))
           (clrhash *window-state*)
-          (with-open-file (s *window-state-path*)
+          (with-open-file (s (window-state-path))
             (dolist (entry (read s))
               (setf (gethash (car entry) *window-state*) (cdr entry)))))
       (error (e)

@@ -153,10 +153,14 @@ De-duplicates by display name (first occurrence wins)."
 
 ;;; --- Frecency: most-used apps first (the fuzzel killer feature) ---
 
-(defparameter *launcher-history-path*
-  (merge-pathnames #P".local/share/rhizome/launcher-history.sexp"
-                   (user-homedir-pathname))
-  "Launch counts by display name. LET-bindable for tests.")
+(defparameter *launcher-history-path* nil
+  "Launch counts by display name, or NIL for launcher-history.sexp in
+the state directory. LET-bindable for tests.")
+
+(defun launcher-history-path ()
+  "Pathname of the launch history file."
+  (or *launcher-history-path*
+      (merge-pathnames #P"launcher-history.sexp" (state-directory))))
 
 (defparameter *launcher-history* (make-hash-table :test #'equal)
   "Display name → plist (:count N :last universal-time).")
@@ -164,9 +168,9 @@ De-duplicates by display name (first occurrence wins)."
 (defun launcher-history-load ()
   "Read launch history. Missing file = nothing launched yet."
   (handler-case
-      (when (probe-file *launcher-history-path*)
+      (when (probe-file (launcher-history-path))
         (clrhash *launcher-history*)
-        (with-open-file (s *launcher-history-path*)
+        (with-open-file (s (launcher-history-path))
           (dolist (entry (read s))
             (setf (gethash (car entry) *launcher-history*)
                   (cdr entry)))))
@@ -179,14 +183,14 @@ De-duplicates by display name (first occurrence wins)."
       (let ((entries
               (loop for name being the hash-keys of *launcher-history*
                     collect (cons name (gethash name *launcher-history*)))))
-        (ensure-directories-exist *launcher-history-path*)
-        (let ((tmp (merge-pathnames "launcher-history.sexp.tmp"
-                                    *launcher-history-path*)))
+        (let* ((path (launcher-history-path))
+               (tmp (merge-pathnames "launcher-history.sexp.tmp" path)))
+          (ensure-directories-exist path)
           (with-open-file (s tmp :direction :output :if-exists :supersede)
             (write entries :stream s :readably t))
-          (when (probe-file *launcher-history-path*)
-            (delete-file *launcher-history-path*))
-          (rename-file tmp *launcher-history-path*)))
+          (when (probe-file path)
+            (delete-file path))
+          (rename-file tmp path)))
     (error (e)
       (format t "~&; Rhizome: launcher history save failed: ~A~%" e))))
 
