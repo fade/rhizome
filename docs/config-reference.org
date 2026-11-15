@@ -192,9 +192,9 @@ window. All keys apply live.
 | Key              | Type    | Default       | Effect                                                            |
 |------------------+---------+---------------+-------------------------------------------------------------------|
 | =:enabled=       | boolean | =t= (unset)   | Draw shadows and the focus glow.                                  |
-| =:radius=        | pixels  | =12= (unset)  | Width of the shadow around a float; 0 turns shadows and glow off. |
-| =:alpha=         | number  | =0.4= (unset) | Opacity from 0.0 to 1.0 of the shadow of an unfocused float.      |
-| =:focused-alpha= | number  | =0.6= (unset) | Opacity of the shadow of the focused float.                       |
+| =:radius=        | pixels  | =16= (unset)  | Width of the shadow around a float; 0 turns shadows and glow off. |
+| =:alpha=         | number  | =0.3= (unset) | Opacity from 0.0 to 1.0 of the shadow of an unfocused float.      |
+| =:focused-alpha= | number  | =0.4= (unset) | Opacity of the shadow of the focused float.                       |
 | =:glow-radius=   | pixels  | =6= (unset)   | Width of the glow around the focused tiled window.                |
 | =:glow-alpha=    | number  | =0.3= (unset) | Opacity of that glow.                                             |
 
