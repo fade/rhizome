@@ -82,10 +82,10 @@
       (let ((parts (bar-module-parts :workspaces)))
         (ok "workspaces count"
             (length parts) 9)
-        (ok "active workspace pilled with accent"
-            (third parts) '("3" "#7aa2f7" :pill t :gap 8))
-        (ok "occupied workspace in foreground, no underline"
-            (second parts) '("2" "#c0caf5" :gap 8))
+        (ok "active occupied workspace: accent pill, bold, dot"
+            (third parts) '("3" "#7aa2f7" :pill t :bold t :dot t :gap 8))
+        (ok "occupied workspace: foreground, bold, dot, no underline"
+            (second parts) '("2" "#c0caf5" :bold t :dot t :gap 8))
         (ok "empty workspace muted"
             (first parts) '("1" "#565f89" :gap 8))
         (ok "every workspace part carries the gap"

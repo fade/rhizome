@@ -834,14 +834,16 @@ BGRA color (premultiplied: RGB scaled by A)."
     (loop for i below (* width height) do
       (setf (cffi:mem-aref ptr :unsigned-int i) pixel))))
 
-(defun launcher-draw-text-shm (ptr width text x y r g b)
-  "Draw TEXT at (X, Y) directly to shm with color (R, G, B).
+(defun launcher-draw-text-shm (ptr width text x y r g b &key bold underline)
+  "Draw TEXT at (X, Y) directly to shm with color (R, G, B), bold
+and underlined when BOLD and UNDERLINE are true.
 Delegates to the font module (TrueType or the 8x16 bitmap
 fallback); the buffer is premultiplied ARGB, so the text color is
 scaled by the launcher's surface alpha down in the font module."
   (font-ensure-initialized)
   (font-draw-text ptr width *launcher-height* text x y r g b
-                  :alpha (launcher-surface-alpha)))
+                  :alpha (launcher-surface-alpha)
+                  :bold bold :underline underline))
 
 (defun launcher-icon-size ()
   "The launcher's rendered icon size ((:launcher :icon-size))."
@@ -938,6 +940,31 @@ border, alpha-cut at the corners. Premultiplied ARGB."
                                                      brd-b brd-g brd-r a)
                                 (launcher-set-pixel ptr width height x y
                                                      b g r a)))))))))
+
+(defun launcher-draw-entry-label (ptr width label x y r g b)
+  "Draw an entry's LABEL at (X, Y) in (R, G, B). The first
+case-insensitive occurrence of the typed query draws in the
+:launcher-match colour with the match's cue flags from
+*state-cues* (bold and underlined); fuzzy hits with no substring
+match draw plain."
+  (let ((match-pos (and (plusp (length *launcher-query*))
+                        (search *launcher-query* label
+                                :test #'char-equal))))
+    (if match-pos
+        (let* ((match-end (+ match-pos (length *launcher-query*)))
+               (before (subseq label 0 match-pos))
+               (match (subseq label match-pos match-end))
+               (flags (state-cue-flags :launcher-match))
+               (mx (+ x (font-text-width before))))
+          (multiple-value-bind (mr mg mb) (theme-rgb :launcher-match)
+            (launcher-draw-text-shm ptr width before x y r g b)
+            (apply #'launcher-draw-text-shm ptr width match mx y mr mg mb
+                   flags)
+            (launcher-draw-text-shm ptr width (subseq label match-end)
+                                    (+ mx (font-text-width
+                                           match :bold (getf flags :bold)))
+                                    y r g b)))
+        (launcher-draw-text-shm ptr width label x y r g b))))
 
 (defun launcher-render-to-shm (width height)
   "Render the launcher UI directly to the shared memory buffer.
@@ -1046,35 +1073,10 @@ text goes through the font module (see font.lisp)."
                                  (text-y (+ y (floor (- *launcher-line-height*
                                                         (font-line-height))
                                                      2)))
-                                 (label (car entry))
-                                 (match-pos (and (plusp (length *launcher-query*))
-                                                 (search *launcher-query* label
-                                                         :test #'char-equal))))
-                            (if match-pos
-                              (let ((mlen (length *launcher-query*)))
-                                (multiple-value-bind (acr acg acb)
-                                    (theme-rgb :launcher-match)
-                                  ;; before / match / after segments
-                                  (launcher-draw-text-shm ptr width
-                                    (subseq label 0 match-pos)
-                                    text-x text-y tr tg tb)
-                                  (let ((mx (+ text-x
-                                               (font-text-width
-                                                 (subseq label 0 match-pos)))))
-                                    (launcher-draw-text-shm ptr width
-                                      (subseq label match-pos
-                                              (+ match-pos mlen))
-                                      mx text-y acr acg acb)
-                                    (launcher-draw-text-shm ptr width
-                                      (subseq label (+ match-pos mlen))
-                                      (+ mx (font-text-width
-                                              (subseq label match-pos
-                                                      (+ match-pos mlen))))
-                                      text-y tr tg tb))))
-                              ;; no match to highlight (fuzzy hits)
-                              (launcher-draw-text-shm ptr width label
-                                                      text-x text-y
-                                                      tr tg tb)))))))))))))))
+                                 (label (car entry)))
+                            (launcher-draw-entry-label ptr width label
+                                                       text-x text-y
+                                                       tr tg tb))))))))))))))
 
 (defun launcher-destroy-shm ()
   "Destroy the shared memory resources."

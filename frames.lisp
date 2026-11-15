@@ -944,7 +944,7 @@ render pass can exclude them from its hide logic."
           (multiple-value-bind (r g b a)
               (theme-border-rgba32 (window-focused-p win))
             (set-window-borders win '(:top :bottom :left :right)
-                                (if (window-focused-p win) 2 1)
+                                (border-width (window-focused-p win))
                                 r g b a))
           ;; Show only on transition: river treats every show/hide
           ;; as a state change and starts a new sequence for it.

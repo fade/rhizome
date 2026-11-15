@@ -174,10 +174,12 @@ use it."
 
 (defun bar-module-workspaces ()
   "Workspace numbers with breathing room, coloured by the
-:bar-workspace-current (on a pill), :bar-workspace-occupied, and
+:bar-workspace-current, :bar-workspace-occupied, and
 :bar-workspace-empty elements. Occupancy comes from the WM
 snapshot's :occupied list (workspace numbers with visible
-windows)."
+windows). Each state also takes its non-hue cue from
+*state-cues*: the current workspace sits on a pill, and an
+occupied one (current or not) is bold with a dot below it."
   (let* ((snapshot (bar-snapshot))
          (current (getf snapshot :workspace 1))
          (count (getf snapshot :workspace-count 9))
@@ -188,11 +190,15 @@ windows)."
          (gap (config-getf '(:bar :workspaces) :gap :default 8)))
     (loop for i from 1 to count
           collect (list* (format nil "~A" i)
-                        (cond ((= i current) accent)
-                              ((member i occupied) fg)
-                              (t muted))
-                        (append (when (= i current) '(:pill t))
-                                (list :gap gap))))))
+                         (cond ((= i current) accent)
+                               ((member i occupied) fg)
+                               (t muted))
+                         (append (when (= i current)
+                                   (state-cue-flags :workspace-current))
+                                 (if (member i occupied)
+                                     (state-cue-flags :workspace-occupied)
+                                     (state-cue-flags :workspace-empty))
+                                 (list :gap gap))))))
 
 (defun bar-module-battery ()
   "Battery percentage from /sys/class/power_supply, e.g. \"75%\"."
@@ -344,7 +350,9 @@ strftime subset: %H %M %S %d %m %y %Y %a %A %b %B."
 (text color . plist): color NIL means the segment's base color,
 and the plist tail carries render flags — :gap N adds N pixels of
 breathing room after the part, :pill T blends the part's colour
-into a rounded fill behind the text (the active-workspace marker).
+into a rounded fill behind the text (the active-workspace marker),
+:bold T draws the text bold, and :dot T puts a small dot below it
+(the occupied-workspace marker).
 Unknown or failing modules render empty. EMPTY STRINGS are
 dropped: bar-cached substitutes \"\" when a thunk errors, and
 empty text renders nothing."
@@ -373,7 +381,7 @@ telltale."
   "Pixel width of one part: icon + text advance + gap."
   (+ (if (getf (bar-part-flags part) :icon)
          (bar-icon-width) 0)
-     (bar-text-width (first part))
+     (bar-text-width (first part) :bold (getf (bar-part-flags part) :bold))
      (or (getf (bar-part-flags part) :gap 0) 0)))
 
 (defun bar-segment-modules (position)
@@ -565,18 +573,19 @@ PREMULTIPLIED — every writer premultiplies by this."
     (loop for i below (* width height) do
       (setf (cffi:mem-aref ptr :unsigned-int i) pixel))))
 
-(defun bar-draw-text (ptr width height text x y r g b)
-  "Draw TEXT at (X, Y) — the top of the text box — in RGB color.
+(defun bar-draw-text (ptr width height text x y r g b &key bold)
+  "Draw TEXT at (X, Y), the top of the text box, in RGB colour,
+overstruck one pixel wider when BOLD.
 Delegates to the font module: TrueType via freetype when available,
 the 8x16 bitmap font otherwise (identical legacy metrics). The
 buffer is premultiplied ARGB, so the color is scaled by the
 surface alpha down in the font module."
   (font-ensure-initialized)
   (font-draw-text ptr width height text x y r g b
-                  :alpha (bar-surface-alpha)))
+                  :alpha (bar-surface-alpha) :bold bold))
 
-(defun bar-text-width (text)
-  (font-text-width text))
+(defun bar-text-width (text &key bold)
+  (font-text-width text :bold bold))
 
 ;;; --- Status icons (wifi, battery, volume) ---
 
@@ -684,8 +693,8 @@ bolt when CHARGING."
 
 (defun bar-draw-module (ptr width height x y parts base-r base-g base-b module)
   "Draw one module's PARTS starting at X, using the base color for
-parts without an explicit color. Parts may carry :gap and :pill
-flags (see bar-module-parts). Records a click hitbox
+parts without an explicit color. Parts may carry :gap, :pill,
+:bold, and :dot flags (see bar-module-parts). Records a click hitbox
 for MODULE. Returns the x after the module plus gap."
   (let ((start x))
     (dolist (part parts)
@@ -700,8 +709,19 @@ for MODULE. Returns the x after the module plus gap."
           (bar-draw-status-icon ptr width height x y
                                 (getf flags :icon) flags r g b)
           (incf x (bar-icon-width)))
-        (bar-draw-text ptr width height text x y r g b)
-        (let ((tw (bar-text-width text)))
+        (bar-draw-text ptr width height text x y r g b
+                       :bold (getf flags :bold))
+        (let ((tw (bar-text-width text :bold (getf flags :bold))))
+          ;; The occupied-workspace dot: 2x2, centred horizontally,
+          ;; one pixel below the baseline, kept inside the line box.
+          (when (getf flags :dot)
+            (let ((dx0 (+ x (floor tw 2) -1))
+                  (dy0 (min (+ y (font-ascent) 1)
+                            (+ y (font-line-height) -2))))
+              (dotimes (dy 2)
+                (dotimes (dx 2)
+                  (bar-set-pixel ptr width height (+ dx0 dx) (+ dy0 dy)
+                                 r g b)))))
           ;; The active-workspace marker: a rounded accent PILL
           ;; blended behind the text (radius 4, inset).
           (when (getf flags :pill)

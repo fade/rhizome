@@ -214,7 +214,7 @@ from its hide logic."
           (multiple-value-bind (r g b a)
               (theme-border-rgba32 (window-focused-p win))
             (set-window-borders win '(:top :bottom :left :right)
-                                (if (window-focused-p win) 2 1)
+                                (border-width (window-focused-p win))
                                 r g b a))
           (when (window-hidden-p win)
             (show-window win))

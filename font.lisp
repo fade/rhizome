@@ -349,16 +349,18 @@ Bitmap fallback: the legacy 16px cell, text flush at the top."
       (max 16 (+ (font-ascent) (font-descent)))
       16))
 
-(defun font-text-width (text)
+(defun font-text-width (text &key bold)
   "Pixel width of TEXT at the configured size. Unmappable
-characters count a generic advance."
-  (if *ft-face*
-      (loop for ch across text
-            sum (let ((glyph (font-glyph (char-code ch))))
-                  (if glyph
-                      (getf glyph :advance)
-                      (max 4 (floor (* *ft-font-size* 2) 3)))))
-      (* 8 (length text))))
+characters count a generic advance. BOLD text is one pixel wider
+(the overstrike in font-draw-text); empty text is 0 wide."
+  (+ (if *ft-face*
+         (loop for ch across text
+               sum (let ((glyph (font-glyph (char-code ch))))
+                     (if glyph
+                         (getf glyph :advance)
+                         (max 4 (floor (* *ft-font-size* 2) 3)))))
+         (* 8 (length text)))
+     (if (and bold (plusp (length text))) 1 0)))
 
 ;;; --- blitting ---
 
@@ -385,9 +387,11 @@ out-of-range writes are no-ops."
           (blend 1 g)                      ; G
       (blend 2 r))))))                   ; R
 
-(defun font-draw-text (ptr width height text x y r g b
-                       &key (alpha 255))
-  "Draw TEXT into the BGRA buffer PTR at (X, Y) in color (R G B).
+(defun font-draw-glyphs (ptr width height text x y r g b
+                         &key (alpha 255))
+  "Draw TEXT's glyphs into the BGRA buffer PTR at (X, Y) in color
+(R G B), at regular weight with no decoration; font-draw-text adds
+weight and underline.
 
 Y is the TOP of the text box in both modes (the legacy bitmap
 semantics every caller already uses); the TrueType path converts
@@ -463,3 +467,26 @@ translucent surface."
                                   (round (* r alpha) 255)
                                 (cffi:mem-aref ptr :unsigned-char (+ offset 3))
                                   alpha)))))))))))))
+
+(defun font-draw-text (ptr width height text x y r g b
+                       &key (alpha 255) bold underline)
+  "Draw TEXT into the BGRA buffer PTR at (X, Y) in color (R G B).
+
+Y is the TOP of the text box in both modes (the legacy bitmap
+semantics every caller already uses); the TrueType path converts
+to a baseline internally. Text is clipped at the buffer edges.
+ALPHA is the surface alpha (the buffers are premultiplied ARGB):
+255 renders opaque, lower values scale the text color to match a
+translucent surface.
+
+BOLD overstrikes the glyphs one pixel to the right, so bold text is
+one pixel wider (see font-text-width); it works with any face and
+with the bitmap fallback. UNDERLINE draws a 1 px rule one pixel
+below the baseline across the text's width."
+  (font-draw-glyphs ptr width height text x y r g b :alpha alpha)
+  (when bold
+    (font-draw-glyphs ptr width height text (1+ x) y r g b :alpha alpha))
+  (when (and underline (plusp (length text)))
+    (let ((uy (+ y (font-ascent) 1)))
+      (dotimes (dx (font-text-width text :bold bold))
+        (font-blend-pixel ptr width height (+ x dx) uy r g b 255 alpha)))))
