@@ -283,3 +283,6 @@ stubbed river requests. Run with:
   same socket: $XDG_RUNTIME_DIR/rhizome.sock, or /tmp/rhizome-UID.sock
   when XDG_RUNTIME_DIR is unset or empty. The client's path is read
   from its "no socket" message; no socket is opened.
+- `example-config.lisp` - examples/config.lisp loads without
+  signalling, the values it marks as defaults are the defaults, and
+  every `rhizome-cmd` command it names exists.

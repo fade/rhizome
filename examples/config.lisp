@@ -20,7 +20,7 @@
 ;;; bitmap font with identical metrics.
 
 (configure '(:theme (:font-family "monospace"   ; default
-                    :font-size 12              ; default
+                    :font-size 14              ; default
                     :focused-border "#7aa2f7"  ; Tokyo Night blue
                     :unfocused-border "#404040")))
 
@@ -44,15 +44,17 @@
 
 ;;; --- Workspaces ------------------------------------------------------
 ;;;
-;;; Each workspace has its own TYPE and LAYOUT. Types:
-;;;   :tile     — frame trees (the default)
-;;;   :floating — StumpWM's floating group: every window floats,
-;;;               arrivals cascade (C-t l cycles live, or
-;;;               rhizome-cmd set-workspace-type <type> [N])
-;;;   :scroll   — the ribbon
+;;; Each workspace has its own TYPE and LAYOUT. Types in :types:
+;;;   :tile     - frame trees (the default)
+;;;   :floating - StumpWM's floating group: every window floats,
+;;;               arrivals cascade
+;;; The scroll ribbon is a third type, but only live: C-t l cycles the
+;;; current workspace through tile, scroll, and floating, and
+;;; rhizome-cmd set-group-type tile|scroll|floating sets it. A :scroll
+;;; entry in :types is reported by group-type but makes no ribbon.
 
 (configure '(:workspaces (:types nil
-                         ;; (2 :floating 5 :scroll)
+                         ;; (2 :floating)
                          :default-layout :master-stack)))
                          ;; the layout untouched workspaces use;
                          ;; switch-layout stores per-workspace
