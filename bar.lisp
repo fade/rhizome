@@ -19,10 +19,10 @@
 (defparameter *bar-running* nil
   "Whether the bar thread should keep running.")
 (defparameter *bar-state* nil
-  "Connection/surface state plist for the running bar:
-:display :compositor :shm :layer-shell :output :surface
-:layer-surface :shm-fd :shm-ptr :shm-size :wl-pool :wl-buffer
-:width :height :mapped")
+  "Connection state hash for the running bar: :display :compositor
+:shm :layer-shell :seat :pointer, :outputs (every bound wl_output) and
+:output-names (output -> wl_output global name). Each output's bar
+lives in its own ostate (see *bar-output-states*).")
 
 (defvar *bar-cache* (make-hash-table)
   "Maps module names to (cons timestamp string) for rate-limited modules.")
@@ -48,36 +48,66 @@ read from the snapshot file. Refreshed at most once per tick."
                       (error () nil))
                     *wm-snapshot*))))
 
-;;; --- Heads: one bar per output ---
+;;; --- One bar per output ---
 ;;;
-;;; The bar process binds every wl_output. Each one becomes a HEAD, a
-;;; hash table holding that output's layer surface, shm buffer and
-;;; click regions (:global-name :output :root :surface :layer-surface
-;;; :shm-fd :shm-ptr :shm-size :wl-pool :wl-buffer :width :height
-;;; :mapped :hitboxes :last-content :closed-at). The root state keeps
-;;; the shared globals and the heads under :heads, keyed by the
-;;; wl_output global name. The WM snapshot's :outputs entries carry
+;;; The bar process binds every wl_output (the root state's :outputs)
+;;; and gives each output whose bar is open an OSTATE: a hash table
+;;; holding that output's layer surface, shm buffer and click regions.
+;;; *bar-output-states* finds an ostate by output, *bar-surface-states*
+;;; by wl_surface. The root state keeps each output's wl_output global
+;;; name under :output-names; the WM snapshot's :outputs entries carry
 ;;; the same name under :wl-output.
+;;;
+;;; By default every bar draws the same content. Opt-in (:bar ...)
+;;; keys: :per-output-content (each bar shows its own output),
+;;; :active-screen (the current output's bar takes the active
+;;; background), :tray-output :primary and :global-modules :primary
+;;; (other bars drop the tray, or every global module), and :outputs
+;;; (which outputs carry a bar).
+
+(defparameter *bar-output-states* (make-hash-table)
+  "Per-output bar state: output proxy -> the ostate hash holding that
+output's :output :global-name :surface :layer-surface :shm :width
+:height :mapped :shm-fd :shm-ptr :shm-size :wl-pool :wl-buffer
+:hitboxes :last-content. One bar process, one surface (and one shm
+buffer) per output whose bar is open.")
+
+(defparameter *bar-surface-states* (make-hash-table)
+  "wl_surface proxy -> that output's bar ostate (pointer routing).")
+
+(defparameter *bar-pointer-ostate* nil
+  "The ostate whose surface holds the pointer, or NIL.")
+
+(defparameter *bar-closed-at* (make-hash-table)
+  "Output proxy -> the universal time the compositor last closed that
+output's bar surface.")
+
+(defparameter *bar-output-entry* nil
+  "The snapshot :outputs entry of the output whose bar is rendering,
+or NIL.")
 
 (defparameter *bar-output-view* nil
-  "The snapshot entry of the output whose bar is rendering, or NIL.")
+  "The snapshot keys that shadow the global ones for the rendering bar
+(see bar-view): the output's whole entry under
+(:bar :per-output-content), else only the current output's workspace
+numbering (:labels :index-base :connector).")
 
-(defparameter *bar-head-primary* t
-  "True while rendering the primary bar, the one holding the tray.")
-
-(defparameter *bar-pointer-head* nil
-  "The head whose surface holds the pointer, or NIL.")
+(defparameter *bar-output-primary* t
+  "True while rendering the primary bar, the one that keeps every
+module under (:bar :tray-output :primary) or (:bar :global-modules
+:primary).")
 
 (defparameter *bar-per-output-modules* '(:workspaces :layout :windows)
   "Modules that describe one output. Under (:bar :global-modules
 :primary) these are the only modules on bars other than the primary.")
 
 (defparameter *bar-reopen-delay* 5
-  "Seconds a head whose surface the compositor closed stays closed.")
+  "Seconds an output's bar stays closed after the compositor closes
+its surface.")
 
 (defun bar-view ()
-  "The snapshot as the rendering bar reads it: its output's entry
-shadows the global keys."
+  "The snapshot as the rendering bar reads it: *bar-output-view*
+shadows the global keys (see bar-ostate-view)."
   (append *bar-output-view* (bar-snapshot)))
 
 (defun bar-output-entry (snapshot name)
@@ -86,82 +116,110 @@ shadows the global keys."
         :key (lambda (entry) (getf entry :wl-output))
         :test #'eql))
 
-(defun bar-heads (state)
-  "STATE's heads in wl_output global-name order."
-  (let ((heads (gethash :heads state)))
-    (when heads
-      (sort (loop for head being the hash-values of heads collect head)
-            #'< :key (lambda (head) (gethash :global-name head))))))
+(defun bar-ostates ()
+  "The open ostates in wl_output global-name order."
+  (sort (loop for ostate being the hash-values of *bar-output-states*
+              collect ostate)
+        #'< :key (lambda (ostate) (or (gethash :global-name ostate) 0))))
 
-(defun bar-head (state name)
-  "STATE's head for wl_output global NAME, or NIL."
-  (let ((heads (gethash :heads state)))
-    (and heads (values (gethash name heads)))))
+(defun bar-output-global-name (state output)
+  "The wl_output global name STATE bound OUTPUT under, or NIL."
+  (let ((names (gethash :output-names state)))
+    (and names (values (gethash output names)))))
 
-(defun bar-add-head (state name output)
-  "Record a head in STATE for wl_output global NAME bound as OUTPUT.
-Returns the head."
-  (let ((heads (or (gethash :heads state)
-                   (setf (gethash :heads state) (make-hash-table))))
-        (head (make-hash-table)))
-    (setf (gethash :global-name head) name
-          (gethash :output head) output
-          (gethash :root head) state
-          (gethash name heads) head)))
+(defun bar-output-named (state name)
+  "The output STATE bound as wl_output global NAME, or NIL."
+  (find name (gethash :outputs state)
+        :key (lambda (output) (bar-output-global-name state output))
+        :test #'eql))
 
 (defun bar-forget-output (state name)
-  "Drop the head for wl_output global NAME from STATE, closing its
-surface. No effect for an unknown NAME."
-  (let ((head (bar-head state name)))
-    (when head
-      (when (gethash :surface head)
-        (bar-close-surface head))
-      (when (eq head *bar-pointer-head*)
-        (setf *bar-pointer-head* nil))
-      (remhash name (gethash :heads state)))))
+  "Forget the output STATE bound as wl_output global NAME: close its
+bar and drop it from STATE's :outputs. No effect for an unknown NAME."
+  (let ((output (bar-output-named state name)))
+    (when output
+      (let ((ostate (gethash output *bar-output-states*)))
+        (when ostate
+          (bar-close-surface ostate)))
+      (remhash output (gethash :output-names state))
+      (remhash output *bar-closed-at*)
+      (setf (gethash :outputs state)
+            (remove output (gethash :outputs state))))))
 
-(defun bar-head-primary-p (head)
-  "True when HEAD's bar holds the tray: the snapshot marks its output
-:primary, or, with a snapshot that lists no outputs, HEAD is the first
-head."
-  (let ((snapshot (bar-snapshot))
-        (root (gethash :root head)))
+(defun bar-ostate-primary-p (ostate)
+  "True when OSTATE is the primary bar: the snapshot marks its output
+:primary, or, with a snapshot that lists no outputs, OSTATE is the
+first open ostate."
+  (let ((snapshot (bar-snapshot)))
     (if (eq (getf snapshot :outputs :absent) :absent)
-        (or (null root) (eq head (first (bar-heads root))))
-        (getf (bar-output-entry snapshot (gethash :global-name head))
+        (eq ostate (first (bar-ostates)))
+        (getf (bar-output-entry snapshot (gethash :global-name ostate))
               :primary))))
 
-(defun bar-head-wanted-p (head snapshot)
-  "True when HEAD should show a bar under SNAPSHOT: the bar is not
-hidden, the snapshot marks HEAD's output :bar (every head when the
-snapshot lists no outputs), and the compositor has not closed HEAD's
-surface within *bar-reopen-delay* seconds."
-  (let ((closed-at (gethash :closed-at head))
+(defun bar-output-wanted-p (state output snapshot)
+  "True when OUTPUT, bound in STATE, should show a bar under SNAPSHOT:
+the bar is not hidden, the snapshot marks OUTPUT :bar (every output
+when the snapshot lists no outputs), and the compositor has not closed
+OUTPUT's bar within *bar-reopen-delay* seconds."
+  (let ((closed-at (gethash output *bar-closed-at*))
         (outputs (getf snapshot :outputs :absent)))
     (and (not (getf snapshot :bar-hidden))
          (or (eq outputs :absent)
-             (getf (bar-output-entry snapshot (gethash :global-name head))
+             (getf (bar-output-entry snapshot
+                                     (bar-output-global-name state output))
                    :bar))
          (or (null closed-at)
              (>= (- (get-universal-time) closed-at) *bar-reopen-delay*))
          t)))
 
-(defmacro with-bar-head ((head) &body body)
-  "Run BODY as HEAD's bar: bar-view returns HEAD's output entry and
-bar-head-segment-modules applies HEAD's primary status."
-  (let ((h (gensym "HEAD")))
-    `(let* ((,h ,head)
-            (*bar-output-view* (bar-output-entry (bar-snapshot)
-                                                 (gethash :global-name ,h)))
-            (*bar-head-primary* (bar-head-primary-p ,h)))
+(defun bar-per-output-content-p ()
+  "True under (:bar :per-output-content t): each bar shows its own
+output's workspaces, layout and window count, and a workspace click
+switches that output. NIL (the default): every bar shows the same
+content, that of the current output."
+  (config-getf '(:bar) :per-output-content :default nil))
+
+(defun bar-ostate-view (entry &optional (snapshot (bar-snapshot)))
+  "The keys that shadow SNAPSHOT's for the bar of ENTRY's output: ENTRY
+itself under (:bar :per-output-content), else the current output's
+:labels, :index-base, and :connector, so every bar numbers the
+workspaces the way the current output does."
+  (if (bar-per-output-content-p)
+      entry
+      (let ((current (find-if (lambda (e) (getf e :current))
+                              (getf snapshot :outputs))))
+        (when current
+          (list :labels (getf current :labels)
+                :index-base (getf current :index-base 1)
+                :connector (getf current :connector))))))
+
+(defmacro with-bar-ostate ((ostate) &body body)
+  "Run BODY as OSTATE's bar: *bar-output-entry* holds OSTATE's snapshot
+entry, bar-view reads the keys bar-ostate-view picks, and
+bar-ostate-segment-modules applies OSTATE's primary status."
+  (let ((o (gensym "OSTATE")))
+    `(let* ((,o ,ostate)
+            (*bar-output-entry* (bar-output-entry (bar-snapshot)
+                                                  (gethash :global-name ,o)))
+            (*bar-output-view* (bar-ostate-view *bar-output-entry*))
+            (*bar-output-primary* (bar-ostate-primary-p ,o)))
        ,@body)))
 
-(defun bar-active-screen-p (&optional (entry *bar-output-view*)
+(defun bar-active-screen-p (&optional (entry *bar-output-entry*)
                                       (snapshot (bar-snapshot)))
   "True when ENTRY, a snapshot :outputs entry, is the current output
 and SNAPSHOT lists more than one output."
   (and (getf entry :current)
        (> (length (getf snapshot :outputs)) 1)))
+
+(defun bar-ostate-active-p ()
+  "True when the rendering bar takes the active background: under
+(:bar :active-screen t), its output is the current one of several.
+NIL (the default): every bar takes the inactive background, which
+follows :bar-background."
+  (and (config-getf '(:bar) :active-screen :default nil)
+       (bar-active-screen-p)
+       t))
 
 (defun bar-background-color (active-p)
   "The bar background as \"#rrggbb\": the :bar-background-active theme
@@ -180,9 +238,25 @@ follows :bar-background unless set."
 (defparameter *tray-render-stamp* 0
   "The *tray-changed* value at the last render; a mismatch forces a
 bar re-render even when text modules are unchanged.")
+
+(defparameter *bar-hover-rendered* '%none
+  "The module under the pointer as of the last render ('%none when
+the pointer is off the bar). Pointer motion alone must re-render: the
+hover veil otherwise bakes into the buffer at click time and stays
+over the module until unrelated content changes.")
+
 (defparameter *bar-hitboxes* nil
   "Module click regions: list of (module-name start-x end-x),
 recorded during rendering.")
+
+(defun bar-pointer-hitboxes ()
+  "The hitboxes of the bar the pointer is over: its own ostate's, or,
+when the pointer's surface is unknown, any bar's, else *bar-hitboxes*."
+  (if *bar-pointer-ostate*
+      (gethash :hitboxes *bar-pointer-ostate*)
+      (or (loop for o being the hash-values of *bar-output-states*
+                  thereis (gethash :hitboxes o))
+          *bar-hitboxes*)))
 
 ;;; --- Module helpers ---
 
@@ -545,16 +619,19 @@ narrow output."
         '(:echo)
         modules)))
 
-(defun bar-head-segment-modules (position)
+(defun bar-ostate-segment-modules (position)
   "The modules the rendering bar draws in POSITION. The primary bar
-draws them all. Another bar never draws the tray, and under
-(:bar :global-modules :primary) draws only *bar-per-output-modules*."
+draws them all, and so does every bar by default. Under
+(:bar :tray-output :primary) another bar drops the tray; under
+(:bar :global-modules :primary) it keeps only *bar-per-output-modules*."
   (let ((modules (bar-segment-modules position)))
-    (if *bar-head-primary*
+    (if *bar-output-primary*
         modules
-        (let ((global (config-getf '(:bar) :global-modules :default :all)))
+        (let ((global (config-getf '(:bar) :global-modules :default :all))
+              (tray (config-getf '(:bar) :tray-output :default :all)))
           (remove-if-not (lambda (module)
-                           (and (not (tray-module-p module))
+                           (and (or (eq tray :all)
+                                    (not (tray-module-p module)))
                                 (or (eq global :all)
                                     (member module *bar-per-output-modules*))))
                          modules)))))
@@ -624,14 +701,58 @@ what is actually drawn."
   "Pixel width of an icons module (icons + inter-icon gaps)."
   (* (+ *bar-icon-size* 4) (length (bar-icons-entries module))))
 
+(defun icon-svg-cache-path (svg)
+  "Where SVG's rasterized PNG lives: icons/ under the cache directory."
+  (let ((dir (merge-pathnames #P"icons/" (cache-directory))))
+    (ensure-directories-exist dir)
+    (merge-pathnames (make-pathname :name (pathname-name svg) :type "png")
+                     dir)))
+
+(defun rasterize-icon-svg (svg)
+  "Rasterize SVG to a 64x64 PNG via rsvg-convert (cached by name).
+Returns the PNG path, or NIL when the tool is missing or fails."
+  (let ((png (icon-svg-cache-path svg)))
+    (or (and (probe-file png) png)
+        (handler-case
+            (progn
+              (uiop:run-program
+                (list "rsvg-convert" "-w" "64" "-h" "64"
+                      "--output" (namestring png) (namestring svg))
+                :ignore-error-status t)
+              (and (probe-file png) png))
+          (error () nil)))))
+
+(defun icon-theme-search (spec)
+  "Search every installed icon theme's category directories for
+SPEC.png or SPEC.svg: the user's icons/ under the XDG data directory,
+then /usr/share/icons/*/. SNI items that ship only themed icons
+(variety-indicator, for one) live in panel and status categories the
+hicolor apps search never reaches. Returns a PNG path or NIL."
+  (labels ((find-ext (type)
+             (loop for root in (cons (merge-pathnames #P"icons/"
+                                                      (base-home :data))
+                                     (uiop:directory* #P"/usr/share/icons/*/"))
+                   for hits = (directory
+                                (merge-pathnames
+                                  (make-pathname
+                                    :directory '(:relative :wild-inferiors)
+                                    :name spec :type type)
+                                  root))
+                   when hits return (first hits))))
+    (or (find-ext "png")
+        (let ((svg (find-ext "svg")))
+          (and svg (rasterize-icon-svg svg))))))
+
 (defun find-icon-file (spec)
-  "Resolve an :icon spec — an absolute path, or an icon name searched
-in the standard theme directories (PNG only)."
+  "Resolve an :icon spec: an absolute path, or an icon name searched
+in the standard hicolor apps directories (PNG), then every theme's
+category directories (PNG or rasterized SVG)."
   (cond ((and (find #\/ spec) (probe-file spec)) spec)
-        (t (loop for dir in *bar-icon-dirs*
-                 for file = (concatenate 'string dir spec ".png")
-                 when (probe-file file)
-                   return file))))
+        (t (or (loop for dir in *bar-icon-dirs*
+                     for file = (concatenate 'string dir spec ".png")
+                     when (probe-file file)
+                       return file)
+               (icon-theme-search spec)))))
 
 (defun scale-icon (source-w source-h source-data target-size)
   "Scale decoded RGBA data to TARGET-SIZE x TARGET-SIZE,
@@ -964,7 +1085,7 @@ after it."
       (return-from %bar-render))
     (multiple-value-bind (br bg bb) (parse-hex-color
                                        (bar-background-color
-                                        (bar-active-screen-p)))
+                                        (bar-ostate-active-p)))
       (multiple-value-bind (fr fg fb) (theme-rgb :bar-foreground)
         (let ((margin (config-getf '(:bar) :margin :default 8)))
           (if (plusp (config-getf '(:bar) :corner-radius :default 10))
@@ -981,18 +1102,18 @@ after it."
               (*bar-hitboxes* nil))
           ;; Left segment
           (let ((x padding))
-            (dolist (module (bar-head-segment-modules :left))
+            (dolist (module (bar-ostate-segment-modules :left))
               (setf x (bar-draw-segment-item ptr width height x y module
                                             fr fg fb br bg bb))))
           ;; Center segment
-          (let* ((modules (bar-head-segment-modules :center))
+          (let* ((modules (bar-ostate-segment-modules :center))
                  (total (bar-segment-width modules))
                  (x (floor (- width total) 2)))
             (dolist (module modules)
               (setf x (bar-draw-segment-item ptr width height x y module
                                             fr fg fb br bg bb))))
           ;; Right segment
-          (let* ((modules (bar-head-segment-modules :right))
+          (let* ((modules (bar-ostate-segment-modules :right))
                  (total (bar-segment-width modules))
                  (x (- width padding total)))
             (dolist (module modules)
@@ -1000,7 +1121,8 @@ after it."
                                             fr fg fb br bg bb))))
           ;; Hover: a subtle rounded accent fill under the pointer
           (when (and *bar-pointer-x*
-                     (or (null *bar-pointer-head*) (eq state *bar-pointer-head*))
+                     (or (null *bar-pointer-ostate*)
+                         (eq state *bar-pointer-ostate*))
                      (>= *bar-pointer-x* 0) (< *bar-pointer-x* width))
             (multiple-value-bind (ar ag ab) (theme-rgb :bar-hover)
               (dolist (hb *bar-hitboxes*)
@@ -1009,11 +1131,14 @@ after it."
                                      (eq (first (first hb)) :workspace-cell)))
                            (<= (second hb) *bar-pointer-x*)
                            (< *bar-pointer-x* (third hb)))
-                  (fill-rounded-rect ptr width height
-                                     (second hb) 2
-                                     (- (third hb) (second hb)) (- height 4)
-                                     ar ag ab :alpha 35 :radius 4)))))
+                  (blend-rounded-rect ptr width height
+                                      (second hb) 2
+                                      (- (third hb) (second hb)) (- height 4)
+                                      ar ag ab :alpha 35 :radius 4)))))
           (setf (gethash :hitboxes state) *bar-hitboxes*))))
+    ;; stamp the hovered module even when no veil was drawn, so the
+    ;; tick loop re-renders when the pointer leaves the bar
+    (setf *bar-hover-rendered* (bar-hover-module-now))
     (wl:wl-surface.attach (gethash :surface state) (gethash :wl-buffer state) 0 0)
     (wl:wl-surface.damage (gethash :surface state) 0 0 width height)
     (wl:wl-surface.commit (gethash :surface state))))
@@ -1026,11 +1151,24 @@ visual glitches and double commits — that the font engine turned
 fatal (a freetype face corrupts under concurrent FT_Load_Char, see
 font.lisp's *font-lock*).")
 
-(defun bar-render (head)
-  "Render and commit HEAD's bar, as that head (see with-bar-head)."
+(defun bar-render (ostate)
+  "Render ONE output's bar into its own buffer and commit it, as that
+output's bar (see with-bar-ostate). Its hitboxes land in OSTATE."
   (bt:with-lock-held (*bar-render-lock*)
-    (with-bar-head (head)
-      (%bar-render head))))
+    (with-bar-ostate (ostate)
+      (%bar-render ostate))))
+
+(defun bar-render-all ()
+  "Render every mapped output's bar, each into its own buffer with its
+own hitboxes."
+  (dolist (ostate (bar-ostates))
+    (when (gethash :mapped ostate)
+      (bar-render ostate))))
+
+(defun bar-any-mapped-p ()
+  "Whether any output's bar is mapped."
+  (loop for o being the hash-values of *bar-output-states*
+        thereis (gethash :mapped o)))
 
 ;;; --- Shm buffer management ---
 
@@ -1099,8 +1237,8 @@ Return T, or NIL when the shm file or mapping cannot be created."
 ;;; --- Connection lifecycle ---
 
 (defun bar-bind-global (state registry name interface version)
-  "Bind a registry global for the bar. Every wl_output becomes a head
-(see bar-add-head)."
+  "Bind a registry global for the bar. Every wl_output joins STATE's
+:outputs, its global name kept under :output-names."
   (let ((iface-class (wl:find-interface-named interface)))
     (when iface-class
       (cond
@@ -1119,10 +1257,16 @@ Return T, or NIL when the shm file or mapping cannot be created."
          (setf (gethash :layer-shell state)
                (wl:wl-registry.bind registry name iface-class version)))
         ((string= interface "wl_output")
-         (unless (bar-head state name)
-           (bar-add-head state name
-                         (wl:wl-registry.bind registry name iface-class
-                                              version))))
+         ;; per-output bars: bind EVERY output (hotplug arrivals come
+         ;; through here too, the registry hook keeps firing)
+         (unless (bar-output-named state name)
+           (let ((output (wl:wl-registry.bind registry name iface-class
+                                              version))
+                 (names (or (gethash :output-names state)
+                            (setf (gethash :output-names state)
+                                  (make-hash-table)))))
+             (setf (gethash output names) name)
+             (pushnew output (gethash :outputs state)))))
         ((and (string= interface "wl_seat")
               (null (gethash :seat state)))
          (setf (gethash :seat state)
@@ -1144,12 +1288,13 @@ Return T, or NIL when the shm file or mapping cannot be created."
            (bar-render state)
            (setf (gethash :mapped state) t)))))
     (:closed
-     ;; Only this head's bar goes; the others keep running. The head
+     ;; Only this output's bar goes; the others keep running. It
      ;; reopens after *bar-reopen-delay* while its output remains.
      (format t "~&; Rhizome: bar: compositor closed the bar on wl_output ~A~%"
              (gethash :global-name state))
-     (bar-close-surface state)
-     (setf (gethash :closed-at state) (get-universal-time)))))
+     (setf (gethash (gethash :output state) *bar-closed-at*)
+           (get-universal-time))
+     (bar-close-surface state))))
 
 ;;; --- Change detection ---
 ;;;
@@ -1157,43 +1302,47 @@ Return T, or NIL when the shm file or mapping cannot be created."
 ;;; module values) at the configured :interval and only re-renders the
 ;;; buffer when something actually changed, so a fast poll is cheap.
 
-(defun bar-content-changed-p (head)
-  "True when a module HEAD's bar draws rendered differently, or HEAD's
-active status changed, since HEAD's last check. Records the new
-content on HEAD."
-  (with-bar-head (head)
-    (let* ((modules (append (bar-head-segment-modules :left)
-                            (bar-head-segment-modules :center)
-                            (bar-head-segment-modules :right)))
+(defun bar-content-changed-p (ostate)
+  "True when a module OSTATE's bar draws rendered differently, or its
+active background changed, since OSTATE's last check. Records the new
+content on OSTATE."
+  (with-bar-ostate (ostate)
+    (let* ((modules (append (bar-ostate-segment-modules :left)
+                            (bar-ostate-segment-modules :center)
+                            (bar-ostate-segment-modules :right)))
            (sig (with-output-to-string (s)
-                  (prin1 (bar-active-screen-p) s)
+                  (prin1 (bar-ostate-active-p) s)
                   (terpri s)
                   (dolist (module modules)
                     (princ module s)
                     (princ " = " s)
                     (prin1 (bar-module-parts module) s)
                     (terpri s)))))
-      (unless (equal sig (gethash :last-content head))
-        (setf (gethash :last-content head) sig)
+      (unless (equal sig (gethash :last-content ostate))
+        (setf (gethash :last-content ostate) sig)
         t))))
 
 ;;; --- Pointer handling (clickable modules) ---
 
 (defun bar-hit-at (x)
   "The hitbox (module start-x end-x) containing X on the pointer's
-bar, or NIL. Without a pointer head, *bar-hitboxes* is searched."
+bar (see bar-pointer-hitboxes), or NIL."
   (find-if (lambda (hb)
              (and (<= (second hb) x)
                   (< x (third hb))))
-           (if *bar-pointer-head*
-               (gethash :hitboxes *bar-pointer-head*)
-               *bar-hitboxes*)))
+           (bar-pointer-hitboxes)))
 
 (defun bar-pointer-entry ()
   "The snapshot entry of the output under the pointer's bar, or NIL."
-  (when *bar-pointer-head*
+  (when *bar-pointer-ostate*
     (bar-output-entry (bar-snapshot)
-                      (gethash :global-name *bar-pointer-head*))))
+                      (gethash :global-name *bar-pointer-ostate*))))
+
+(defun bar-hover-module-now ()
+  "The module under the pointer (or '%none), from the current
+hitboxes and pointer position."
+  (or (and *bar-pointer-x* (bar-module-at *bar-pointer-x*))
+      '%none))
 
 (defun bar-module-at (x)
   "The module whose rendered area on the pointer's bar contains X, or NIL."
@@ -1217,7 +1366,8 @@ entries carry their actions inline."
         (t (config-getf (list :modules module) key :default nil))))
 
 (defun bar-handle-click (x)
-  "Handle a left click at X: run the module's :on-click command."
+  "Handle a left click at X: switch to a clicked workspace cell, act
+on a tray item, or run the module's :on-click command."
   (let* ((hit (bar-hit-at x))
          (module (first hit))
          (cell (find-if (lambda (hb)
@@ -1225,19 +1375,21 @@ entries carry their actions inline."
                                (eq (first (first hb)) :workspace-cell)
                                (<= (second hb) x)
                                (< x (third hb))))
-                        (if *bar-pointer-head*
-                            (gethash :hitboxes *bar-pointer-head*)
-                            *bar-hitboxes*))))
+                        (bar-pointer-hitboxes))))
     (when (or module cell)
       (cond
-        ;; Workspace cell: switch to it on this bar's screen via IPC,
-        ;; by connector name, else by wl_output global name
+        ;; Workspace cell: switch to it via IPC. Under
+        ;; (:bar :per-output-content) on this bar's screen, by connector
+        ;; name, else by wl_output global name; otherwise on the
+        ;; current screen.
         (cell
          (destructuring-bind (number connector) (second (first cell))
            (let ((entry (bar-pointer-entry)))
              (format t "~&; Rhizome: bar: click workspace ~A~%" number)
              (bar-run-command
-               (if (or connector (null (getf entry :wl-output)))
+               (if (or connector
+                       (not (bar-per-output-content-p))
+                       (null (getf entry :wl-output)))
                    (format nil "rhizome-cmd switch-workspace ~A~@[ ~A~]"
                            number connector)
                    (format nil "rhizome-cmd \"(rhizome:bar-switch-workspace ~D ~D)\""
@@ -1288,30 +1440,27 @@ here, the prompt surfaces live there)."
       (command
        (bar-run-command command)))))
 
-(defun bar-head-for-surface (args)
-  "The head of *bar-state* whose wl_surface appears in ARGS, or NIL."
-  (when *bar-state*
-    (find-if (lambda (head)
-               (let ((surface (gethash :surface head)))
-                 (and surface (member surface args :test #'eq))))
-             (bar-heads *bar-state*))))
-
 (defun bar-pointer-event (event-name args)
   "Handle wl_pointer events on the bar surface."
   (handler-case
       (case event-name
         (:enter
-         ;; (serial surface x y): x is second to last; the surface
-         ;; names the head
-         (setf *bar-pointer-head* (bar-head-for-surface args)
-               *bar-pointer-x* (nth (- (length args) 2) args)))
+         ;; wayflan's arity here has varied (the serial may ride
+         ;; along); take the LAST three args: surface x y. The surface
+         ;; names the bar.
+         (let* ((a (last args 3))
+                (surface (first a))
+                (x (second a)))
+           (setf *bar-pointer-ostate*
+                 (values (gethash surface *bar-surface-states*))
+                 *bar-pointer-x* (and x (round x)))))
         (:leave
-         (setf *bar-pointer-head* nil
+         (setf *bar-pointer-ostate* nil
                *bar-pointer-x* nil))
         (:motion
          (destructuring-bind (time x y) args
            (declare (ignore time y))
-           (setf *bar-pointer-x* x)))
+           (setf *bar-pointer-x* (round x))))
         (:button
          (destructuring-bind (serial time button state) args
            (declare (ignore serial time))
@@ -1355,22 +1504,31 @@ here, the prompt surfaces live there)."
                             (wl:wl-proxy-hooks pointer)))))))
             (wl:wl-proxy-hooks seat)))))
 
-(defun bar-open-surface (state)
-  "Create the bar's layer surface on STATE's output: anchored to the
-top, inset by (:bar :margin), with an exclusive zone of twice the
-margin plus the height. The compositor's configure event maps it."
-  (let* ((surface (wl:wl-compositor.create-surface
-                   (gethash :compositor state)))
+(defun bar-open-surface (state output)
+  "Create the bar's layer surface on OUTPUT: anchored to the top,
+inset by (:bar :margin), with an exclusive zone of twice the margin
+plus the height. The compositor's configure event maps it. The output
+gets its own ostate (surface, shm buffer, hitboxes), registered in
+*bar-output-states* and *bar-surface-states*. Returns the ostate."
+  (let* ((ostate (make-hash-table))
+         (surface (wl:wl-compositor.create-surface
+                    (gethash :compositor state)))
          (layer-surface
            (rwm:zwlr-layer-shell-v1.get-layer-surface
              (gethash :layer-shell state) surface
-             (gethash :output state) :top "rhizome-bar"))
+             output :top "rhizome-bar"))
          (margin (config-getf '(:bar) :margin :default 8))
          (height (config-getf '(:bar) :height :default 28)))
-    (setf (gethash :surface state) surface
-          (gethash :layer-surface state) layer-surface)
+    (setf (gethash :output ostate) output
+          (gethash :global-name ostate) (bar-output-global-name state output)
+          (gethash :shm ostate) (gethash :shm state)
+          (gethash :height ostate) height
+          (gethash :surface ostate) surface
+          (gethash :layer-surface ostate) layer-surface)
+    (setf (gethash output *bar-output-states*) ostate
+          (gethash surface *bar-surface-states*) ostate)
     (push (lambda (event-name &rest args)
-            (bar-layer-surface-handler state layer-surface
+            (bar-layer-surface-handler ostate layer-surface
                                        event-name args))
           (wl:wl-proxy-hooks layer-surface))
     (rwm:zwlr-layer-surface-v1.set-anchor layer-surface '(:top :left :right))
@@ -1379,35 +1537,39 @@ margin plus the height. The compositor's configure event maps it."
                                                   (+ (* 2 margin) height))
     (rwm:zwlr-layer-surface-v1.set-keyboard-interactivity layer-surface :none)
     (rwm:zwlr-layer-surface-v1.set-size layer-surface 0 height)
-    (wl:wl-surface.commit surface)))
+    (wl:wl-surface.commit surface)
+    ostate))
 
-(defun bar-close-surface (state)
-  "Destroy the bar's layer surface, wl_surface and shm buffer. River
-drops the bar's exclusive zone with the surface."
-  (when (gethash :layer-surface state)
-    (rwm:zwlr-layer-surface-v1.destroy (gethash :layer-surface state)))
-  (when (gethash :surface state)
-    (wl:wl-surface.destroy (gethash :surface state)))
-  (bar-destroy-shm state)
-  (setf (gethash :layer-surface state) nil
-        (gethash :surface state) nil
-        (gethash :mapped state) nil
-        (gethash :last-content state) nil))
+(defun bar-close-surface (ostate)
+  "Destroy one output's bar: layer surface, wl_surface and shm buffer,
+and forget OSTATE. River drops that output's exclusive zone with the
+surface."
+  (when (gethash :layer-surface ostate)
+    (rwm:zwlr-layer-surface-v1.destroy (gethash :layer-surface ostate)))
+  (when (gethash :surface ostate)
+    (wl:wl-surface.destroy (gethash :surface ostate)))
+  (bar-destroy-shm ostate)
+  (when (eq *bar-pointer-ostate* ostate)
+    (setf *bar-pointer-ostate* nil *bar-pointer-x* nil))
+  (remhash (gethash :output ostate) *bar-output-states*)
+  (remhash (gethash :surface ostate) *bar-surface-states*)
+  (setf (gethash :layer-surface ostate) nil
+        (gethash :surface ostate) nil
+        (gethash :mapped ostate) nil
+        (gethash :last-content ostate) nil))
 
 (defun bar-sync-visibility (state)
-  "Open or close each head's surface in STATE to match the WM
-snapshot (see bar-head-wanted-p). A head about to open takes the
-shared compositor, shm and layer-shell globals from STATE."
+  "Open or close each bound output's bar in STATE to match the WM
+snapshot (see bar-output-wanted-p): by default a bar on every output,
+or none while the bar is hidden."
   (let ((snapshot (bar-snapshot)))
-    (dolist (head (bar-heads state))
-      (let ((want (bar-head-wanted-p head snapshot))
-            (surface (gethash :surface head)))
-        (cond ((and surface (not want))
-               (bar-close-surface head))
-              ((and want (null surface))
-               (dolist (key '(:compositor :shm :layer-shell))
-                 (setf (gethash key head) (gethash key state)))
-               (bar-open-surface head)))))))
+    (dolist (output (gethash :outputs state))
+      (let ((want (bar-output-wanted-p state output snapshot))
+            (ostate (gethash output *bar-output-states*)))
+        (cond ((and ostate (not want))
+               (bar-close-surface ostate))
+              ((and want (null ostate))
+               (bar-open-surface state output)))))))
 
 (defvar *bar-applied-settings* nil
   "The :settings snapshot entry the bar process last applied.")
@@ -1421,7 +1583,7 @@ shared compositor, shm and layer-shell globals from STATE."
   "Apply SETTINGS, the :settings entry of the WM snapshot (see
 BAR-PUSHED-SETTINGS), in the bar process: replace the :bar, :modules,
 and :theme config groups, draw from the pushed theme, re-resolve the
-font, and render every head again. Reopens each open head's surface
+font, and render every bar again. Reopens each open bar's surface
 when the height or margin changed. Returns T when SETTINGS differ from
 the last applied, NIL when they match or are NIL."
   (when (and settings (not (equal settings *bar-applied-settings*)))
@@ -1444,18 +1606,20 @@ the last applied, NIL when they match or are NIL."
       (clrhash *bar-cache*)
       (font-apply-config)
       (let ((reopen (not (equal geometry (bar-geometry)))))
-        (dolist (head (bar-heads state))
-          (setf (gethash :last-content head) nil)
-          (when (and reopen (gethash :surface head))
-            (bar-close-surface head)
-            (bar-open-surface head))))
+        (dolist (ostate (bar-ostates))
+          (setf (gethash :last-content ostate) nil)
+          (when reopen
+            (let ((output (gethash :output ostate)))
+              (bar-close-surface ostate)
+              (bar-open-surface state output)))))
       t)))
 
 (defun bar-run-loop (state)
   "Open the bar's Wayland connection and drive its tick loop. Each
 tick applies the settings the WM pushed in its snapshot, then opens or
-closes each head's surface to follow the snapshot and re-renders the
-heads whose content changed."
+closes each output's bar to follow the snapshot and re-renders the bars
+whose content changed, every bar when the tray changed or the pointer
+moved onto another module."
   (flet ((safe-roundtrip (display)
            ;; Wayflan raises on events it cannot decode (e.g. wl_shm
            ;; advertises non-standard fourcc formats); skip and carry on.
@@ -1469,10 +1633,8 @@ heads whose content changed."
              (error (e)
                (format t "~&; Rhizome: bar: ignored event error: ~A~%" e))))
          (settled-p ()
-           (every (lambda (head)
-                    (or (gethash :mapped head)
-                        (null (gethash :surface head))))
-                  (bar-heads state))))
+           (every (lambda (ostate) (gethash :mapped ostate))
+                  (bar-ostates))))
     (handler-case
         (wl:with-open-display (display)
           (setf (gethash :display state) display)
@@ -1507,21 +1669,26 @@ heads whose content changed."
                        (tray-drain)
                        (when (/= tray-was *tray-changed*)
                          ;; new/removed items: invalidate content
-                         (dolist (head (bar-heads state))
-                           (setf (gethash :last-content head) nil))))
-                     (let ((tray-dirty (/= *tray-render-stamp* *tray-changed*)))
-                       (dolist (head (bar-heads state))
-                         (when (and (gethash :mapped head)
-                                    (or (bar-content-changed-p head)
-                                        tray-dirty))
-                           (bar-render head)))
+                         (dolist (ostate (bar-ostates))
+                           (setf (gethash :last-content ostate) nil))))
+                     ;; pointer motion alone re-renders: the hover veil
+                     ;; follows the module under the pointer
+                     (let ((tray-dirty (/= *tray-render-stamp* *tray-changed*))
+                           (hover-moved (not (eq (bar-hover-module-now)
+                                                 *bar-hover-rendered*))))
+                       (dolist (ostate (bar-ostates))
+                         (when (and (gethash :mapped ostate)
+                                    (or (bar-content-changed-p ostate)
+                                        tray-dirty
+                                        hover-moved))
+                           (bar-render ostate)))
                        (setf *tray-render-stamp* *tray-changed*))
                      (loop while (and *bar-running*
                                       (wl:wl-display-listen display))
                            do (safe-dispatch display))
                      (sleep (config-getf '(:bar) :interval :default 0.15)))
-            (dolist (head (bar-heads state))
-              (bar-destroy-shm head))))
+            (dolist (ostate (bar-ostates))
+              (bar-close-surface ostate))))
       (error (e)
         (format t "~&; Rhizome: bar thread error: ~A~%" e)))))
 
@@ -1704,8 +1871,8 @@ disabled."
                (t t)))))
 
 (defun bar-primary-output ()
-  "The leftmost output carrying a bar: its bar holds the tray. NIL
-when no output carries one."
+  "The leftmost output carrying a bar: the primary bar (see
+bar-ostate-segment-modules). NIL when no output carries one."
   (find-if #'bar-output-selected-p (all-outputs-sorted)))
 
 (defun bar-zone-shown-p (&optional output)

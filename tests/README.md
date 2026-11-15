@@ -293,3 +293,13 @@ stubbed river requests. Run with:
 - `example-config.lisp` - examples/config.lisp loads without
   signalling, the values it marks as defaults are the defaults, and
   every `rhizome-cmd` command it names exists.
+- `network-menu.lisp` - the network configurator (a MODULE: the
+  suite loads rhizome-net from the repo's modules/ directory the
+  way a user loads it): nmcli terse-line
+  parsing (escaped colons in SSIDs), scan dedupe by SSID (strongest
+  band wins) and signal sort, signal bars, connect/toggle argv.
+  All nmcli calls stubbed.
+- `bar-reserved-per-output.lisp` - the layout reserves bar space per
+  output: zone reported on A reserves on A, hidden on B reserves
+  nothing on B, no reports fall back to config, and the no-argument
+  form keeps any-output semantics.

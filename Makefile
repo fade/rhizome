@@ -36,7 +36,8 @@ SUITES    := animations decorations surface window-rules window-rules-reload flo
              ipc-socket-path \
              example-config \
              xdg-paths workspace-numbering \
-             fullscreen-toggle
+             fullscreen-toggle \
+             network-menu bar-reserved-per-output
 
 .PHONY: all build test install docs clean help
 

@@ -1,8 +1,9 @@
-;;; Active-screen indicator: with more than one output, the current
-;;; output's bar takes (:bar :background-active) and every other bar
-;;; (:bar :background-inactive); a current output without a bar shows
-;;; a line along one edge, set under (:screens :active-edge
-;;; :active-edge-width :active-edge-color).
+;;; Active-screen indicator: under (:bar :active-screen t), with more
+;;; than one output, the current output's bar takes (:bar
+;;; :background-active) and every other bar (:bar :background-inactive);
+;;; unset, every bar takes the inactive background. A current output
+;;; without a bar shows a line along one edge, set under (:screens
+;;; :active-edge :active-edge-width :active-edge-color).
 ;;;
 ;;; No compositor: the snapshot is stubbed and no surface is created.
 (ql:quickload :rhizome)
@@ -77,7 +78,8 @@ them."
 (setf (symbol-function 'bar-snapshot) (lambda () *as-snapshot*))
 
 (as-case "a focus change redraws the bars"
-  (as-config '(:bar (:modules (:left (:layout) :center () :right ()))))
+  (as-config '(:bar (:active-screen t
+                     :modules (:left (:layout) :center () :right ()))))
   (let ((head (make-hash-table)))
     (setf (gethash :global-name head) 11)
     (setf *as-snapshot* *as-two-heads*)
@@ -89,6 +91,32 @@ them."
                       (:wl-output 11 :x 1920 :current t :bar t))))
     (as-ok "the bar whose output became current redraws"
            (and (bar-content-changed-p head) t) t)))
+
+(as-case "the active background is opt-in"
+  (setf *as-snapshot* *as-two-heads*)
+  (as-config)
+  (as-ok "unset: the current output's bar takes the inactive background"
+         (let ((*bar-output-entry* (first (getf *as-two-heads* :outputs))))
+           (bar-ostate-active-p))
+         nil)
+  (as-config '(:bar (:active-screen t)))
+  (as-ok "(:bar :active-screen t): the current output's bar is active"
+         (let ((*bar-output-entry* (first (getf *as-two-heads* :outputs))))
+           (bar-ostate-active-p))
+         t)
+  (as-ok "(:bar :active-screen t): another output's bar stays inactive"
+         (let ((*bar-output-entry* (second (getf *as-two-heads* :outputs))))
+           (bar-ostate-active-p))
+         nil)
+  (as-config '(:bar (:modules (:left (:layout) :center () :right ()))))
+  (let ((head (make-hash-table)))
+    (setf (gethash :global-name head) 11)
+    (bar-content-changed-p head)
+    (setf *as-snapshot*
+          '(:outputs ((:wl-output 10 :x 0 :current nil :bar t)
+                      (:wl-output 11 :x 1920 :current t :bar t))))
+    (as-ok "unset: a focus change alone redraws nothing"
+           (bar-content-changed-p head) nil)))
 
 ;;; --- Edge line settings ---
 

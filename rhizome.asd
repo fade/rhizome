@@ -56,7 +56,6 @@
    (:file "fselect" :depends-on ("frame-outline" "prefix" "commands" "font" "theme"))
    (:file "frame-launch" :depends-on ("fselect" "placement" "tiling" "workspaces"))
    (:file "active-edge" :depends-on ("decorations" "bar" "output" "heads" "theme"))
-   (:file "scratchpads" :depends-on ("floating" "workspaces" "prefix"))
    (:file "eval-prompt" :depends-on ("keybindings" "bar" "theme"))
    (:file "bar" :depends-on ("launcher" "config" "wm-protocol" "theme" "cues"))
    (:file "commands" :depends-on ("keybindings" "launcher" "scroll" "groups" "display" "heads"))

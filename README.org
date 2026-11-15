@@ -595,7 +595,7 @@ Default chains (the StumpWM classics, mapped to rhizome features):
 
 | Chain   | Action                 |
 |---------+------------------------|
-| C-t ;   | Show or hide the default scratchpad |
+| C-t ;   | Show or hide the default scratchpad (with =rhizome-scratchpads= loaded) |
 | C-t w   | Window list            |
 | C-t g   | Workspace picker       |
 | C-t x   | Command palette        |
@@ -699,7 +699,9 @@ A scratchpad is a window that you show and hide while its program
 keeps running. C-t ; toggles the default one, =term=, which runs
 =foot=. On first use the WM starts the program and claims the first
 window that opens within 10 seconds; a shown scratchpad floats near
-the top of the output and takes focus.
+the top of the output and takes focus. Scratchpads are a module:
+load it with =(rhizome:load-module "rhizome-scratchpads")= to get
+C-t ; and the =scratchpad= command.
 
 #+begin_src lisp
 (rhizome:configure
@@ -889,7 +891,8 @@ one line per apply, such as
 =; Rhizome: display layout applied: HDMI-A-1 0,0 DVI-D-1 1920,0=, or a
 line saying the compositor rejected it. An output the layout names but
 which is absent is skipped; an output it does not name keeps its
-position. Run =display-layout= from the command palette, or
+position. With the =rhizome-display= module loaded, run
+=display-layout= from the command palette, or
 =rhizome-cmd display-layout=, to apply it again after placing outputs
 by hand.
 
@@ -917,27 +920,35 @@ exclusive zone, the WM reserves the bar's space itself in its layout math.
 
 *** One bar per output
 
-Each output gets its own bar, like the mode-line in StumpWM. A bar
-shows its own output's workspace (=:workspaces=), layout (=:layout=),
-and window count (=:windows=); a click on a workspace number switches
-that output. A bar comes and goes with its output as you plug and
-unplug monitors.
+Each output gets its own bar. By default every bar shows the same
+content: the current output's workspace (=:workspaces=), layout
+(=:layout=), and window count (=:windows=), the tray, and every other
+module. A click on a workspace number switches the current output. A
+bar comes and goes with its output as you plug and unplug monitors.
 
-The tray stays on one bar, the primary: the leftmost output that
-carries a bar. The other modules (clock, battery, volume, icons, and
-the rest) appear on every bar unless you keep them to the primary bar.
+Set =:per-output-content= to make each bar show its own output, like
+the mode-line in StumpWM: its own workspaces, numbered and named the
+way that output numbers them, its layout, and its window count. A click
+on a workspace number then switches the output under that bar.
+
+The primary bar is the one on the leftmost output that carries a bar.
+=:tray-output :primary= keeps the tray on the primary bar alone, and
+=:global-modules :primary= keeps every module except the workspaces,
+layout, and window count there.
 
 #+begin_src lisp
 (rhizome:configure '(:bar (:outputs :all)))          ; a bar on every output (default)
 (rhizome:configure '(:bar (:outputs :primary)))      ; the leftmost output only
 (rhizome:configure '(:bar (:outputs (0 2))))         ; outputs 0 and 2, left to right
+(rhizome:configure '(:bar (:per-output-content t)))  ; each bar shows its own output
+(rhizome:configure '(:bar (:tray-output :primary)))  ; the tray on the primary bar only
 (rhizome:configure '(:bar (:global-modules :all)))   ; global modules on every bar (default)
 (rhizome:configure '(:bar (:global-modules :primary))) ; other bars: workspaces, layout, windows
 #+end_src
 
 An output without a bar reserves no space for one, so its windows use
-its full height. =:outputs= and =:global-modules= take effect without
-restarting the bar process.
+its full height. These keys take effect without restarting the bar
+process.
 
 The bar process reads the user config file once, at startup. After that
 the WM sends it the =:bar=, =:modules=, and =:theme= settings and the
@@ -1002,12 +1013,14 @@ see the optional package list above. The user config file is
 
 *** Active screen
 
-With more than one output, the current output is marked. Its bar
-takes the active background and every other bar the inactive one, so
-the pair differs in lightness as well as hue. A focus change between
-outputs redraws both bars.
+With more than one output and =(:bar (:active-screen t))=, the
+current output's bar takes the active background and every other bar
+the inactive one, so the pair differs in lightness as well as hue. A
+focus change between outputs redraws both bars. Without it, every bar
+takes the inactive background.
 
 #+begin_src lisp
+(rhizome:configure '(:bar (:active-screen t)))
 (rhizome:configure
   '(:theme (:elements (:bar-background-active "#392e7a"      ; current output's bar
                        :bar-background-inactive "#1a1b26")))) ; other bars
@@ -1346,7 +1359,12 @@ rules under =:repl= beside the old set. Rules that a dependency sets
 when =load-module= loads it for the first time belong to the module
 that pulled it in. A complete, commented
 one-file example
-lives in =examples/modules/rhizome-hello/=.
+lives in =examples/modules/rhizome-hello/=. Three modules ship under
+=modules/=: the network configurator (=rhizome-net=), the display
+configurator (=rhizome-display=), and scratchpads
+(=rhizome-scratchpads=). Symlink or copy one into the module
+directory and add, for example, =(rhizome:load-module "rhizome-net")=
+to your config.
 
 ** Animations
 

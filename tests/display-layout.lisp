@@ -10,6 +10,15 @@
 
 (in-package #:rhizome)
 
+;; The display-layout command is in the display module: load it from
+;; the repo's modules/ directory, the way a user loads it
+(let ((*module-directory*
+        (make-pathname
+          :directory (append (pathname-directory
+                               (asdf:system-source-directory :rhizome))
+                             '("modules")))))
+  (load-module "rhizome-display"))
+
 ;; Never start the bar from a test run
 (configure '(:bar (:enabled nil)))
 

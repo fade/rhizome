@@ -1,9 +1,11 @@
 ;;; One bar per output: the WM snapshot carries each output's
 ;;; workspace, layout and windows; the bar process binds every
 ;;; wl_output and keeps one layer surface per output the snapshot
-;;; marks; each bar renders its own output's view, the tray and
-;;; (optionally) the global modules stay on the primary bar; and the
-;;; reserved strip follows the outputs that carry a bar.
+;;; marks; by default every bar shows the current output, and under
+;;; (:bar :per-output-content t) each bar shows its own; (:bar
+;;; :tray-output :primary) and (:bar :global-modules :primary) keep the
+;;; tray, or every global module, on the primary bar; and the reserved
+;;; strip follows the outputs that carry a bar.
 ;;;
 ;;; No compositor: wl_registry binds, layer surfaces and the snapshot
 ;;; file are stubbed, and no bar process is ever launched.
@@ -168,20 +170,36 @@
 
 (setf (symbol-function 'bar-snapshot) (lambda () *po-snapshot*))
 (setf (symbol-function 'bar-open-surface)
-      (lambda (head)
-        (push (gethash :global-name head) *po-opened*)
-        (setf (gethash :surface head) (list :surface (gethash :global-name head)))))
+      (lambda (state output)
+        (let ((ostate (make-hash-table))
+              (name (bar-output-global-name state output)))
+          (push name *po-opened*)
+          (setf (gethash :output ostate) output
+                (gethash :global-name ostate) name
+                (gethash :surface ostate) (list :surface name)
+                (gethash :mapped ostate) t
+                (gethash output *bar-output-states*) ostate))))
 (setf (symbol-function 'bar-close-surface)
-      (lambda (head)
-        (push (gethash :global-name head) *po-closed*)
-        (setf (gethash :surface head) nil)))
+      (lambda (ostate)
+        (push (gethash :global-name ostate) *po-closed*)
+        (remhash (gethash :output ostate) *bar-output-states*)))
 
 (defun po-root ()
+  "A fresh bar root state bound to wl_outputs 10 and 11, with no bar
+open."
+  (clrhash *bar-output-states*)
+  (clrhash *bar-surface-states*)
+  (clrhash *bar-closed-at*)
+  (setf *bar-pointer-ostate* nil)
   (let ((root (make-hash-table)))
     (dolist (global '((1 "wl_compositor") (2 "wl_shm") (3 "zwlr_layer_shell_v1")
                       (10 "wl_output") (11 "wl_output")))
       (bar-bind-global root :registry (first global) (second global) 4))
     root))
+
+(defun po-ostate (root name)
+  "The open ostate of the output ROOT bound as wl_output NAME, or NIL."
+  (values (gethash (bar-output-named root name) *bar-output-states*)))
 
 (defun po-snap (&key hidden (bars '(t t)))
   (list :bar-hidden hidden :workspace 3 :layout :monocle :windows 2
@@ -195,19 +213,24 @@
 
 (po-case "bar binds every output"
   (let ((root (po-root)))
-    (po-ok "two wl_outputs give two heads"
-           (mapcar (lambda (head) (gethash :global-name head)) (bar-heads root))
+    (po-ok "two wl_outputs are bound"
+           (sort (mapcar (lambda (output) (bar-output-global-name root output))
+                         (gethash :outputs root))
+                 #'<)
            '(10 11))
-    (po-ok "each head holds its own wl_output"
-           (gethash :output (bar-head root 11)) '(:bound :wl_output 11))))
+    (po-ok "each output is found by its global name"
+           (bar-output-named root 11) '(:bound :wl_output 11))
+    (bar-bind-global root :registry 11 "wl_output" 4)
+    (po-ok "a repeated global binds nothing more"
+           (length (gethash :outputs root)) 2)))
 
 (po-case "one surface per output"
   (let ((root (po-root)))
     (setf *po-opened* nil *po-closed* nil *po-snapshot* (po-snap))
     (bar-sync-visibility root)
     (po-ok "both outputs get a surface" (sort (copy-list *po-opened*) #'<) '(10 11))
-    (po-ok "a head's surface reaches the shared globals"
-           (gethash :layer-shell (bar-head root 10)) '(:bound :zwlr_layer_shell_v1 3))
+    (po-ok "each bar knows its output's global name"
+           (gethash :global-name (po-ostate root 10)) 10)
     (bar-sync-visibility root)
     (po-ok "a second sync opens nothing more" (length *po-opened*) 2)
     (setf *po-snapshot* (po-snap :bars '(t nil)))
@@ -219,53 +242,79 @@
     (setf *po-opened* nil *po-closed* nil *po-snapshot* (po-snap))
     (bar-sync-visibility root)
     (bar-forget-output root 11)
-    (po-ok "a removed output closes its surface and leaves the heads"
-           (list *po-closed* (mapcar (lambda (h) (gethash :global-name h))
-                                     (bar-heads root)))
+    (po-ok "a removed output closes its bar and leaves the bound outputs"
+           (list *po-closed* (mapcar (lambda (output)
+                                       (bar-output-global-name root output))
+                                     (gethash :outputs root)))
            '((11) (10)))
     (bar-bind-global root :registry 12 "wl_output" 4)
     (bar-sync-visibility root)
     (po-ok "an added output that the WM has not published yet waits"
-           (gethash :surface (bar-head root 12)) nil)))
+           (po-ostate root 12) nil)
+    (setf *po-opened* nil *po-snapshot* (list :bar-hidden nil))
+    (bar-sync-visibility root)
+    (po-ok "a snapshot that lists no outputs: a bar on every output"
+           (sort (copy-list *po-opened*) #'<) '(12))))
 
 (po-case "compositor closes one bar"
   (let ((root (po-root))
         (*bar-running* t))
     (setf *po-opened* nil *po-closed* nil *po-snapshot* (po-snap))
     (bar-sync-visibility root)
-    (bar-layer-surface-handler (bar-head root 11) :layer-surface :closed nil)
+    (bar-layer-surface-handler (po-ostate root 11) :layer-surface :closed nil)
     (po-ok "the bar keeps running" *bar-running* t)
-    (po-ok "only that head's surface closes"
-           (list *po-closed* (and (gethash :surface (bar-head root 10)) t))
+    (po-ok "only that output's bar closes"
+           (list *po-closed* (and (po-ostate root 10) t))
            '((11) t))
     (bar-sync-visibility root)
-    (po-ok "the closed head is not reopened at once" (length *po-opened*) 2)))
+    (po-ok "the closed bar is not reopened at once" (length *po-opened*) 2)
+    (setf (gethash (bar-output-named root 11) *bar-closed-at*)
+          (- (get-universal-time) *bar-reopen-delay*))
+    (bar-sync-visibility root)
+    (po-ok "the closed bar reopens after the delay" (first *po-opened*) 11)))
 
 ;;; --- Per-output rendering ---
 
 (po-case "modules report their own output"
   (let ((root (po-root)))
     (setf *po-snapshot* (po-snap))
+    (bar-sync-visibility root)
     (flet ((view (name)
-             (with-bar-head ((bar-head root name))
+             (with-bar-ostate ((po-ostate root name))
                (list (bar-module-windows) (bar-module-layout)
                      (first (find-if (lambda (part) (getf (cddr part) :pill))
                                      (bar-module-workspaces)))))))
-      (po-ok "the HDMI bar shows HDMI" (view 10) '("1 win" "master-stack" "1"))
-      (po-ok "the DVI bar shows DVI" (view 11) '("1 win" "monocle" "3")))))
+      (po-config)
+      (po-ok "unset: the HDMI bar shows the current output"
+             (view 10) '("2 wins" "monocle" "3"))
+      (po-ok "unset: the DVI bar shows the same"
+             (view 11) '("2 wins" "monocle" "3"))
+      (po-config :per-output-content t)
+      (po-ok ":per-output-content t: the HDMI bar shows HDMI"
+             (view 10) '("1 win" "master-stack" "1"))
+      (po-ok ":per-output-content t: the DVI bar shows DVI"
+             (view 11) '("1 win" "monocle" "3"))
+      (po-config))))
 
 (po-case "tray and global modules"
   (let ((root (po-root)))
     (setf *po-snapshot* (po-snap))
-    (po-config :modules '(:left (:workspaces :layout) :right (:tray :clock)))
+    (bar-sync-visibility root)
     (flet ((segments (name)
-             (with-bar-head ((bar-head root name))
-               (list (bar-head-segment-modules :left)
-                     (bar-head-segment-modules :right)))))
-      (po-ok "the primary bar holds the tray"
+             (with-bar-ostate ((po-ostate root name))
+               (list (bar-ostate-segment-modules :left)
+                     (bar-ostate-segment-modules :right)))))
+      (po-config :modules '(:left (:workspaces :layout) :right (:tray :clock)))
+      (po-ok "unset: the primary bar holds every module"
              (segments 10) '((:workspaces :layout) (:tray :clock)))
-      (po-ok "another bar repeats the global modules but not the tray"
+      (po-ok "unset: another bar holds every module, the tray included"
+             (segments 11) '((:workspaces :layout) (:tray :clock)))
+      (po-config :tray-output :primary
+                 :modules '(:left (:workspaces :layout) :right (:tray :clock)))
+      (po-ok ":tray-output :primary: another bar drops only the tray"
              (segments 11) '((:workspaces :layout) (:clock)))
+      (po-ok ":tray-output :primary: the primary bar keeps the tray"
+             (segments 10) '((:workspaces :layout) (:tray :clock)))
       (po-config :global-modules :primary
                  :modules '(:left (:workspaces :layout) :right (:tray :clock)))
       (po-ok ":global-modules :primary: other bars keep only per-output modules"
@@ -275,30 +324,40 @@
     (po-config)))
 
 (po-case "clicks route to their own output"
-  (let* ((root (po-root))
-         (head (bar-head root 11)))
-    (setf *po-snapshot* (po-snap) *po-commands* nil
-          (gethash :surface head) :dvi-surface
-          ;; the workspaces module, and the cell of workspace 3 in it
-          (gethash :hitboxes head) (list (list :workspaces 0 72)
-                                         (list (list :workspace-cell
-                                                     (list 3 nil))
-                                               16 24))
-          (gethash :hitboxes (bar-head root 10)) nil
-          (gethash :surface (bar-head root 10)) :hdmi-surface
-          *bar-state* root)
-    (bar-pointer-event :enter (list 7 :dvi-surface 20 5))
-    (bar-pointer-event :button (list 8 9 272 :pressed))
-    (po-ok "a workspace click switches the clicked bar's output"
-           (and (first *po-commands*)
-                (search "bar-switch-workspace 3 11" (first *po-commands*))
-                t)
-           t)
-    (setf *po-commands* nil)
-    (bar-pointer-event :enter (list 7 :hdmi-surface 20 5))
-    (bar-pointer-event :button (list 8 9 272 :pressed))
-    (po-ok "the other bar's hitboxes are its own" *po-commands* nil)
-    (setf *bar-state* nil)))
+  (let ((root (po-root)))
+    (setf *po-snapshot* (po-snap))
+    (bar-sync-visibility root)
+    (let ((dvi (po-ostate root 11))
+          (hdmi (po-ostate root 10)))
+      (setf *po-commands* nil
+            (gethash :dvi-surface *bar-surface-states*) dvi
+            (gethash :hdmi-surface *bar-surface-states*) hdmi
+            ;; the workspaces module, and the cell of workspace 3 in it
+            (gethash :hitboxes dvi) (list (list :workspaces 0 72)
+                                          (list (list :workspace-cell
+                                                      (list 3 nil))
+                                                16 24))
+            (gethash :hitboxes hdmi) nil)
+      (flet ((click (surface)
+               (setf *po-commands* nil)
+               (bar-pointer-event :enter (list 7 surface 20 5))
+               (bar-pointer-event :button (list 8 9 272 :pressed))
+               (first *po-commands*)))
+        (po-config)
+        (po-ok "unset: a workspace click switches the current output"
+               (click :dvi-surface) "rhizome-cmd switch-workspace 3")
+        (po-config :per-output-content t)
+        (po-ok ":per-output-content t: a workspace click switches the clicked bar's output"
+               (and (search "bar-switch-workspace 3 11" (click :dvi-surface)) t)
+               t)
+        (po-ok "the other bar's hitboxes are its own" (click :hdmi-surface) nil)
+        (bar-pointer-event :enter (list 7 :dvi-surface 20.75 5))
+        (po-ok "the pointer x is rounded at the door" *bar-pointer-x* 21)
+        (bar-pointer-event :enter (list :dvi-surface 30 5))
+        (po-ok ":enter without a serial still finds the bar"
+               (list (eq *bar-pointer-ostate* dvi) *bar-pointer-x*) '(t 30))
+        (bar-pointer-event :leave (list :dvi-surface))
+        (po-config)))))
 
 (format t "~&=== ~A passed, ~A failed ===~%" *po-pass* *po-fail*)
 (uiop:quit (if (zerop *po-fail*) 0 1))

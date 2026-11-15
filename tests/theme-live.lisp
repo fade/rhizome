@@ -242,18 +242,23 @@
                   (real-close (symbol-function 'bar-close-surface))
                   (real-open (symbol-function 'bar-open-surface))
                   (real-font (symbol-function 'font-apply-config)))
-             ;; one head on a fake surface, as the bar draws per output
+             ;; one output's bar on a fake surface, as the bar draws per
+             ;; output
              (setf (gethash :surface head) :fake-surface
+                   (gethash :output head) :fake-output
                    (gethash :height head) 20
                    (gethash :global-name head) 1
                    (gethash :last-content head) "rendered"
-                   (gethash :heads state) (make-hash-table))
-             (setf (gethash 1 (gethash :heads state)) head)
+                   (gethash :outputs state) '(:fake-output))
+             (clrhash *bar-output-states*)
+             (setf (gethash :fake-output *bar-output-states*) head)
              (setf (symbol-function 'bar-close-surface)
                    (lambda (s) (incf closed) (setf (gethash :surface s) nil))
                    (symbol-function 'bar-open-surface)
-                   (lambda (s) (incf opened)
-                     (setf (gethash :surface s) :fake-surface))
+                   (lambda (s output)
+                     (declare (ignore s output))
+                     (incf opened)
+                     (setf (gethash :surface head) :fake-surface))
                    (symbol-function 'font-apply-config)
                    (lambda () (incf fonts)))
              (unwind-protect
@@ -298,7 +303,8 @@
                           (list closed opened) '(0 0))))
                (setf (symbol-function 'bar-close-surface) real-close
                      (symbol-function 'bar-open-surface) real-open
-                     (symbol-function 'font-apply-config) real-font)))
+                     (symbol-function 'font-apply-config) real-font)
+               (clrhash *bar-output-states*)))
            (setf *config* saved-config)
            (clear-theme-cache)
 

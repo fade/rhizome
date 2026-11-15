@@ -7,6 +7,15 @@
 
 (in-package #:rhizome)
 
+;; The scratchpad command is a module: load it from the repo's modules/
+;; directory, the way a user loads it
+(let ((*module-directory*
+        (make-pathname
+          :directory (append (pathname-directory
+                               (asdf:system-source-directory :rhizome))
+                             '("modules")))))
+  (load-module "rhizome-scratchpads"))
+
 ;; Never start the bar from a test run
 (configure '(:bar (:enabled nil)))
 
