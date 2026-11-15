@@ -1159,35 +1159,9 @@ for MODULE. Returns the x after the module plus gap."
           ;; The active-workspace marker: a rounded accent PILL
           ;; blended behind the text (radius 4, inset).
           (when (getf flags :pill)
-            (let* ((px0 (- x 5))
-                   (py0 (+ y 2))
-                   (pw (+ tw 10))
-                   (ph (- (font-line-height) 4))
-                   (radius 4))
-              (loop for dy below ph
-                    for py = (+ py0 dy)
-                    while (< py height) do
-                (loop for dx below pw
-                      for pxx = (+ px0 dx)
-                      while (< pxx width) do
-                  ;; rounded-rect containment test (radius on the
-                  ;; vertical ends; full height in the middle)
-                  (let* ((cx (cond ((< dx radius) radius)
-                                   ((> dx (- pw radius 1)) (- pw radius 1))
-                                   (t dx)))
-                         (cy (cond ((< dy radius) radius)
-                                   ((> dy (- ph radius 1)) (- ph radius 1))
-                                   (t dy)))
-                         (in-corner (or (and (< dx radius) (< dy radius))
-                                       (and (< dx radius) (> dy (- ph radius 1)))
-                                       (and (> dx (- pw radius 1)) (< dy radius))
-                                       (and (> dx (- pw radius 1))
-                                            (> dy (- ph radius 1)))))
-                         (d (sqrt (+ (expt (- cx dx) 2) (expt (- cy dy) 2)))))
-                    (when (and (or (not in-corner) (<= d radius))
-                               (>= px0 0))
-                      (blend-pixel ptr width height pxx py
-                                   r g b :alpha 70)))))))
+            (blend-rounded-rect ptr width height (- x 5) (+ y 2)
+                                (+ tw 10) (- (font-line-height) 4)
+                                r g b :alpha 70 :radius 4))
           (incf x (+ tw (or (getf flags :gap 0) 0))))))
     (let ((end x))
       (when (and module (> end start))
