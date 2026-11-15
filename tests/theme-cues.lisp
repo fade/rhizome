@@ -97,8 +97,10 @@
            (ok "the themes checked: shipped and fixture"
                (available-theme-names)
                '("deepsky-moonunit" "ef-summer" "kusanagi"
-                 "modus-operandi" "modus-vivendi" "test-fixture-light"
-                 "tokyo-night" "tokyo-night-emacs"))
+                 "modus-operandi" "modus-operandi-deuteranopia"
+                 "modus-operandi-tritanopia" "modus-vivendi"
+                 "modus-vivendi-deuteranopia" "modus-vivendi-tritanopia"
+                 "test-fixture-light" "tokyo-night" "tokyo-night-emacs"))
            (dolist (name (available-theme-names))
              (set-theme name)
              (ok (format nil "~A: no state pair differs in hue alone" name)

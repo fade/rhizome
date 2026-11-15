@@ -34,6 +34,10 @@ convert() {
 if [ -n "${MODUS_THEMES:-}" ]; then
     convert modus-operandi "$MODUS_THEMES"
     convert modus-vivendi "$MODUS_THEMES"
+    convert modus-operandi-deuteranopia "$MODUS_THEMES"
+    convert modus-vivendi-deuteranopia "$MODUS_THEMES"
+    convert modus-operandi-tritanopia "$MODUS_THEMES"
+    convert modus-vivendi-tritanopia "$MODUS_THEMES"
     if [ -n "${EF_THEMES:-}" ]; then
         convert ef-summer "$EF_THEMES" "$MODUS_THEMES"
     fi

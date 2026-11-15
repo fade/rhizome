@@ -850,15 +850,19 @@ From a shell, =rhizome-cmd set-theme NAME= switches over IPC, and
 
 *** Shipped themes
 
-| Theme               | Background | Source                                       | Licence                                   |
-|---------------------+------------+----------------------------------------------+-------------------------------------------|
-| =tokyo-night=       | dark       | rhizome's own colours, Tokyo Night palette   | MIT palette                               |
-| =tokyo-night-emacs= | dark       | Emacs =tokyo-night= (night), Bozhidar Batsov | GPL-3.0-or-later, with Enkia's MIT notice |
-| =deepsky-moonunit=  | dark       | Emacs =deepsky-moonunit=, Brian O'Reilly     | GPL-3.0-or-later                          |
-| =kusanagi=          | dark       | Emacs =kusanagi=, Rahul Martim Juliato       | GPL-3.0-or-later                          |
-| =modus-vivendi=     | dark       | Emacs =modus-vivendi=, Protesilaos Stavrou   | GPL-3.0-or-later                          |
-| =modus-operandi=    | light      | Emacs =modus-operandi=, Protesilaos Stavrou  | GPL-3.0-or-later                          |
-| =ef-summer=         | light      | Emacs =ef-summer=, Protesilaos Stavrou       | GPL-3.0-or-later                          |
+| Theme                         | Background | Source                                                   | Licence                                   |
+|-------------------------------+------------+----------------------------------------------------------+-------------------------------------------|
+| =tokyo-night=                 | dark       | rhizome's own colours, Tokyo Night palette               | MIT palette                               |
+| =tokyo-night-emacs=           | dark       | Emacs =tokyo-night= (night), Bozhidar Batsov             | GPL-3.0-or-later, with Enkia's MIT notice |
+| =deepsky-moonunit=            | dark       | Emacs =deepsky-moonunit=, Brian O'Reilly                 | GPL-3.0-or-later                          |
+| =kusanagi=                    | dark       | Emacs =kusanagi=, Rahul Martim Juliato                   | GPL-3.0-or-later                          |
+| =modus-vivendi=               | dark       | Emacs =modus-vivendi=, Protesilaos Stavrou               | GPL-3.0-or-later                          |
+| =modus-operandi=              | light      | Emacs =modus-operandi=, Protesilaos Stavrou              | GPL-3.0-or-later                          |
+| =modus-vivendi-deuteranopia=  | dark       | Emacs =modus-vivendi-deuteranopia=, Protesilaos Stavrou  | GPL-3.0-or-later                          |
+| =modus-vivendi-tritanopia=    | dark       | Emacs =modus-vivendi-tritanopia=, Protesilaos Stavrou    | GPL-3.0-or-later                          |
+| =modus-operandi-deuteranopia= | light      | Emacs =modus-operandi-deuteranopia=, Protesilaos Stavrou | GPL-3.0-or-later                          |
+| =modus-operandi-tritanopia=   | light      | Emacs =modus-operandi-tritanopia=, Protesilaos Stavrou   | GPL-3.0-or-later                          |
+| =ef-summer=                   | light      | Emacs =ef-summer=, Protesilaos Stavrou                   | GPL-3.0-or-later                          |
 
 Every theme except =tokyo-night= is converted from an Emacs theme and
 keeps that theme's licence. rhizome is AGPL-3.0-or-later; section 13
