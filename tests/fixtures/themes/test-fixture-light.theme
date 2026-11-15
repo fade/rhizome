@@ -1,0 +1,21 @@
+;;; test-fixture-light: a test fixture for live theme switching, not a
+;;; shipped theme. Its colours differ from tokyo-night in every role so
+;;; a switch is visible in every element.
+(:format 1
+ :name "test-fixture-light"
+ :roles (:background "#f4f1e8"
+         :foreground "#1c1c1c"
+         :accent "#b3005f"
+         :muted "#7a7466"
+         :focus :accent
+         :unfocus "#a8a395"
+         :hairline "#c9c3b3"
+         :surface "#ebe6d8"
+         :surface-foreground "#2a2a2a"
+         :surface-border "#b8b09c"
+         :selection "#d9c6f0"
+         :selection-foreground "#120024"
+         :match :accent
+         :error "#c40000"
+         :shadow "#5a5448")
+ :elements ())

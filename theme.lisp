@@ -277,6 +277,53 @@ no theme loads, warns once and returns the default theme. Holds
         (load-theme name)
         *default-theme*)))
 
+(defun available-theme-names ()
+  "The names of every theme that can be selected, sorted: each
+NAME.theme in THEME-DIRECTORIES whose name passes THEME-NAME-P, and the
+default theme."
+  (sort (remove-duplicates
+         (cons *default-theme-name*
+               (loop for directory in (theme-directories)
+                     append (loop for path in (handler-case
+                                               (directory
+                                                (merge-pathnames "*.theme"
+                                                                 directory))
+                                             (file-error () nil))
+                                  for name = (pathname-name path)
+                                  when (theme-name-p name)
+                                    collect name)))
+         :test #'string=)
+        #'string<))
+
+(defun set-theme (name)
+  "Select the theme NAME and redraw everything drawn from it, the bar
+included. Reads NAME's theme file again, so an edited file takes
+effect. Return NAME. Return NIL and leave the current theme in place
+when no theme called NAME exists."
+  (let ((name (if (stringp name) name (princ-to-string name))))
+    (when (member name (available-theme-names) :test #'string=)
+      (bt:with-recursive-lock-held (*theme-cache-lock*)
+        (remhash name *theme-cache*))
+      (configure (list :theme name))
+      name)))
+
+(defvar *applied-theme-colours* nil
+  "Every element's colour when THEME-APPLY-CONFIG last ran.")
+
+(defun theme-element-colours ()
+  "The colour of every element, in *THEME-ELEMENTS* order."
+  (mapcar #'theme-color (theme-element-names)))
+
+(defun theme-apply-config ()
+  "Request a manage sequence when any element's colour changed since
+the last call, so borders and decorations redraw in the new colours.
+Called from APPLY-CONFIG; requests nothing before the WM connects."
+  (let ((colours (theme-element-colours)))
+    (unless (equal colours *applied-theme-colours*)
+      (setf *applied-theme-colours* colours)
+      (when (and (boundp '*wm-proxy*) (symbol-value '*wm-proxy*))
+        (funcall 'request-manage-dirty)))))
+
 ;;; --- Resolution ---
 
 (defun theme-element-entry (name)

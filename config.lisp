@@ -204,7 +204,9 @@ A theme name given as (:theme \"NAME\") sets (:theme :name) and keeps
 the rest of the :theme group. Each deprecated colour key in PLIST
 warns once (see theme.lisp).
 
-Restarting running components (e.g. the bar) is handled automatically."
+Running components take the change without a restart: the WM redraws,
+and the bar process receives its settings and the theme through the
+WM snapshot."
   (let ((plist (normalize-theme-selection plist)))
     (when (fboundp 'warn-deprecated-colour-keys)
       (funcall (symbol-function 'warn-deprecated-colour-keys) plist))
@@ -222,7 +224,9 @@ user config would otherwise spawn bars — see *bar-process-mode*)."
     (when (fboundp 'font-apply-config)
       (funcall (symbol-function 'font-apply-config)))
     (when (fboundp 'output-apply-config)
-      (funcall (symbol-function 'output-apply-config)))))
+      (funcall (symbol-function 'output-apply-config)))
+    (when (fboundp 'theme-apply-config)
+      (funcall (symbol-function 'theme-apply-config)))))
 
 (defun config-pathname ()
   "Pathname of the user config file."

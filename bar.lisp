@@ -1162,9 +1162,51 @@ snapshot."
           ((and (not hidden) (null (gethash :surface state)))
            (bar-open-surface state)))))
 
+(defvar *bar-applied-settings* nil
+  "The :settings snapshot entry the bar process last applied.")
+
+(defun bar-geometry ()
+  "The :bar settings that size the layer surface: (HEIGHT MARGIN)."
+  (list (config-getf '(:bar) :height :default 28)
+        (config-getf '(:bar) :margin :default 8)))
+
+(defun bar-adopt-settings (state settings)
+  "Apply SETTINGS, the :settings entry of the WM snapshot (see
+BAR-PUSHED-SETTINGS), in the bar process: replace the :bar, :modules,
+and :theme config groups, draw from the pushed theme, re-resolve the
+font, and render again. Reopens the surface on STATE when the height or
+margin changed. Returns T when SETTINGS differ from the last applied,
+NIL when they match or are NIL."
+  (when (and settings (not (equal settings *bar-applied-settings*)))
+    (let ((geometry (bar-geometry))
+          (config (copy-list *config*))
+          (theme (getf settings :theme-table))
+          (name (getf (getf settings :theme) :name)))
+      (setf (getf config :bar) (getf settings :bar)
+            (getf config :modules) (getf settings :modules)
+            (getf config :theme) (getf settings :theme))
+      (setf *config* config
+            *bar-applied-settings* settings)
+      (clear-theme-cache)
+      (when (and (stringp name)
+                 (listp theme)
+                 (theme-table-p (getf theme :roles))
+                 (theme-table-p (getf theme :elements)))
+        (bt:with-recursive-lock-held (*theme-cache-lock*)
+          (setf (gethash name *theme-cache*) theme)))
+      (clrhash *bar-cache*)
+      (font-apply-config)
+      (setf *bar-last-content* nil)
+      (when (and (gethash :surface state)
+                 (not (equal geometry (bar-geometry))))
+        (bar-close-surface state)
+        (bar-open-surface state))
+      t)))
+
 (defun bar-run-loop (state)
   "Open the bar's Wayland connection and drive its tick loop. Each
-tick opens or closes the bar's surface to follow the WM snapshot."
+tick applies the settings the WM pushed in its snapshot, then opens or
+closes the bar's surface to follow it."
   (flet ((safe-roundtrip (display)
            ;; Wayflan raises on events it cannot decode (e.g. wl_shm
            ;; advertises non-standard fourcc formats); skip and carry on.
@@ -1195,6 +1237,7 @@ tick opens or closes the bar's surface to follow the WM snapshot."
               (return-from bar-run-loop))
             ;; Pointer input for clickable modules
             (bar-setup-pointer state)
+            (bar-adopt-settings state (getf (bar-snapshot) :settings))
             (bar-sync-visibility state)
             (loop for i below 100
                   until (or (gethash :mapped state)
@@ -1203,7 +1246,9 @@ tick opens or closes the bar's surface to follow the WM snapshot."
                   do (safe-roundtrip display)
                      (sleep 0.05))
             (loop while *bar-running*
-                  do (bar-sync-visibility state)
+                  do (bar-adopt-settings state
+                                         (getf (bar-snapshot) :settings))
+                     (bar-sync-visibility state)
                      (let ((tray-was *tray-changed*))
                        (tray-drain)
                        (when (/= tray-was *tray-changed*)
@@ -1265,9 +1310,6 @@ thread and the main thread both call it.")
 (defvar *bar-starting* nil
   "True while start-bar is launching a bar process.")
 
-(defvar *bar-launched-settings* nil
-  "The :bar settings, without :enabled, of the last bar launch.")
-
 (defun bar-alive-p ()
   "Whether a bar process is running or being launched — our own
 child, or one adopted from a previous WM."
@@ -1276,12 +1318,6 @@ child, or one adopted from a previous WM."
            (uiop:process-alive-p *bar-process*))
       (and *adopted-bar-pid*
            (external-pid-alive-p *adopted-bar-pid*))))
-
-(defun bar-settings ()
-  "The :bar config group without :enabled."
-  (let ((group (copy-list (config-get '(:bar)))))
-    (remf group :enabled)
-    group))
 
 (defun bar-log-path ()
   "Pathname of the bar process's log file."
@@ -1303,11 +1339,8 @@ left behind by past incidents (they would stack on screen)."
     ;; than cold-started: a fresh SBCL is the 40-second black strip
     (let ((pids (external-bar-pids)))
       (when pids
-        (setf *adopted-bar-pid* (first pids)
-              ;; stamp the settings the adopted bar runs with, or
-              ;; apply-config's changed-settings comparison sees
-              ;; this WM's nil and restarts it anyway
-              *bar-launched-settings* (bar-settings))
+        ;; the adopted bar takes this WM's settings from the snapshot
+        (setf *adopted-bar-pid* (first pids))
         (reap-extra-bars *adopted-bar-pid*)
         (format t "~&; Rhizome: bar adopted (pid ~A)~%" *adopted-bar-pid*)
         (return-from start-bar)))
@@ -1322,7 +1355,6 @@ left behind by past incidents (they would stack on screen)."
            (ensure-directories-exist (bar-log-path))
            (with-open-file (s (bar-log-path) :direction :output
                               :if-exists :supersede))
-           (setf *bar-launched-settings* (bar-settings))
            (setf *bar-process*
                  (uiop:launch-program
                    (list "sbcl"
@@ -1478,27 +1510,22 @@ persists the intent in (:bar :enabled)."
           :name "rhizome-bar-supervisor")))
 
 (defun bar-apply-config ()
-  "Apply the current config to the bar. Disabling leaves a running bar
-process alive, and the bar reads :bar-hidden from the WM snapshot.
-Enabling starts a bar when none is alive, and restarts one only when
-the :bar settings differ from those it was launched with. WM-process
-only: any other process, the bar process (see *bar-process-mode*) or
-a test run included, must never start or stop bars, because stop-bar's
-pkill would reap the user's live bar."
+  "Apply the current config to the bar. A running bar process, launched
+or adopted, keeps running: it reads the :bar, :modules, and :theme
+settings and the active theme from the WM snapshot written here (see
+BAR-PUSHED-SETTINGS), and :bar-hidden when the bar is disabled.
+Enabling starts a bar when none is alive. WM-process only: any other
+process, the bar process (see *bar-process-mode*) or a test run
+included, must never start or stop bars, because stop-bar's pkill
+would reap the user's live bar."
   (unless (and (boundp '*wm-process-mode*) *wm-process-mode*)
     (return-from bar-apply-config))
   (when *bar-process-mode*
     (return-from bar-apply-config))
   (let ((before (bar-reserved-height)))
-    (cond
-      ((not (config-getf '(:bar) :enabled :default t)))
-      ((not (bar-alive-p))
-       (start-bar))
-      ((not (equal (bar-settings) *bar-launched-settings*))
-       ;; The new process reads height, modules and colours from the
-       ;; config file.
-       (stop-bar)
-       (start-bar)))
+    (when (and (config-getf '(:bar) :enabled :default t)
+               (not (bar-alive-p)))
+      (start-bar))
     (when *wm-proxy*
       (update-wm-snapshot))
     (unless (eql before (bar-reserved-height))

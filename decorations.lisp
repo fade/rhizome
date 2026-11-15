@@ -218,23 +218,33 @@ commit must land before the render_finish that ends this pass."
     ;; writes it into *decorations* (setf/getf rebinds, not mutates)
     state)
 
+(defun decoration-needs-redraw-p (state dw dh focused colour)
+  "True when the decoration in STATE no longer matches the size DW x DH,
+the focus FOCUSED, or COLOUR, a list of the tint's r g b and the
+shadow's colour."
+  (or (/= (getf state :w) dw)
+      (/= (getf state :h) dh)
+      (not (eql (getf state :focused) focused))
+      (not (equal (getf state :colour) colour))))
+
 (defun decoration-update-for-window (win radius cfg ar ag ab)
   "Keep WIN's decoration current (render pass only). The state is
 a plist: setf/getf REBINDS rather than mutates, so the updated
-list is threaded and written back to the hash."
+list is threaded and written back to the hash. Redraws when the
+window's size or focus, the tint, or the shadow colour changed."
   (ensure-window-decoration win)
   (let ((state (gethash win *decorations*)))
     (when state
       (multiple-value-bind (w h) (decoration-window-size win)
         (let ((dw (+ w (* 2 radius)))
-              (dh (+ h (* 2 radius))))
-          (when (or (/= (getf state :w) dw)
-                    (/= (getf state :h) dh)
-                    (not (eql (getf state :focused)
-                              (window-focused-p win))))
+              (dh (+ h (* 2 radius)))
+              (colour (list ar ag ab (theme-color :decoration-shadow))))
+          (when (decoration-needs-redraw-p state dw dh
+                                           (window-focused-p win) colour)
             (setf (getf state :w) dw
                   (getf state :h) dh
-                  (getf state :focused) (window-focused-p win))
+                  (getf state :focused) (window-focused-p win)
+                  (getf state :colour) colour)
             (setf state (decoration-redraw state dw dh radius cfg ar ag ab)))
           (unless (getf state :offset-sent)
             (rwm:river-decoration-v1.set-offset

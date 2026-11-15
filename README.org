@@ -660,6 +660,15 @@ exclusive zone, the WM reserves the bar's space itself in its layout math.
 (rhizome:reload-config)                             ; reset + reload user file
 #+end_src
 
+The bar process reads the user config file once, at startup. After that
+the WM sends it the =:bar=, =:modules=, and =:theme= settings and the
+active theme in the state snapshot it writes for the bar
+(=~/.cache/rhizome/snapshot.sexp=). A change made with =configure=,
+=reload-config=, or a theme switch shows on the running bar within one
+poll, with no bar restart. A bar that a restarted WM adopts takes the
+new WM's settings the same way. A change to =:height= or =:margin=
+recreates the bar's surface inside the same process.
+
 Bar modules: =:workspaces= (numbers: active on an accent pill,
 occupied in foreground, empty muted, with per-number gaps),
 =:layout= (current layout), =:windows= (window count), =:focused=
@@ -812,6 +821,31 @@ theme's =:elements=, the element's own source, the config's
 =:roles=, and the theme's =:roles=. Colours resolve each time a
 surface draws.
 
+*** Switching themes
+
+Switch themes while rhizome runs. Window borders, float shadows, and
+the bar redraw at once; the message window, prompts, the launcher, and
+menus take the new colours the next time they draw.
+
+#+begin_src lisp
+(rhizome:set-theme "tokyo-night")   ; => "tokyo-night", or NIL if no such theme
+(rhizome:available-theme-names)     ; => ("tokyo-night" ...)
+#+end_src
+
+=set-theme= reads the theme file again, so an edited theme takes
+effect when you select it. An unknown name leaves the current theme in
+place. =(rhizome:configure '(:theme "name"))= also switches, and falls
+back to =tokyo-night= with a warning when the theme does not exist.
+
+| Command          | Effect                                              |
+|------------------+-----------------------------------------------------|
+| =set-theme NAME= | switch to theme NAME; without NAME, list the themes |
+| =select-theme=   | pick a theme from a list, from the command palette  |
+| =list-themes=    | list the themes; the current one carries a =*=      |
+
+From a shell, =rhizome-cmd set-theme NAME= switches over IPC, and
+=rhizome-cmd list-themes= lists the themes.
+
 *** Deprecated colour keys
 
 The colour keys from before themes still work for one release. Each
@@ -850,8 +884,8 @@ prints a warning asking you to remove it.
 
 The workspace module's spacing is (:bar :workspaces :gap 8) (default
 8px). Changing =:theme= font keys re-resolves the font in the WM
-process live; the bar restarts (as with any bar affecting change) and
-picks the new font up at startup. Text widths are per-glyph advances,
+process live, and the running bar re-resolves it when it receives the
+change. Text widths are per-glyph advances,
 so the bar centres the clock exactly and the launcher cursor hugs the
 typed query.
 

@@ -17,7 +17,7 @@
    (:file "hooks" :depends-on ("package"))
    (:file "surface" :depends-on ("package"))
    (:file "session" :depends-on ("package" "config" "hooks"))
-   (:file "wm-protocol" :depends-on ("package" "config"))
+   (:file "wm-protocol" :depends-on ("package" "config" "theme"))
    (:file "display" :depends-on ("wm-protocol" "message"))
    (:file "window" :depends-on ("wm-protocol"))
    (:file "output" :depends-on ("wm-protocol"))

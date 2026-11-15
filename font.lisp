@@ -243,9 +243,9 @@ draws first). Cheap after the first call."
   (font-active-p))
 
 (defun font-apply-config ()
-  "Re-resolve the font after a live :theme font change (called from
-apply-config; the bar restarts separately and re-resolves on its
-own startup). Skips the resolution when nothing changed."
+  "Re-resolve the font after a live :theme font change. Called from
+apply-config in the WM, and from bar-adopt-settings in the bar
+process. Skips the resolution when nothing changed."
   (let ((family (config-getf '(:theme) :font-family :default "monospace"))
         (size (config-getf '(:theme) :font-size :default 12)))
     (unless (and (font-active-p)

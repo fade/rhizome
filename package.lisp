@@ -231,6 +231,9 @@
    #:config-pathname
    #:load-module
    #:module-directory
+   ;; Themes
+   #:set-theme
+   #:available-theme-names
    ;; Bar
    #:run-bar
    #:start-bar
