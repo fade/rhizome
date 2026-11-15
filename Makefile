@@ -31,7 +31,8 @@ SUITES    := animations decorations surface window-rules window-rules-reload flo
              bindings-overridable modules \
              command-table active-screen bar-adoption \
              ipc-command-args \
-             layout-rule-frames
+             layout-rule-frames \
+             ipc-socket-path
 
 .PHONY: all build test install docs clean help
 

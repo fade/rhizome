@@ -279,3 +279,7 @@ stubbed river requests. Run with:
   has an output; the output's layout mirror follows only the
   showing workspace; a repeated match keeps the frames; an unknown
   layout changes nothing.
+- `ipc-socket-path.lisp` - the WM and session/rhizome-cmd name the
+  same socket: $XDG_RUNTIME_DIR/rhizome.sock, or /tmp/rhizome-UID.sock
+  when XDG_RUNTIME_DIR is unset or empty. The client's path is read
+  from its "no socket" message; no socket is opened.
