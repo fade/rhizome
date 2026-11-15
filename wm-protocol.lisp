@@ -121,42 +121,86 @@ pass, where find-output-for-window calls current-output instead.")
           :bar (bar-output-selected-p output)
           :primary (eq output primary))))
 
+(defvar *pushed-settings-memo* nil
+  "(CONFIG THEME SETTINGS) from the last BAR-PUSHED-SETTINGS call. The
+snapshot is rebuilt on every render pass; *CONFIG* and the active
+theme are replaced, never mutated, so EQ tells when to rebuild.")
+
+(defun bar-pushed-settings ()
+  "The settings the bar process takes from the WM snapshot: the :bar,
+:modules, and :theme config groups, and under :theme-table the active
+theme, so the bar draws what the WM selected without reading the config
+file or a theme file. NIL, with one log line, when a value cannot be
+printed readably: the bar then keeps the settings it has, and the rest
+of the snapshot stays readable."
+  (let ((config *config*)
+        (theme (active-theme)))
+    (destructuring-bind (&optional memo-config memo-theme memo-settings)
+        *pushed-settings-memo*
+      (if (and (eq config memo-config) (eq theme memo-theme))
+          memo-settings
+          (let* ((settings (list :bar (config-get '(:bar) :config config)
+                                 :modules (config-get '(:modules)
+                                                      :config config)
+                                 :theme (config-get '(:theme) :config config)
+                                 :theme-table theme))
+                 (printable
+                   (handler-case
+                       (with-standard-io-syntax
+                         ;; the printed length is used, so the
+                         ;; compiler cannot drop the print as unused
+                         (let ((*print-readably* t))
+                           (plusp (length (prin1-to-string settings)))))
+                     (error () nil))))
+            (unless printable
+              (format t "~&; Rhizome: bar settings hold a value that ~
+                         cannot be printed readably; the bar keeps its ~
+                         current settings~%"))
+            (let ((pushed (and printable settings)))
+              (setf *pushed-settings-memo* (list config theme pushed))
+              pushed))))))
+
+(defun wm-snapshot-plist ()
+  "The WM state the bar process reads. :outputs holds one
+OUTPUT-SNAPSHOT per output, left to right. The top-level :layout,
+:workspace and :windows mirror the current output's entry; :occupied
+spans every output. :settings holds the bar's configuration and theme
+(see BAR-PUSHED-SETTINGS)."
+  (let* ((current (current-output))
+         (primary (bar-primary-output))
+         (outputs (mapcar (lambda (out) (output-snapshot out current primary))
+                          (all-outputs-sorted)))
+         (here (find-if (lambda (entry) (getf entry :current)) outputs)))
+    (list :layout (getf here :layout)
+          :windows (getf here :windows 0)
+          :workspace (getf here :workspace)
+          :workspace-count *workspace-count*
+          :bar-hidden (not (config-getf '(:bar) :enabled :default t))
+          :echo *bar-echo*
+          :occupied (let ((occ nil))
+                      (dolist (win (all-windows))
+                        (let ((ws (window-workspace win)))
+                          (when (and ws (not (window-minimized-p win)))
+                            (pushnew ws occ))))
+                      (sort occ #'<))
+          :outputs outputs
+          :focused (let ((focused (find-if #'window-focused-p (all-windows))))
+                     (when focused (window-title focused)))
+          :recording (or (some (lambda (win)
+                                 (plusp (window-capture-sessions win)))
+                               (all-windows))
+                         (some (lambda (out)
+                                 (plusp (output-capture-sessions out)))
+                               (all-outputs)))
+          :settings (bar-pushed-settings))))
+
 (defun update-wm-snapshot ()
   "Refresh the snapshot read by the bar process. Called from the WM
 thread during manage and render sequences. Writes only when the
 snapshot changed: a rewrite on every render pass makes the bar
 re-commit its surfaces, and river answers each commit with another
-sequence.
-:outputs holds one output-snapshot per output, left to right. The
-top-level :layout, :workspace and :windows mirror the current
-output's entry; :occupied spans every output."
-  (let* ((current (current-output))
-         (primary (bar-primary-output))
-         (outputs (mapcar (lambda (out) (output-snapshot out current primary))
-                          (all-outputs-sorted)))
-         (here (find-if (lambda (entry) (getf entry :current)) outputs))
-         (snapshot
-           (list :layout (getf here :layout)
-                 :windows (getf here :windows 0)
-                 :workspace (getf here :workspace)
-                 :workspace-count *workspace-count*
-                 :bar-hidden (not (config-getf '(:bar) :enabled :default t))
-                 :echo *bar-echo*
-                 :occupied (let ((occ nil))
-                             (dolist (win (all-windows))
-                               (let ((ws (window-workspace win)))
-                                 (when (and ws (not (window-minimized-p win)))
-                                   (pushnew ws occ))))
-                             (sort occ #'<))
-                 :outputs outputs
-                 :focused (let ((focused (find-if #'window-focused-p (all-windows))))
-                            (when focused (window-title focused)))
-                 :recording (or (some (lambda (win)
-                                        (plusp (window-capture-sessions win)))
-                                      (all-windows))
-                                (some (lambda (out)
-                                        (plusp (output-capture-sessions out)))
-                                      (all-outputs))))))
+sequence. See WM-SNAPSHOT-PLIST for the contents."
+  (let ((snapshot (wm-snapshot-plist)))
     (unless (equal snapshot *wm-snapshot*)
       (setf *wm-snapshot* snapshot)
       (bar-write-snapshot snapshot))))

@@ -164,13 +164,12 @@ and SNAPSHOT lists more than one output."
        (> (length (getf snapshot :outputs)) 1)))
 
 (defun bar-background-color (active-p)
-  "The bar background as \"#rrggbb\": (:bar :background-active) when
-ACTIVE-P, otherwise (:bar :background-inactive), falling back to
-(:bar :background)."
-  (if active-p
-      (config-getf '(:bar) :background-active :default "#392e7a")
-      (or (config-getf '(:bar) :background-inactive)
-          (config-getf '(:bar) :background :default "#1a1b26"))))
+  "The bar background as \"#rrggbb\": the :bar-background-active theme
+element when ACTIVE-P, otherwise :bar-background-inactive, which
+follows :bar-background unless set."
+  (theme-color (if active-p
+                   :bar-background-active
+                   :bar-background-inactive)))
 
 ;;; --- Pointer state (module click/scroll support) ---
 
@@ -296,9 +295,7 @@ x-threading for every module after it — the bar vanishes (the
 snapshot's :recording flag). Add :recording to a bar segment to
 use it."
   (if (getf (bar-snapshot) :recording)
-      (let ((color (config-getf '(:bar) :recording-color
-                                :default "#f7768e")))
-        (list (list* "REC " color)))
+      (list (list* "REC " (theme-color :bar-recording)))
       ""))
 
 (defun bar-module-echo ()
@@ -307,30 +304,37 @@ the accent colour, or \"\" when there is none. It takes the centre
 segment while shown unless the bar configuration places :echo itself."
   (let ((text (getf (bar-snapshot) :echo)))
     (if (and (stringp text) (plusp (length text)))
-        (list (list* text (config-getf '(:bar) :accent :default "#7aa2f7")
+        (list (list* text (theme-color :bar-accent)
                      nil))
         "")))
 
 (defun bar-module-workspaces ()
-  "Workspace numbers of the bar's output with breathing room: the
-active workspace in the accent colour on a pill; occupied workspaces
-in the foreground colour; empty ones muted. Occupancy comes from the
-output's :occupied list (workspace numbers with visible windows)."
+  "Workspace numbers of the bar's output with breathing room, coloured
+by the :bar-workspace-current, :bar-workspace-occupied, and
+:bar-workspace-empty elements. Occupancy comes from the output's
+:occupied list (workspace numbers with visible windows). Each state
+also takes its non-hue cue from *state-cues*: the current workspace
+sits on a pill, and an occupied one (current or not) is bold with a
+dot below it."
   (let* ((snapshot (bar-view))
          (current (getf snapshot :workspace 1))
          (count (getf snapshot :workspace-count 9))
          (occupied (getf snapshot :occupied))
-         (accent (config-getf '(:bar) :accent :default "#7aa2f7"))
-         (fg (config-getf '(:bar) :foreground :default "#c0caf5"))
-         (muted (config-getf '(:bar) :muted :default "#565f89"))
+         (accent (theme-color :bar-workspace-current))
+         (fg (theme-color :bar-workspace-occupied))
+         (muted (theme-color :bar-workspace-empty))
          (gap (config-getf '(:bar :workspaces) :gap :default 8)))
     (loop for i from 1 to count
           collect (list* (format nil "~A" i)
-                        (cond ((= i current) accent)
-                              ((member i occupied) fg)
-                              (t muted))
-                        (append (when (= i current) '(:pill t))
-                                (list :gap gap))))))
+                         (cond ((= i current) accent)
+                               ((member i occupied) fg)
+                               (t muted))
+                         (append (when (= i current)
+                                   (state-cue-flags :workspace-current))
+                                 (if (member i occupied)
+                                     (state-cue-flags :workspace-occupied)
+                                     (state-cue-flags :workspace-empty))
+                                 (list :gap gap))))))
 
 (defun bar-module-battery ()
   "Battery percentage from /sys/class/power_supply, e.g. \"75%\"."
@@ -418,10 +422,10 @@ last space. A single-segment format stays one part."
          (space (position #\Space fmt :from-end t)))
     (if space
         (list (list (bar-format-clock (subseq fmt 0 space))
-                    (config-getf '(:bar) :muted :default "#565f89")
+                    (theme-color :bar-clock-date)
                     :gap 10)
               (list (bar-format-clock (subseq fmt (1+ space)))
-                    (config-getf '(:bar) :accent :default "#7aa2f7")))
+                    (theme-color :bar-clock-time)))
         (bar-format-clock fmt))))
 
 (defun bar-format-clock (format)
@@ -482,8 +486,10 @@ strftime subset: %H %M %S %d %m %y %Y %a %A %b %B."
   "Render one module to a list of parts. A part is
 (text color . plist): color NIL means the segment's base color,
 and the plist tail carries render flags — :gap N adds N pixels of
-breathing room after the part, :underline T draws the part's color
-as a 2px line under the text (the active-workspace marker).
+breathing room after the part, :pill T blends the part's colour
+into a rounded fill behind the text (the active-workspace marker),
+:bold T draws the text bold, and :dot T puts a small dot below it
+(the occupied-workspace marker).
 Unknown or failing modules render empty. EMPTY STRINGS are
 dropped: bar-cached substitutes \"\" when a thunk errors, and
 empty text renders nothing."
@@ -512,7 +518,7 @@ telltale."
   "Pixel width of one part: icon + text advance + gap."
   (+ (if (getf (bar-part-flags part) :icon)
          (bar-icon-width) 0)
-     (bar-text-width (first part))
+     (bar-text-width (first part) :bold (getf (bar-part-flags part) :bold))
      (or (getf (bar-part-flags part) :gap 0) 0)))
 
 (defun bar-segment-modules (position)
@@ -729,18 +735,19 @@ PREMULTIPLIED — every writer premultiplies by this."
     (loop for i below (* width height) do
       (setf (cffi:mem-aref ptr :unsigned-int i) pixel))))
 
-(defun bar-draw-text (ptr width height text x y r g b)
-  "Draw TEXT at (X, Y) — the top of the text box — in RGB color.
+(defun bar-draw-text (ptr width height text x y r g b &key bold)
+  "Draw TEXT at (X, Y), the top of the text box, in RGB colour,
+overstruck one pixel wider when BOLD.
 Delegates to the font module: TrueType via freetype when available,
 the 8x16 bitmap font otherwise (identical legacy metrics). The
 buffer is premultiplied ARGB, so the color is scaled by the
 surface alpha down in the font module."
   (font-ensure-initialized)
   (font-draw-text ptr width height text x y r g b
-                  :alpha (bar-surface-alpha)))
+                  :alpha (bar-surface-alpha) :bold bold))
 
-(defun bar-text-width (text)
-  (font-text-width text))
+(defun bar-text-width (text &key bold)
+  (font-text-width text :bold bold))
 
 ;;; --- Status icons (wifi, battery, volume) ---
 
@@ -848,8 +855,8 @@ bolt when CHARGING."
 
 (defun bar-draw-module (ptr width height x y parts base-r base-g base-b module)
   "Draw one module's PARTS starting at X, using the base color for
-parts without an explicit color. Parts may carry :gap and
-:underline flags (see bar-module-parts). Records a click hitbox
+parts without an explicit color. Parts may carry :gap, :pill,
+:bold, and :dot flags (see bar-module-parts). Records a click hitbox
 for MODULE. Returns the x after the module plus gap."
   (let ((start x))
     (dolist (part parts)
@@ -864,8 +871,19 @@ for MODULE. Returns the x after the module plus gap."
           (bar-draw-status-icon ptr width height x y
                                 (getf flags :icon) flags r g b)
           (incf x (bar-icon-width)))
-        (bar-draw-text ptr width height text x y r g b)
-        (let ((tw (bar-text-width text)))
+        (bar-draw-text ptr width height text x y r g b
+                       :bold (getf flags :bold))
+        (let ((tw (bar-text-width text :bold (getf flags :bold))))
+          ;; The occupied-workspace dot: 2x2, centred horizontally,
+          ;; one pixel below the baseline, kept inside the line box.
+          (when (getf flags :dot)
+            (let ((dx0 (+ x (floor tw 2) -1))
+                  (dy0 (min (+ y (font-ascent) 1)
+                            (+ y (font-line-height) -2))))
+              (dotimes (dy 2)
+                (dotimes (dx 2)
+                  (bar-set-pixel ptr width height (+ dx0 dx) (+ dy0 dy)
+                                 r g b)))))
           ;; The active-workspace marker: a rounded accent PILL
           ;; blended behind the text (radius 4, inset).
           (when (getf flags :pill)
@@ -898,16 +916,6 @@ for MODULE. Returns the x after the module plus gap."
                                (>= px0 0))
                       (blend-pixel ptr width height pxx py
                                    r g b :alpha 70)))))))
-          ;; The classic marker: a 2px line in the part's color,
-          ;; flush under the text box.
-          (when (getf flags :underline)
-            (loop for uy below 2
-                  for py = (+ y (font-line-height) uy)
-                  while (< py height) do
-              (loop for uxx below tw
-                    for px = (+ x uxx)
-                    while (< px width) do
-                (bar-set-pixel ptr width height px py r g b))))
           (incf x (+ tw (or (getf flags :gap 0) 0))))))
     (let ((end x))
       (when (and module (> end start))
@@ -939,14 +947,10 @@ after it."
     (multiple-value-bind (br bg bb) (parse-hex-color
                                        (bar-background-color
                                         (bar-active-screen-p)))
-      (multiple-value-bind (fr fg fb) (parse-hex-color
-                                        (config-getf '(:bar) :foreground
-                                                     :default "#c0caf5"))
+      (multiple-value-bind (fr fg fb) (theme-rgb :bar-foreground)
         (let ((margin (config-getf '(:bar) :margin :default 8)))
           (if (plusp (config-getf '(:bar) :corner-radius :default 10))
-              (multiple-value-bind (rdr rdg rdb)
-                  (parse-hex-color (config-getf '(:bar) :border-color
-                                                :default "#3b4261"))
+              (multiple-value-bind (rdr rdg rdb) (theme-rgb :bar-border)
                 (paint-rounded-surface ptr width height br bg bb
                                         :alpha (bar-surface-alpha)
                                         :radius (config-getf '(:bar)
@@ -980,9 +984,7 @@ after it."
           (when (and *bar-pointer-x*
                      (or (null *bar-pointer-head*) (eq state *bar-pointer-head*))
                      (>= *bar-pointer-x* 0) (< *bar-pointer-x* width))
-            (multiple-value-bind (ar ag ab)
-                (parse-hex-color (config-getf '(:bar) :accent
-                                              :default "#7aa2f7"))
+            (multiple-value-bind (ar ag ab) (theme-rgb :bar-hover)
               (dolist (hb *bar-hitboxes*)
                 (when (and (<= (second hb) *bar-pointer-x*)
                            (< *bar-pointer-x* (third hb)))
@@ -1374,10 +1376,53 @@ shared compositor, shm and layer-shell globals from STATE."
                  (setf (gethash key head) (gethash key state)))
                (bar-open-surface head)))))))
 
+(defvar *bar-applied-settings* nil
+  "The :settings snapshot entry the bar process last applied.")
+
+(defun bar-geometry ()
+  "The :bar settings that size the layer surface: (HEIGHT MARGIN)."
+  (list (config-getf '(:bar) :height :default 28)
+        (config-getf '(:bar) :margin :default 8)))
+
+(defun bar-adopt-settings (state settings)
+  "Apply SETTINGS, the :settings entry of the WM snapshot (see
+BAR-PUSHED-SETTINGS), in the bar process: replace the :bar, :modules,
+and :theme config groups, draw from the pushed theme, re-resolve the
+font, and render every head again. Reopens each open head's surface
+when the height or margin changed. Returns T when SETTINGS differ from
+the last applied, NIL when they match or are NIL."
+  (when (and settings (not (equal settings *bar-applied-settings*)))
+    (let ((geometry (bar-geometry))
+          (config (copy-list *config*))
+          (theme (getf settings :theme-table))
+          (name (getf (getf settings :theme) :name)))
+      (setf (getf config :bar) (getf settings :bar)
+            (getf config :modules) (getf settings :modules)
+            (getf config :theme) (getf settings :theme))
+      (setf *config* config
+            *bar-applied-settings* settings)
+      (clear-theme-cache)
+      (when (and (stringp name)
+                 (listp theme)
+                 (theme-table-p (getf theme :roles))
+                 (theme-table-p (getf theme :elements)))
+        (bt:with-recursive-lock-held (*theme-cache-lock*)
+          (setf (gethash name *theme-cache*) theme)))
+      (clrhash *bar-cache*)
+      (font-apply-config)
+      (let ((reopen (not (equal geometry (bar-geometry)))))
+        (dolist (head (bar-heads state))
+          (setf (gethash :last-content head) nil)
+          (when (and reopen (gethash :surface head))
+            (bar-close-surface head)
+            (bar-open-surface head))))
+      t)))
+
 (defun bar-run-loop (state)
   "Open the bar's Wayland connection and drive its tick loop. Each
-tick opens or closes each head's surface to follow the WM snapshot
-and re-renders the heads whose content changed."
+tick applies the settings the WM pushed in its snapshot, then opens or
+closes each head's surface to follow the snapshot and re-renders the
+heads whose content changed."
   (flet ((safe-roundtrip (display)
            ;; Wayflan raises on events it cannot decode (e.g. wl_shm
            ;; advertises non-standard fourcc formats); skip and carry on.
@@ -1415,13 +1460,16 @@ and re-renders the heads whose content changed."
               (return-from bar-run-loop))
             ;; Pointer input for clickable modules
             (bar-setup-pointer state)
+            (bar-adopt-settings state (getf (bar-snapshot) :settings))
             (bar-sync-visibility state)
             (loop for i below 100
                   until (or (settled-p) (not *bar-running*))
                   do (safe-roundtrip display)
                      (sleep 0.05))
             (loop while *bar-running*
-                  do (bar-sync-visibility state)
+                  do (bar-adopt-settings state
+                                         (getf (bar-snapshot) :settings))
+                     (bar-sync-visibility state)
                      (let ((tray-was *tray-changed*))
                        (tray-drain)
                        (when (/= tray-was *tray-changed*)
@@ -1489,9 +1537,6 @@ thread and the main thread both call it.")
 (defvar *bar-starting* nil
   "True while start-bar is launching a bar process.")
 
-(defvar *bar-launched-settings* nil
-  "The :bar settings, without :enabled, of the last bar launch.")
-
 (defun bar-alive-p ()
   "Whether a bar process is running or being launched — our own
 child, or one adopted from a previous WM."
@@ -1500,14 +1545,6 @@ child, or one adopted from a previous WM."
            (uiop:process-alive-p *bar-process*))
       (and *adopted-bar-pid*
            (external-pid-alive-p *adopted-bar-pid*))))
-
-(defun bar-settings ()
-  "The :bar config group without :enabled and :outputs: the bar
-process follows both from the WM snapshot, so neither needs a restart."
-  (let ((group (copy-list (config-get '(:bar)))))
-    (remf group :enabled)
-    (remf group :outputs)
-    group))
 
 (defun bar-log-path ()
   "Pathname of the bar process's log file, in the cache directory."
@@ -1528,11 +1565,8 @@ left behind by past incidents (they would stack on screen)."
     ;; than cold-started: a fresh SBCL is the 40-second black strip
     (let ((pids (external-bar-pids)))
       (when pids
-        (setf *adopted-bar-pid* (first pids)
-              ;; stamp the settings the adopted bar runs with, or
-              ;; apply-config's changed-settings comparison sees
-              ;; this WM's nil and restarts it anyway
-              *bar-launched-settings* (bar-settings))
+        ;; the adopted bar takes this WM's settings from the snapshot
+        (setf *adopted-bar-pid* (first pids))
         (reap-extra-bars *adopted-bar-pid*)
         (format t "~&; Rhizome: bar adopted (pid ~A)~%" *adopted-bar-pid*)
         (return-from start-bar)))
@@ -1547,7 +1581,6 @@ left behind by past incidents (they would stack on screen)."
            (ensure-directories-exist (bar-log-path))
            (with-open-file (s (bar-log-path) :direction :output
                               :if-exists :supersede))
-           (setf *bar-launched-settings* (bar-settings))
            (setf *bar-process*
                  (uiop:launch-program
                    (list "sbcl"
@@ -1738,27 +1771,22 @@ persists the intent in (:bar :enabled)."
           :name "rhizome-bar-supervisor")))
 
 (defun bar-apply-config ()
-  "Apply the current config to the bar. Disabling leaves a running bar
-process alive, and the bar reads :bar-hidden from the WM snapshot.
-Enabling starts a bar when none is alive, and restarts one only when
-the :bar settings differ from those it was launched with. WM-process
-only: any other process, the bar process (see *bar-process-mode*) or
-a test run included, must never start or stop bars, because stop-bar's
-pkill would reap the user's live bar."
+  "Apply the current config to the bar. A running bar process, launched
+or adopted, keeps running: it reads the :bar, :modules, and :theme
+settings and the active theme from the WM snapshot written here (see
+BAR-PUSHED-SETTINGS), and :bar-hidden when the bar is disabled.
+Enabling starts a bar when none is alive. WM-process only: any other
+process, the bar process (see *bar-process-mode*) or a test run
+included, must never start or stop bars, because stop-bar's pkill
+would reap the user's live bar."
   (unless (and (boundp '*wm-process-mode*) *wm-process-mode*)
     (return-from bar-apply-config))
   (when *bar-process-mode*
     (return-from bar-apply-config))
   (let ((before (bar-reservation)))
-    (cond
-      ((not (config-getf '(:bar) :enabled :default t)))
-      ((not (bar-alive-p))
-       (start-bar))
-      ((not (equal (bar-settings) *bar-launched-settings*))
-       ;; The new process reads height, modules and colours from the
-       ;; config file.
-       (stop-bar)
-       (start-bar)))
+    (when (and (config-getf '(:bar) :enabled :default t)
+               (not (bar-alive-p)))
+      (start-bar))
     (when *wm-proxy*
       (update-wm-snapshot))
     (unless (equal before (bar-reservation))

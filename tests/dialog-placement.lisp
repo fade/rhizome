@@ -265,10 +265,10 @@
                  (lambda () (window-placement-pending-p dlg)) nil)))
 
       ;; --- goto-last-dialog: the last dialog that opened out of view ---
-      (check "the default config declares the notice length and colour"
+      (check "the default notice length and colour"
              (lambda ()
                (list (config-getf '(:dialogs) :notify-seconds :default :absent)
-                     (config-getf '(:dialogs) :notify-color :default :absent)))
+                     (theme-color :dialog-notice)))
              (list 10 "#ff5fd7"))
       (check "goto-last-dialog is a command, exported, and bound to prefix d"
              (lambda ()

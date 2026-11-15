@@ -5,8 +5,9 @@
 ;;; same interactive move a client titlebar requests. The strip is a
 ;;; river_window_v1 decoration above the window, offset upward so it
 ;;; sits on the window's top border and spans the border's width. Its
-;;; fill is the window's border colour (:focused-border or
-;;; :unfocused-border), so strip and border read as one frame.
+;;; fill is the :titlebar-focused or :titlebar-unfocused theme
+;;; element, which follow the window border colours, so strip and
+;;; border read as one frame.
 ;;;
 ;;; A float gets no strip when any of these holds:
 ;;;   it has a parent (dialogs, file pickers, transients)
@@ -97,9 +98,9 @@ height plus padding above and below."
         (+ (font-line-height) (* 2 *titlebar-padding*)))))
 
 (defun titlebar-border-width (win)
-  "WIN's float border width: 2 px focused, 1 px unfocused, as
-float-render-decisions sets it."
-  (if (window-focused-p win) 2 1))
+  "WIN's float border width, as float-render-decisions sets it: the
+focused or unfocused width from BORDER-WIDTH."
+  (border-width (window-focused-p win)))
 
 (defun titlebar-geometry (win)
   "The strip relative to WIN's top-left corner, as
@@ -125,15 +126,15 @@ position."
                (<= top py) (< py (+ top h))))))))
 
 (defun titlebar-colours (focused-p)
-  "Fill and text colours as (VALUES FR FG FB TR TG TB). The fill is
-the theme border colour; the text is the bar background on a light
-fill and the bar foreground on a dark one."
-  (multiple-value-bind (fr fg fb) (theme-border-rgb focused-p)
+  "Fill and text colours as (VALUES FR FG FB TR TG TB). The fill is the
+:titlebar-focused or :titlebar-unfocused theme element; the text is
+:bar-background on a light fill and :bar-foreground on a dark one."
+  (multiple-value-bind (fr fg fb)
+      (theme-rgb (if focused-p :titlebar-focused :titlebar-unfocused))
     (multiple-value-bind (tr tg tb)
-        (parse-hex-color
-         (if (> (+ (* 299 fr) (* 587 fg) (* 114 fb)) 140000)
-             (config-getf '(:bar) :background :default "#1a1b26")
-             (config-getf '(:bar) :foreground :default "#c0caf5")))
+        (theme-rgb (if (> (+ (* 299 fr) (* 587 fg) (* 114 fb)) 140000)
+                       :bar-background
+                       :bar-foreground))
       (values fr fg fb tr tg tb))))
 
 (defun titlebar-fit-title (title max-width &optional (measure #'font-text-width))

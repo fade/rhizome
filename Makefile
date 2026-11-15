@@ -16,7 +16,8 @@ TYPST     ?= typst
 HOME_DIR  ?= $(HOME)
 SUITES    := animations decorations surface window-rules window-rules-reload floating \
              focus-on-close focus-after-capture layer-focus workspace-focus \
-             workspace-modes theming bar-guard session-icons quickwins groups \
+             workspace-modes theming theme-roles theme-live theme-cues \
+             theme-pack theme-sites bar-guard session-icons quickwins groups \
              interactivity workspace-restore workspace-switch-away takeover \
              tray-menus prompt-free-text palette-message frame-pruning \
              repl-server-config repl-server-port keymap-layers key-sequences \

@@ -258,6 +258,9 @@
    #:data-directory
    #:cache-directory
    #:state-directory
+   ;; Themes
+   #:set-theme
+   #:available-theme-names
    ;; Bar
    #:run-bar
    #:bar-switch-workspace

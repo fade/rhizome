@@ -20,8 +20,8 @@
 ;;;   :active-edge        :top (the default), :left, :bottom or
 ;;;                       :right; any other value turns the line off
 ;;;   :active-edge-width  line width in px, clamped to 1-5 (default 3)
-;;;   :active-edge-color  "#rrggbb", or T (the default) for the
-;;;                       (:theme :focused-border) colour
+;;; The line takes the :screen-active-edge theme element, which follows
+;;; the focused window border unless set.
 
 (in-package #:rhizome)
 
@@ -38,15 +38,12 @@
 (defun active-edge-style ()
   "The line as (VALUES EDGE WIDTH R G B), or NIL when it is off.
 WIDTH is (:screens :active-edge-width) clamped to 1-5; a value that
-is not an integer gives 3."
+is not an integer gives 3. The colour is the :screen-active-edge theme
+element."
   (let ((edge (config-getf '(:screens) :active-edge :default :top))
-        (width (config-getf '(:screens) :active-edge-width :default 3))
-        (color (config-getf '(:screens) :active-edge-color :default t)))
+        (width (config-getf '(:screens) :active-edge-width :default 3)))
     (when (member edge *active-edge-sides*)
-      (multiple-value-bind (r g b)
-          (if (stringp color)
-              (parse-hex-color color)
-              (theme-border-rgb t))
+      (multiple-value-bind (r g b) (theme-rgb :screen-active-edge)
         (values edge
                 (if (integerp width) (max 1 (min 5 width)) 3)
                 r g b)))))

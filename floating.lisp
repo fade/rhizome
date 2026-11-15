@@ -305,8 +305,8 @@ showing (see notify-dialog-elsewhere), or NIL.")
 
 (defun notify-dialog-elsewhere (win output workspace frame)
   "Show a notice naming the dialog WIN and the frame it opened in, for
-(:dialogs :notify-seconds) seconds in (:dialogs :notify-color), and
-record WIN as *last-dialog-elsewhere* for goto-last-dialog."
+(:dialogs :notify-seconds) seconds in the :dialog-notice theme element,
+and record WIN as *last-dialog-elsewhere* for goto-last-dialog."
   (setf *last-dialog-elsewhere* win)
   (multiple-value-bind (location screen index)
       (frame-location output workspace frame)
@@ -316,7 +316,7 @@ record WIN as *last-dialog-elsewhere* for goto-last-dialog."
              (or (window-app-id win) "unknown app")
              workspace screen index location)
      (config-getf '(:dialogs) :notify-seconds :default 10)
-     (config-getf '(:dialogs) :notify-color :default "#ff5fd7"))))
+     (theme-color :dialog-notice))))
 
 (defun goto-last-dialog ()
   "Show the workspace of *last-dialog-elsewhere* on its output and
@@ -534,7 +534,7 @@ its hide logic."
         (multiple-value-bind (r g b a)
             (theme-border-rgba32 (window-focused-p win))
           (set-window-borders win '(:top :bottom :left :right)
-                              (if (window-focused-p win) 2 1)
+                              (border-width (window-focused-p win))
                               r g b a))
         ;; Show only on transition: river treats every show/hide as a
         ;; state change and starts a new manage/render sequence.

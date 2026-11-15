@@ -94,14 +94,6 @@ Returns (values value found-p)."
           :interval 0.15
           :padding 6
           :opacity 0.9
-          :background "#1a1b26"
-          ;; with more than one output, the current output's bar
-          ;; takes :background-active; the others take
-          ;; :background-inactive, or :background when it is unset
-          :background-active "#392e7a"
-          :foreground "#c0caf5"
-          :accent "#7aa2f7"
-          :muted "#565f89"
           :modules (:left (:workspaces :layout :windows)
                     :center (:clock)
                     :right (:tray :network :volume :battery)))
@@ -118,10 +110,10 @@ Returns (values value found-p)."
               ;; A window whose client names a parent floats on map;
               ;; a window rule with :float nil keeps one app's dialogs
               ;; tiled. A dialog that opens on a hidden workspace
-              ;; shows a notice for :notify-seconds in :notify-color;
-              ;; C-t d (goto-last-dialog) goes to it.
-              :notify-seconds 10
-              :notify-color "#ff5fd7")
+              ;; shows a notice for :notify-seconds in the
+              ;; :dialog-notice theme element; C-t d
+              ;; (goto-last-dialog) goes to it.
+              :notify-seconds 10)
     :windows (:decorations :server
               ;; :server asks every client that supports it for
               ;; server-side decorations (no client titlebar; rhizome
@@ -183,32 +175,21 @@ Returns (values value found-p)."
     ;; With more than one output, a line along one edge of the
     ;; current output when it carries no bar. :active-edge is :top,
     ;; :left, :bottom or :right (anything else turns it off);
-    ;; :active-edge-width is 1 to 5 px; :active-edge-color is
-    ;; "#rrggbb", or T for the :theme :focused-border colour.
+    ;; :active-edge-width is 1 to 5 px. The line takes the
+    ;; :screen-active-edge theme element.
     :screens (:active-edge :top
-              :active-edge-width 3
-              :active-edge-color t)
-    :theme (:font-family "monospace"
+              :active-edge-width 3)
+    ;; :name selects themes/NAME.theme; :roles and :elements adjust
+    ;; it (see theme.lisp)
+    :theme (:name "tokyo-night"
+            :font-family "monospace"
             :font-size 14
-            :focused-border "#7aa2f7"
-            :unfocused-border "#404040"
-            :frame-outline-empty "#ff9e64"
-            ;; Outline colour of a focused frame that shows no
-            ;; window; nil uses the :frame-outline colour
             :frame-outline-empty-width 1
             ;; Outline width in px of a focused frame that shows no
             ;; window; nil uses the :frame-outline-width
             )
-    :launcher (:background "#23142d"
-               :opacity 0.9
-               :icon-size 20
-               :accent "#7aa2f7"
-               :prompt-color "#8c64aa"
-               :query-color "#dcc8f0"
-               :cursor-color "#b4a0d2"
-               :selection-background "#503278"
-               :selected-color "#f0e6ff"
-               :entry-color "#aa96c8")
+    :launcher (:opacity 0.9
+               :icon-size 20)
     :displays (:layout ()
                ;; Output positions, applied at startup, on hotplug
                ;; and on configure. Specs match a connector name or a
@@ -239,14 +220,6 @@ its :enabled switch. Missing keys default to enabled and port 4005."
     (values (config-getf group :enabled :config config :default t)
             (config-getf group :port :config config :default 4005))))
 
-(defun theme-border-rgb (focused-p)
-  "Focused/unfocused window border color as (values r g b), from
-(:theme :focused-border/:unfocused-border)."
-  (parse-hex-color
-    (config-getf '(:theme)
-                 (if focused-p :focused-border :unfocused-border)
-                 :default (if focused-p "#7aa2f7" "#404040"))))
-
 (defun border-rgba32 (r g b &optional (a #xff))
   "Return 8-bit channels R G B A (0-255, straight alpha) as four 32-bit
 values for river_window_v1.set_borders: 0 is 0%, #xffffffff is 100%,
@@ -255,16 +228,21 @@ colour channels pre-multiplied by alpha."
            (floor (* channel a #x01010101) #xff)))
     (values (scale r) (scale g) (scale b) (* a #x01010101))))
 
-(defun theme-border-rgba32 (focused-p)
-  "Focused/unfocused theme border colour, opaque, as the four 32-bit
-set_borders values (values r g b a). See BORDER-RGBA32."
-  (multiple-value-bind (r g b) (theme-border-rgb focused-p)
-    (border-rgba32 r g b)))
-
 (defvar *config* (default-config)
   "The current rhizome configuration.")
 
 ;;; --- Public config API ---
+
+(defun normalize-theme-selection (plist)
+  "PLIST with a (:theme \"NAME\") entry rewritten as
+(:theme (:name \"NAME\")), so a theme chosen by name merges into the
+:theme group instead of replacing it."
+  (let ((theme (getf plist :theme)))
+    (if (stringp theme)
+        (let ((copy (copy-list plist)))
+          (setf (getf copy :theme) (list :name theme))
+          copy)
+        plist)))
 
 (defun configure (plist)
   "Merge PLIST into *config* and apply it. For example:
@@ -277,9 +255,19 @@ set_borders values (values r g b a). See BORDER-RGBA32."
   (rhizome:configure '(:frames (:prune-empty :never)))  ; keep every empty frame
   ;; new windows fill an empty frame first (see placement.lisp)
   (rhizome:configure '(:tiling (:placement (:new-window (:empty :focused)))))
+  (rhizome:configure '(:theme \"tokyo-night\"))  ; a theme by name
 
-Restarting running components (e.g. the bar) is handled automatically."
-  (setf *config* (merge-plist *config* plist))
+A theme name given as (:theme \"NAME\") sets (:theme :name) and keeps
+the rest of the :theme group. Each deprecated colour key in PLIST
+warns once (see theme.lisp).
+
+Running components take the change without a restart: the WM redraws,
+and the bar process receives its settings and the theme through the
+WM snapshot."
+  (let ((plist (normalize-theme-selection plist)))
+    (when (fboundp 'warn-deprecated-colour-keys)
+      (funcall (symbol-function 'warn-deprecated-colour-keys) plist))
+    (setf *config* (merge-plist *config* plist)))
   (apply-config)
   *config*)
 
@@ -297,7 +285,9 @@ user config would otherwise spawn bars — see *bar-process-mode*)."
     (when (fboundp 'display-apply-layout)
       (handler-case (funcall (symbol-function 'display-apply-layout))
         (error (e)
-          (format t "~&; Rhizome: display layout failed: ~A~%" e))))))
+          (format t "~&; Rhizome: display layout failed: ~A~%" e))))
+    (when (fboundp 'theme-apply-config)
+      (funcall (symbol-function 'theme-apply-config)))))
 
 (defun config-pathname ()
   "Pathname of the user config file, config.lisp in the config
@@ -433,13 +423,16 @@ rules the file sets with SET-WINDOW-RULES belong to the :config source."
 
 (defun reload-config ()
   "Reset to defaults, clear the user keymaps and the config file's
-window rules, reload the user config file, and re-apply. A binding or
-rule the file no longer makes is gone; the default keymaps and the
-rule sets of other sources stay in force."
+window rules, forget loaded themes so theme files are read again,
+reload the user config file, and re-apply. A binding or rule the file
+no longer makes is gone; the default keymaps and the rule sets of other
+sources stay in force."
   (setf *config* (default-config))
   (set-window-rules nil :source :config)
   (when (fboundp 'clear-user-keymaps)
     (funcall 'clear-user-keymaps))
+  (when (fboundp 'clear-theme-cache)
+    (funcall 'clear-theme-cache))
   (load-user-config)
   (apply-config)
   *config*)

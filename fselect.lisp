@@ -24,9 +24,9 @@
 ;;; removal of an output, leaves no label behind after the next
 ;;; render sequence.
 ;;;
-;;; Colours: the fill is (:theme :frame-outline) when it is a colour,
-;;; else the focused border colour; the text is the bar background on
-;;; a light fill and the bar foreground on a dark one.
+;;; Colours: the fill is the :fselect-label theme element, which
+;;; follows :frame-outline; the text is the bar background on a light
+;;; fill and the bar foreground on a dark one.
 
 (in-package #:rhizome)
 
@@ -148,18 +148,15 @@ any other key cancel. Every path ends the capture. Returns T."
 ;;; --- Label pixels ---
 
 (defun fselect-label-colours ()
-  "Fill and text colours as (VALUES FR FG FB TR TG TB)."
-  (let ((colour (config-getf '(:theme) :frame-outline :default t)))
-    (multiple-value-bind (fr fg fb)
-        (if (stringp colour)
-            (parse-hex-color colour)
-            (theme-border-rgb t))
-      (multiple-value-bind (tr tg tb)
-          (parse-hex-color
-           (if (> (+ (* 299 fr) (* 587 fg) (* 114 fb)) 140000)
-               (config-getf '(:bar) :background :default "#1a1b26")
-               (config-getf '(:bar) :foreground :default "#c0caf5")))
-        (values fr fg fb tr tg tb)))))
+  "Fill and text colours as (VALUES FR FG FB TR TG TB). The fill is the
+:fselect-label theme element; the text is :bar-background on a light
+fill and :bar-foreground on a dark one."
+  (multiple-value-bind (fr fg fb) (theme-rgb :fselect-label)
+    (multiple-value-bind (tr tg tb)
+        (theme-rgb (if (> (+ (* 299 fr) (* 587 fg) (* 114 fb)) 140000)
+                       :bar-background
+                       :bar-foreground))
+      (values fr fg fb tr tg tb))))
 
 (defun fselect-label-size (text)
   "Label width and height in px for TEXT as (VALUES W H)."

@@ -160,11 +160,13 @@ scaled by the alpha, so c* ≤ a always holds."
              (top radius) (bottom (+ radius win-h))
              (alpha-0 (* 255 (if (getf state :focused)
                                  focus-alpha base-alpha)))
-             ;; Straight shadow color: dark grey, tinted halfway
-             ;; toward the accent
-             (cr (+ 30 (* (- r 30) 0.5)))
-             (cg (+ 30 (* (- g 30) 0.5)))
-             (cb (+ 36 (* (- b 36) 0.5))))
+             ;; Straight shadow colour: the shadow base, tinted
+             ;; halfway toward (r g b)
+             (cr 0) (cg 0) (cb 0))
+        (multiple-value-bind (sr sg sb) (theme-rgb :decoration-shadow)
+          (setf cr (+ sr (* (- r sr) 0.5))
+                cg (+ sg (* (- g sg) 0.5))
+                cb (+ sb (* (- b sb) 0.5))))
         (loop for py below height
               do (let* ((dy (max 0
                                  (cond ((< py top) (- top py))
@@ -216,23 +218,33 @@ commit must land before the render_finish that ends this pass."
     ;; writes it into *decorations* (setf/getf rebinds, not mutates)
     state)
 
+(defun decoration-needs-redraw-p (state dw dh focused colour)
+  "True when the decoration in STATE no longer matches the size DW x DH,
+the focus FOCUSED, or COLOUR, a list of the tint's r g b and the
+shadow's colour."
+  (or (/= (getf state :w) dw)
+      (/= (getf state :h) dh)
+      (not (eql (getf state :focused) focused))
+      (not (equal (getf state :colour) colour))))
+
 (defun decoration-update-for-window (win radius cfg ar ag ab)
   "Keep WIN's decoration current (render pass only). The state is
 a plist: setf/getf REBINDS rather than mutates, so the updated
-list is threaded and written back to the hash."
+list is threaded and written back to the hash. Redraws when the
+window's size or focus, the tint, or the shadow colour changed."
   (ensure-window-decoration win)
   (let ((state (gethash win *decorations*)))
     (when state
       (multiple-value-bind (w h) (decoration-window-size win)
         (let ((dw (+ w (* 2 radius)))
-              (dh (+ h (* 2 radius))))
-          (when (or (/= (getf state :w) dw)
-                    (/= (getf state :h) dh)
-                    (not (eql (getf state :focused)
-                              (window-focused-p win))))
+              (dh (+ h (* 2 radius)))
+              (colour (list ar ag ab (theme-color :decoration-shadow))))
+          (when (decoration-needs-redraw-p state dw dh
+                                           (window-focused-p win) colour)
             (setf (getf state :w) dw
                   (getf state :h) dh
-                  (getf state :focused) (window-focused-p win))
+                  (getf state :focused) (window-focused-p win)
+                  (getf state :colour) colour)
             (setf state (decoration-redraw state dw dh radius cfg ar ag ab)))
           (unless (getf state :offset-sent)
             (rwm:river-decoration-v1.set-offset
@@ -251,11 +263,8 @@ render-only, and the commit lands before this render sequence's
 render_finish. Returns NIL."
   (let ((radius (decoration-radius)))
     (when (plusp radius)
-      (let* ((cfg (decoration-config))
-             (ar 122) (ag 162) (ab 247))
-        (multiple-value-bind (r g b)
-            (handler-case (theme-border-rgb t)
-              (error () (values ar ag ab)))
+      (let ((cfg (decoration-config)))
+        (multiple-value-bind (r g b) (theme-rgb :decoration-tint)
           (loop for win being the hash-values of *windows*
                 if (and (window-floating-p win)
                         (not (window-minimized-p win))

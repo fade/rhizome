@@ -648,6 +648,40 @@ follows it."
   (toggle-bar)
   "ok")
 
+(define-command :set-theme (output args)
+  "Switch to the theme NAME; the WM and the bar redraw in its colours.
+Usage: set-theme <name>"
+  (declare (ignore output))
+  (let ((themes (available-theme-names)))
+    (cond ((null args)
+           (format nil "usage: set-theme NAME (themes: ~{~A~^ ~})" themes))
+          ((set-theme (first args))
+           (format nil "theme ~A" (first args)))
+          (t
+           (format nil "no theme ~A (themes: ~{~A~^ ~})"
+                   (first args) themes)))))
+
+(define-command :select-theme (output args)
+  "Pick a theme from a list of every theme and switch to it."
+  (declare (ignore output args))
+  (prompt-open "Theme:"
+               :candidates (available-theme-names)
+               :on-complete (lambda (name)
+                              (when (set-theme name)
+                                (message "theme ~A" name))))
+  nil)
+
+(define-command :list-themes (output args)
+  "List the themes that can be selected; the current one carries a *."
+  (declare (ignore output args))
+  (let ((current (config-getf '(:theme) :name)))
+    (format nil "~{~A~^ ~}"
+            (mapcar (lambda (name)
+                      (if (equal name current)
+                          (concatenate 'string name "*")
+                          name))
+                    (available-theme-names)))))
+
 (define-command :detach (output args)
   "Detach rhizome from the session: stop managing and exit without
 ending the compositor (river's WM hot-swap). Another window

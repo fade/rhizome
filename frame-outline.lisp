@@ -23,16 +23,17 @@
 ;;; is redrawn only when the size, colour, or width changes.
 ;;;
 ;;; Settings, under :theme:
-;;;   :frame-outline        "#rrggbb", T (the :focused-border colour,
-;;;                         the default), or NIL (off)
-;;;   :frame-outline-empty  "#rrggbb" for a focused frame that shows
-;;;                         no window (default "#ff9e64"), or NIL (the
-;;;                         :frame-outline colour)
+;;;   :frame-outline        T (the default) draws the outline, NIL
+;;;                         turns it off
+;;;   :frame-outline-empty  NIL gives a focused frame that shows no
+;;;                         window the :frame-outline colour
 ;;;   :frame-outline-width  ring width in px (default 2; 0 is off)
 ;;;   :frame-outline-empty-width
 ;;;                         ring width in px for a focused frame that
 ;;;                         shows no window (default 1), or NIL (the
 ;;;                         :frame-outline-width)
+;;; Colours, theme elements: :frame-outline (follows the focused window
+;;; border) and :frame-outline-empty (follows the :warning role).
 
 (in-package #:rhizome)
 
@@ -45,21 +46,23 @@
 
 (defun frame-outline-style (&optional empty-p)
   "The ring colour and width as (VALUES R G B WIDTH), or NIL when the
-outline is off. EMPTY-P selects (:theme :frame-outline-empty) when it
-is a colour, and (:theme :frame-outline-empty-width) when it is a
-positive integer; otherwise, and for an occupied frame, the colour is
-:frame-outline's and the width :frame-outline-width."
-  (let ((colour (config-getf '(:theme) :frame-outline :default t))
-        (empty (config-getf '(:theme) :frame-outline-empty
-                            :default "#ff9e64"))
+outline is off. The colour is the :frame-outline theme element, or for
+EMPTY-P the :frame-outline-empty element; (:theme :frame-outline-empty)
+set to NIL gives an empty frame the :frame-outline colour. The width is
+(:theme :frame-outline-empty-width) for EMPTY-P when it is a positive
+integer, otherwise :frame-outline-width."
+  (let ((on (config-getf '(:theme) :frame-outline :default t))
         (width (config-getf '(:theme) :frame-outline-width :default 2))
         (empty-width (config-getf '(:theme) :frame-outline-empty-width
                                   :default 1)))
-    (when (and colour (integerp width) (plusp width))
+    (when (and on (integerp width) (plusp width))
       (multiple-value-bind (r g b)
-          (cond ((and empty-p (stringp empty)) (parse-hex-color empty))
-                ((stringp colour) (parse-hex-color colour))
-                (t (theme-border-rgb t)))
+          (theme-rgb (if (and empty-p
+                              (multiple-value-bind (value foundp)
+                                  (config-get '(:theme :frame-outline-empty))
+                                (or value (not foundp))))
+                         :frame-outline-empty
+                         :frame-outline))
         (values r g b
                 (if (and empty-p (integerp empty-width) (plusp empty-width))
                     empty-width

@@ -188,16 +188,12 @@ These take effect only at a restart of the window manager:
   when a seat appears.
 
 The bar runs in its own process and reads =~/.config/rhizome/config.lisp=
-when it starts. A =configure= or =(rhizome:reload-config)= call in the
-window manager reaches the running bar in two ways only:
-
-- =(:bar :enabled)= hides or shows the bar.
-- A change to any other =:bar= key restarts the bar process.
-
-Because a restarted bar reads the file, put bar settings in the file
-and call =(rhizome:reload-config)=. Changes to the =:modules= group
-and the =:theme= fonts restart nothing; the bar shows them when it
-next starts, for example after a restart of the window manager.
+when it starts. After that the window manager sends it the =:bar=,
+=:modules=, and =:theme= settings and the active theme in the snapshot
+it writes for the bar, so a =configure= or =(rhizome:reload-config)=
+call, or a theme switch, shows on the running bar within one poll,
+with no bar restart. A change to =:height= or =:margin= recreates the
+bar's surface inside the same process.
 
 =(rhizome:reload-config)= resets the configuration to the defaults,
 removes every user key binding, loads the file again, and applies the
@@ -1119,22 +1115,28 @@ window uses one TrueType font:
 The family name goes through =fc-match=, so a missing family resolves
 to the closest installed font. Without freetype, fontconfig, or a
 matching font, every surface uses the built-in 8x16 bitmap font.
-A =:theme= change takes effect at once in the window manager's own
-surfaces; the bar picks up the new font when it next starts.
+A =:theme= change takes effect at once, on the bar as well.
 
 ** Colours
 
-Colours are strings of the form ="#rrggbb"=.
+Every colour comes from a theme. The default is =tokyo-night=; select
+another by name, switch while rhizome runs, or adjust one colour:
 
-- =:theme= :: =:focused-border= and =:unfocused-border= colour window
-  borders. The focused border colour also tints float shadows and the
-  focus glow.
-- =:bar= :: =:background=, =:foreground=, =:accent=, =:muted=, and
-  =:border-color=. The message window, the prompts, and the eval
-  prompt use the bar's colours too.
-- =:launcher= :: every launcher colour, listed in the configuration
-  reference.
-- =:menus= :: the window menu's colours.
+#+begin_src lisp
+(rhizome:configure '(:theme "modus-operandi"))
+(rhizome:set-theme "tokyo-night")
+(rhizome:configure '(:theme (:elements (:border-focused "#ff9e64"))))
+#+end_src
+
+=rhizome-cmd set-theme NAME= and =rhizome-cmd list-themes= do the same
+from a shell, and =select-theme= picks one from a list. A theme gives
+colours to /roles/, such as =:background=, =:accent=, and =:focus=;
+each /element/, such as =:bar-background= or =:border-focused=,
+derives from a role. "Theming" in README.org lists the roles and
+elements. The colour keys from before themes, such as
+=(:theme :focused-border)= or =(:bar :background)=, still work for one
+release, and each prints a warning naming the element that replaces
+it.
 
 =(:bar :opacity)= sets the opacity of the bar, the message window, and
 the prompts, from 0.0 to 1.0. The launcher and the window menu have
@@ -1240,10 +1242,9 @@ trace is large while windows animate.
   manager, and read =~/.cache/rhizome/bar.log=. The bar process loads
   =rhizome= through Quicklisp, so the bar also fails when the system
   cannot load. Check that =(:bar :enabled)= is not =nil=.
-- A bar setting has no effect :: The bar reads the configuration
-  file, not the live configuration. Put the setting in the file and
-  run =(rhizome:reload-config)=. A =:modules= or =:theme= font change
-  appears when the bar next starts, as after a window manager restart.
+- A bar setting has no effect :: A bar process started before the
+  window manager could send settings to it ignores them. Restart the
+  bar once.
 - =rhizome-cmd= reports no socket :: The window manager is not
   running, or =(:ipc (:enabled nil))= is set. The socket is
   =$XDG_RUNTIME_DIR/rhizome.sock=, or =/tmp/rhizome-UID.sock= when

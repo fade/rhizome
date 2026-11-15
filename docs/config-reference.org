@@ -25,8 +25,8 @@ In the tables:
   default shown is the value the code uses in its place.
 - Applies :: when a change takes effect. /live/ means on the next
   redraw or window event. /restart/ means at the next start of the
-  window manager. /bar restart/ means at the next start of the bar
-  process, which reads the configuration file (see [[*The bar process][The bar process]]).
+  window manager. Bar settings reach the running bar process live
+  (see [[*The bar process][The bar process]]).
 
 Groups whose values include a keyword (=:windows=, =:workspaces=,
 =:frames=, =:animations=, =:output=, and the =(:tiling :placement)=
@@ -36,12 +36,22 @@ such a group in one call.
 * The bar process
 
 The bar runs as a separate process and reads
-=~/.config/rhizome/config.lisp= when it starts. A =configure= or
-=reload-config= call that changes any =:bar= key except =:enabled=
-restarts the bar, and the new bar reads the file. Changes to the
-=:modules= group and the =:theme= font keys restart nothing; the bar
-shows them when it next starts, for example after a window manager
-restart. Keep bar settings in the configuration file.
+=~/.config/rhizome/config.lisp= when it starts. After that the window
+manager sends it the =:bar=, =:modules=, and =:theme= settings and the
+active theme in the snapshot it writes for the bar, so a =configure=
+or =reload-config= call reaches the running bar within one poll, with
+no restart. A change to =:height= or =:margin= recreates the bar's
+surface inside the same process.
+
+* Colours
+
+Every colour comes from the theme selected with =(:theme :name ...)=:
+roles such as =:background= and =:accent=, and elements such as
+=:bar-background= or =:launcher-match=, set under
+=(:theme (:roles ...))= and =(:theme (:elements ...))=. See "Theming"
+in README.org. The colour keys from before themes (for example
+=(:bar :background)= or =(:launcher :accent)=) still work for one
+release; each prints a warning naming its element.
 
 * :bar
 
@@ -50,24 +60,16 @@ The status bar.
 | Key                  | Type    | Default             | Applies     | Effect                                                                                                                           |
 |----------------------+---------+---------------------+-------------+----------------------------------------------------------------------------------------------------------------------------------|
 | =:enabled=           | boolean | =t=                 | live        | Show the bar. =nil= hides it without stopping its process; MOD+B toggles this key.                                               |
-| =:height=            | pixels  | =20=                | bar restart | Height of the bar. The window manager reserves this plus twice =:margin= at the top of the output.                               |
-| =:margin=            | pixels  | =8= (unset)         | bar restart | Space between the bar and the output's top, left, and right edges, and below the bar.                                            |
-| =:padding=           | pixels  | =6=                 | bar restart | Inset of the left and right segments. With a non-zero =:corner-radius= the inset is the radius plus this.                        |
-| =:corner-radius=     | pixels  | =10= (unset)        | bar restart | Corner radius of the bar; 0 draws a plain rectangle. Also the corner radius of the message window and the prompts, 8 when unset. |
-| =:border-color=      | colour  | ="#3b4261"= (unset) | bar restart | Hairline border of a bar with rounded corners.                                                                                   |
+| =:height=            | pixels  | =20=                | live        | Height of the bar. The window manager reserves this plus twice =:margin= at the top of the output.                               |
+| =:margin=            | pixels  | =8= (unset)         | live        | Space between the bar and the output's top, left, and right edges, and below the bar.                                            |
+| =:padding=           | pixels  | =6=                 | live        | Inset of the left and right segments. With a non-zero =:corner-radius= the inset is the radius plus this.                        |
+| =:corner-radius=     | pixels  | =10= (unset)        | live        | Corner radius of the bar; 0 draws a plain rectangle. Also the corner radius of the message window and the prompts, 8 when unset. |
 | =:opacity=           | number  | =0.9=               | live        | Opacity from 0.0 to 1.0 of the bar, the message window, and the prompts.                                                         |
-| =:interval=          | seconds | =0.15=              | bar restart | How often the bar checks its modules for changes. The bar redraws only when a module's text changes.                             |
-| =:background=        | colour  | ="#1a1b26"=         | live        | Background of the bar, the message window, and the prompts.                                                                      |
-| =:foreground=        | colour  | ="#c0caf5"=         | live        | Default text colour; occupied workspace numbers.                                                                                 |
-| =:accent=            | colour  | ="#7aa2f7"=         | live        | Current workspace pill, the clock's time, the hover highlight, and the border of the message window and prompts.                 |
-| =:muted=             | colour  | ="#565f89"=         | live        | Empty workspace numbers and the clock's date.                                                                                    |
-| =:recording-color=   | colour  | ="#f7768e"= (unset) | bar restart | Colour of the =:recording= module's =REC= marker.                                                                                |
-| =:modules=           | plist   | see below           | bar restart | The modules of each segment: =(:left (...) :center (...) :right (...))=.                                                         |
-| =:workspaces= =:gap= | pixels  | =8= (unset)         | bar restart | Space after each workspace number. Set it as =(:bar (:workspaces (:gap 8)))=.                                                    |
+| =:interval=          | seconds | =0.15=              | live        | How often the bar checks its modules for changes. The bar redraws only when a module's text changes.                             |
+| =:modules=           | plist   | see below           | live        | The modules of each segment: =(:left (...) :center (...) :right (...))=.                                                         |
+| =:workspaces= =:gap= | pixels  | =8= (unset)         | live        | Space after each workspace number. Set it as =(:bar (:workspaces (:gap 8)))=.                                                    |
 
-The bar draws in its own process, so /live/ for a colour applies to
-the message window and the prompts; the bar itself shows a new colour
-after a bar restart.
+Colours are theme elements; see Colours above.
 
 The default module layout is:
 
@@ -107,7 +109,7 @@ Example:
 
 Settings for individual bar modules, one property list per module
 name. Every module accepts =:on-click=, =:on-scroll-up=, and
-=:on-scroll-down=. All keys apply at the next bar restart.
+=:on-scroll-down=. All keys apply live.
 
 | Key                         | Type    | Default                                              | Effect                                                                                                                                    |
 |-----------------------------+---------+------------------------------------------------------+-------------------------------------------------------------------------------------------------------------------------------------------|
@@ -136,14 +138,14 @@ the action keys.
 
 * :theme
 
-Fonts and window borders.
+The theme and the fonts. Window border colours are the
+=:border-focused= and =:border-unfocused= theme elements.
 
-| Key                 | Type   | Default       | Applies                       | Effect                                                                  |
-|---------------------+--------+---------------+-------------------------------+-------------------------------------------------------------------------|
-| =:font-family=      | string | ="monospace"= | live; bar restart for the bar | Font family, resolved with =fc-match=.                                  |
-| =:font-size=        | pixels | =14=          | live; bar restart for the bar | Font size.                                                              |
-| =:focused-border=   | colour | ="#7aa2f7"=   | live                          | Border of the focused window; tint of float shadows and the focus glow. |
-| =:unfocused-border= | colour | ="#404040"=   | live                          | Border of the other windows.                                            |
+| Key            | Type   | Default         | Applies | Effect                                 |
+|----------------+--------+-----------------+---------+----------------------------------------|
+| =:name=        | string | ="tokyo-night"= | live    | The theme: =themes/NAME.theme=.        |
+| =:font-family= | string | ="monospace"=   | live    | Font family, resolved with =fc-match=. |
+| =:font-size=   | pixels | =14=            | live    | Font size.                             |
 
 #+begin_src lisp
 (rhizome:configure '(:theme (:font-family "JetBrains Mono" :font-size 13)))
@@ -156,23 +158,13 @@ launcher opens.
 
 | Key                     | Type   | Default             | Effect                                                                       |
 |-------------------------+--------+---------------------+------------------------------------------------------------------------------|
-| =:background=           | colour | ="#23142d"=         | Background.                                                                  |
 | =:opacity=              | number | =0.9=               | Opacity from 0.0 to 1.0.                                                     |
 | =:icon-size=            | pixels | =20=                | Size of the application icons.                                               |
-| =:accent=               | colour | ="#7aa2f7"=         | The part of each name that matches the typed text.                           |
-| =:prompt-color=         | colour | ="#8c64aa"=         | The prompt label.                                                            |
-| =:query-color=          | colour | ="#dcc8f0"=         | The typed text.                                                              |
-| =:cursor-color=         | colour | ="#b4a0d2"=         | The text cursor.                                                             |
-| =:selection-background= | colour | ="#503278"=         | The selected row.                                                            |
-| =:selected-color=       | colour | ="#f0e6ff"=         | Text of the selected row.                                                    |
-| =:entry-color=          | colour | ="#aa96c8"=         | Text of the other rows.                                                      |
-| =:placeholder-color=    | colour | ="#6b5a8a"= (unset) | Placeholder and count text.                                                  |
-| =:border-color=         | colour | ="#4a3a66"= (unset) | Hairline border.                                                             |
 | =:corner-radius=        | pixels | =12= (unset)        | Corner radius.                                                               |
 | =:dim-alpha=            | number | =60= (unset)        | Alpha from 0 to 255 of the dimmed layer behind the launcher; 0 turns it off. |
 
 #+begin_src lisp
-(rhizome:configure '(:launcher (:background "#1e1e2e" :dim-alpha 0)))
+(rhizome:configure '(:launcher (:dim-alpha 0)))
 #+end_src
 
 * :menus
@@ -182,16 +174,11 @@ keys apply the next time a menu opens.
 
 | Key                 | Type   | Default             | Effect                                     |
 |---------------------+--------+---------------------+--------------------------------------------|
-| =:background=       | colour | ="#1f1633"= (unset) | Background.                                |
-| =:item-color=       | colour | ="#c9b8e8"= (unset) | Text of the entries.                       |
-| =:hover-background= | colour | ="#4b3a78"= (unset) | Background of the entry under the pointer. |
-| =:hover-color=      | colour | ="#f0e6ff"= (unset) | Text of the entry under the pointer.       |
-| =:border-color=     | colour | ="#4a3a72"= (unset) | Hairline border.                           |
 | =:corner-radius=    | pixels | =10= (unset)        | Corner radius.                             |
 | =:opacity=          | number | =0.95= (unset)      | Opacity from 0.0 to 1.0.                   |
 
 #+begin_src lisp
-(rhizome:configure '(:menus (:background "#1a1b26" :hover-background "#3b4261")))
+(rhizome:configure '(:menus (:opacity 0.9)))
 #+end_src
 
 * :decorations

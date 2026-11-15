@@ -180,8 +180,8 @@ them."
 
 (as-case "default config"
   (let ((defaults (default-config)))
-    (as-ok "the default config declares the active bar background"
-           (getf (getf defaults :bar) :background-active) "#392e7a")
+    (as-ok "the default theme gives the active bar background"
+           (theme-color :bar-background-active :config defaults) "#392e7a")
     (as-ok "the default config declares the edge line"
            (list (getf (getf defaults :screens) :active-edge)
                  (getf (getf defaults :screens) :active-edge-width))

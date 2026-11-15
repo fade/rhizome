@@ -109,8 +109,8 @@
              '(#x7a #xa2 #xf7 2))
 
       ;; --- empty focused frame colour ---
-      (check "the default config declares the empty-frame colour"
-             (config-getf '(:theme) :frame-outline-empty :default :absent)
+      (check "the default theme gives the empty-frame colour"
+             (theme-color :frame-outline-empty)
              "#ff9e64")
       (check "the default config declares the empty-frame width"
              (config-getf '(:theme) :frame-outline-empty-width :default :absent)

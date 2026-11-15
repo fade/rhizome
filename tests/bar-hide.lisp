@@ -113,8 +113,8 @@
 
 (bh-case "configure with a bar change"
   (configure '(:bar (:height 30)))
-  (bh-ok "configure changing :bar height: one restart"
-         (list *bh-terminated* *bh-launched*) '(1 2)))
+  (bh-ok "configure changing :bar height: no restart"
+         (list *bh-terminated* *bh-launched*) '(0 1)))
 
 ;;; --- The bar process follows the snapshot ---
 

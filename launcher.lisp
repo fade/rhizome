@@ -838,14 +838,16 @@ BGRA color (premultiplied: RGB scaled by A)."
     (loop for i below (* width height) do
       (setf (cffi:mem-aref ptr :unsigned-int i) pixel))))
 
-(defun launcher-draw-text-shm (ptr width text x y r g b)
-  "Draw TEXT at (X, Y) directly to shm with color (R, G, B).
+(defun launcher-draw-text-shm (ptr width text x y r g b &key bold underline)
+  "Draw TEXT at (X, Y) directly to shm with color (R, G, B), bold
+and underlined when BOLD and UNDERLINE are true.
 Delegates to the font module (TrueType or the 8x16 bitmap
 fallback); the buffer is premultiplied ARGB, so the text color is
 scaled by the launcher's surface alpha down in the font module."
   (font-ensure-initialized)
   (font-draw-text ptr width *launcher-height* text x y r g b
-                  :alpha (launcher-surface-alpha)))
+                  :alpha (launcher-surface-alpha)
+                  :bold bold :underline underline))
 
 (defun launcher-icon-size ()
   "The launcher's rendered icon size ((:launcher :icon-size))."
@@ -897,23 +899,6 @@ row. Reuses the bar's icon discovery/scaling (bar.lisp)."
                       (over 1 (row-major-aref idata (+ sidx 1)))
                       (over 2 (row-major-aref idata sidx)))))))))))))
 
-(defun launcher-color (key)
-  "A launcher surface color as (values r g b), from (:launcher KEY)."
-  (parse-hex-color
-    (config-getf '(:launcher) key
-                 :default (case key
-                            (:background "#23142d")
-                            (:accent "#7aa2f7")
-                            (:prompt-color "#8c64aa")
-                            (:query-color "#dcc8f0")
-                            (:cursor-color "#b4a0d2")
-                            (:selection-background "#503278")
-                            (:selected-color "#f0e6ff")
-                            (:entry-color "#aa96c8")
-                            (:border-color "#4a3a66")
-                            (:placeholder-color "#6b5a8a")
-                            (otherwise "#ffffff")))))
-
 (defun launcher-corner-radius ()
   "The launcher's corner radius (px) — the fuzzel look."
   (config-getf '(:launcher) :corner-radius :default 12))
@@ -946,7 +931,7 @@ border is the 1px ring at the rounded rect's edge."
 (defun launcher-paint-background (ptr width height r g b)
   "The fuzzel look: a rounded-corner fill with a 1px hairline
 border, alpha-cut at the corners. Premultiplied ARGB."
-  (multiple-value-bind (brd-r brd-g brd-b) (launcher-color :border-color)
+  (multiple-value-bind (brd-r brd-g brd-b) (theme-rgb :launcher-border)
     (let ((a (launcher-surface-alpha))
           (radius (launcher-corner-radius)))
       (loop for y below height
@@ -960,19 +945,44 @@ border, alpha-cut at the corners. Premultiplied ARGB."
                                 (launcher-set-pixel ptr width height x y
                                                      b g r a)))))))))
 
+(defun launcher-draw-entry-label (ptr width label x y r g b)
+  "Draw an entry's LABEL at (X, Y) in (R, G, B). The first
+case-insensitive occurrence of the typed query draws in the
+:launcher-match colour with the match's cue flags from
+*state-cues* (bold and underlined); fuzzy hits with no substring
+match draw plain."
+  (let ((match-pos (and (plusp (length *launcher-query*))
+                        (search *launcher-query* label
+                                :test #'char-equal))))
+    (if match-pos
+        (let* ((match-end (+ match-pos (length *launcher-query*)))
+               (before (subseq label 0 match-pos))
+               (match (subseq label match-pos match-end))
+               (flags (state-cue-flags :launcher-match))
+               (mx (+ x (font-text-width before))))
+          (multiple-value-bind (mr mg mb) (theme-rgb :launcher-match)
+            (launcher-draw-text-shm ptr width before x y r g b)
+            (apply #'launcher-draw-text-shm ptr width match mx y mr mg mb
+                   flags)
+            (launcher-draw-text-shm ptr width (subseq label match-end)
+                                    (+ mx (font-text-width
+                                           match :bold (getf flags :bold)))
+                                    y r g b)))
+        (launcher-draw-text-shm ptr width label x y r g b))))
+
 (defun launcher-render-to-shm (width height)
   "Render the launcher UI directly to the shared memory buffer.
-All colors come from the (:launcher ...) config group; text goes
-through the font module (see font.lisp)."
+Colours come from the theme's :launcher-* elements (theme.lisp);
+text goes through the font module (see font.lisp)."
   (let ((ptr *launcher-shm-ptr*))
     (when (or (not ptr) (cffi:null-pointer-p ptr))
       (return-from launcher-render-to-shm))
     (font-ensure-initialized)
-    (multiple-value-bind (br bg bb) (launcher-color :background)
+    (multiple-value-bind (br bg bb) (theme-rgb :launcher-background)
       (launcher-paint-background ptr width height br bg bb))
-      (multiple-value-bind (pr pg pb) (launcher-color :prompt-color)
-        (multiple-value-bind (qr qg qb) (launcher-color :query-color)
-          (multiple-value-bind (cr cg cb) (launcher-color :cursor-color)
+      (multiple-value-bind (pr pg pb) (theme-rgb :launcher-prompt)
+        (multiple-value-bind (qr qg qb) (theme-rgb :launcher-query)
+          (multiple-value-bind (cr cg cb) (theme-rgb :launcher-cursor)
             (let ((prompt-text "Run: ")
                   (query-x (+ *launcher-padding*
                               (font-text-width "Run: "))))
@@ -997,13 +1007,13 @@ through the font module (see font.lisp)."
               ;; Placeholder: the dim hint when no query yet
               (when (string= *launcher-query* "")
                 (multiple-value-bind (phr phg phb)
-                    (launcher-color :placeholder-color)
+                    (theme-rgb :launcher-placeholder)
                   (launcher-draw-text-shm
                     ptr width "type to search..."
                     (+ query-x 12) *launcher-padding* phr phg phb)))
               ;; Match count, top-right
               (multiple-value-bind (phr phg phb)
-                  (launcher-color :placeholder-color)
+                  (theme-rgb :launcher-placeholder)
                 (let ((count-text (format nil "~D of ~D"
                                           (length *launcher-entries*)
                                           (length *launcher-app-list*))))
@@ -1014,9 +1024,9 @@ through the font module (see font.lisp)."
                     *launcher-padding* phr phg phb)))
               ;; Draw filtered entries (scrolled)
               (multiple-value-bind (selr selg selb)
-                  (launcher-color :selection-background)
-                (multiple-value-bind (str stg stb) (launcher-color :selected-color)
-                  (multiple-value-bind (etr etg etb) (launcher-color :entry-color)
+                  (theme-rgb :launcher-selection)
+                (multiple-value-bind (str stg stb) (theme-rgb :launcher-selected)
+                  (multiple-value-bind (etr etg etb) (theme-rgb :launcher-entry)
                     (let ((y-start (+ *launcher-padding* *launcher-line-height*)))
                       (loop for entry in (nthcdr *launcher-scroll-offset* *launcher-entries*)
                             for i from *launcher-scroll-offset*
@@ -1067,35 +1077,10 @@ through the font module (see font.lisp)."
                                  (text-y (+ y (floor (- *launcher-line-height*
                                                         (font-line-height))
                                                      2)))
-                                 (label (car entry))
-                                 (match-pos (and (plusp (length *launcher-query*))
-                                                 (search *launcher-query* label
-                                                         :test #'char-equal))))
-                            (if match-pos
-                              (let ((mlen (length *launcher-query*)))
-                                (multiple-value-bind (acr acg acb)
-                                    (launcher-color :accent)
-                                  ;; before / match / after segments
-                                  (launcher-draw-text-shm ptr width
-                                    (subseq label 0 match-pos)
-                                    text-x text-y tr tg tb)
-                                  (let ((mx (+ text-x
-                                               (font-text-width
-                                                 (subseq label 0 match-pos)))))
-                                    (launcher-draw-text-shm ptr width
-                                      (subseq label match-pos
-                                              (+ match-pos mlen))
-                                      mx text-y acr acg acb)
-                                    (launcher-draw-text-shm ptr width
-                                      (subseq label (+ match-pos mlen))
-                                      (+ mx (font-text-width
-                                              (subseq label match-pos
-                                                      (+ match-pos mlen))))
-                                      text-y tr tg tb))))
-                              ;; no match to highlight (fuzzy hits)
-                              (launcher-draw-text-shm ptr width label
-                                                      text-x text-y
-                                                      tr tg tb)))))))))))))))
+                                 (label (car entry)))
+                            (launcher-draw-entry-label ptr width label
+                                                       text-x text-y
+                                                       tr tg tb))))))))))))))
 
 (defun launcher-destroy-shm ()
   "Destroy the shared memory resources."
