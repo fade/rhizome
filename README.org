@@ -807,7 +807,9 @@ and a repeated =load-module= does not add them again. Pass
 =(rhizome:set-window-rules rules :source :my-placement)=, when the
 module may also be reloaded outside =load-module= (=asdf:load-system=
 or a compile from the editor): without it, that reload files the
-rules under =:repl= beside the old set. A complete, commented
+rules under =:repl= beside the old set. Rules that a dependency sets
+when =load-module= loads it for the first time belong to the module
+that pulled it in. A complete, commented
 one-file example
 lives in =examples/modules/rhizome-hello/=.
 
@@ -1089,9 +1091,10 @@ gone, and a changed rule is replaced rather than added. Without
 call made while =load-module= loads a module sets the set named by
 the module, for example =:rhizome-hello=. =reload-config= replaces
 the config file's rules and keeps every other source's set.
-=(rhizome:set-window-rules nil :source :chat)= removes a source.
-Rules from =:window-rules= match first, then each source in the
-order it first set rules. A changed set takes effect at the next
+=(rhizome:set-window-rules nil :source :chat)= empties a source's
+set. Rules from =:window-rules= match first, then each source in the
+order it first set rules; a source keeps that place when its set is
+replaced, emptied, or reloaded. A changed set takes effect at the next
 rule match; it is not re-run over windows that are already open.
 
 Maximize is float-based too: a client's =maximize_requested=

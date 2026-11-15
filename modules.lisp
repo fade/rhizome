@@ -68,7 +68,8 @@ directory. Returns :LOADED, or :ALREADY-LOADED for a system that is
 loaded, or NIL after logging why a load failed. Safe from
 config.lisp at startup and live from the REPL. Window rules the
 module sets with SET-WINDOW-RULES belong to the source named by the
-module's name as a keyword, so a config reload keeps them."
+module's name as a keyword, so a config reload keeps them. The same
+holds for a dependency the load loads for the first time."
   (let ((system (string-downcase (string name))))
     (cond ((module-loaded-p system)
            :already-loaded)
