@@ -214,6 +214,24 @@ STROKE <= FILL) and surface ALPHA (0-255)."
               (ash (channel g border-g) 8)
               (channel b border-b)))))
 
+(defun erf-approx (x)
+  "The error function of X as a single-float, to within 1.5e-7
+(Abramowitz and Stegun 7.1.26). Odd and monotonic, so a falloff built
+on it steps smoothly at 8-bit alpha."
+  (declare (type single-float x)
+           (optimize (speed 3) (safety 0)))
+  (let* ((s (abs x))
+         (k (/ 1.0 (+ 1.0 (* 0.3275911 s))))
+         (p 1.0614054))
+    (declare (type single-float s k p))
+    (setf p (+ -1.4531521 (* k p))
+          p (+ 1.4214138 (* k p))
+          p (+ -0.28449672 (* k p))
+          p (+ 0.25482959 (* k p))
+          p (* k p))
+    (let ((e (- 1.0 (* p (exp (- (* s s)))))))
+      (if (minusp x) (- e) e))))
+
 (defun fill-rounded-rect (ptr width height x y w h r g b
                               &key (alpha 255) (radius 0))
   "Paint the rect at (X Y W H), rounded when RADIUS > 0, in R G B at
