@@ -151,7 +151,11 @@ Returns (values value found-p)."
     :theme (:font-family "monospace"
             :font-size 14
             :focused-border "#7aa2f7"
-            :unfocused-border "#404040")
+            :unfocused-border "#404040"
+            :frame-outline-empty "#ff9e64"
+            ;; Outline colour of a focused frame that shows no
+            ;; window; nil uses the :frame-outline colour
+            )
     :launcher (:background "#23142d"
                :opacity 0.9
                :icon-size 20

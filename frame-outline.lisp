@@ -25,6 +25,9 @@
 ;;; Settings, under :theme:
 ;;;   :frame-outline        "#rrggbb", T (the :focused-border colour,
 ;;;                         the default), or NIL (off)
+;;;   :frame-outline-empty  "#rrggbb" for a focused frame that shows
+;;;                         no window (default "#ff9e64"), or NIL (the
+;;;                         :frame-outline colour)
 ;;;   :frame-outline-width  ring width in px (default 2; 0 is off)
 
 (in-package #:rhizome)
@@ -36,16 +39,20 @@
 
 ;;; --- Settings ---
 
-(defun frame-outline-style ()
+(defun frame-outline-style (&optional empty-p)
   "The ring colour and width as (VALUES R G B WIDTH), or NIL when the
-outline is off."
+outline is off. EMPTY-P selects (:theme :frame-outline-empty) when it
+is a colour; otherwise, and for an occupied frame, the colour is
+:frame-outline's."
   (let ((colour (config-getf '(:theme) :frame-outline :default t))
+        (empty (config-getf '(:theme) :frame-outline-empty
+                            :default "#ff9e64"))
         (width (config-getf '(:theme) :frame-outline-width :default 2)))
     (when (and colour (integerp width) (plusp width))
       (multiple-value-bind (r g b)
-          (if (stringp colour)
-              (parse-hex-color colour)
-              (theme-border-rgb t))
+          (cond ((and empty-p (stringp empty)) (parse-hex-color empty))
+                ((stringp colour) (parse-hex-color colour))
+                (t (theme-border-rgb t)))
         (values r g b width)))))
 
 ;;; --- Target ---
@@ -53,6 +60,11 @@ outline is off."
 (defun frame-outline-output ()
   "The output frame commands act on."
   (first (all-outputs)))
+
+(defun frame-outline-empty-p (frame)
+  "True when FRAME shows no window: it holds none, or only minimized
+ones."
+  (null (frame-focus-window frame)))
 
 (defun frame-outline-hidden-p (output workspace)
   "True when OUTPUT/WORKSPACE shows no frames to outline: a scroll
@@ -206,8 +218,8 @@ are gone. Render sequence only. Returns NIL."
                 do (frame-outline-destroy state)
                    (remhash output *frame-outlines*))
         (multiple-value-bind (target frame x y w h) (frame-outline-target)
-          (declare (ignore frame))
-          (multiple-value-bind (r g b width) (frame-outline-style)
+          (multiple-value-bind (r g b width)
+              (frame-outline-style (and frame (frame-outline-empty-p frame)))
             (dolist (output outputs)
               (let ((state (or (gethash output *frame-outlines*)
                                (when (eq output target)
