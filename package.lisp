@@ -246,6 +246,9 @@
    #:*config*
    #:configure
    #:reload-config
+   #:set-window-rules
+   #:window-rules
+   #:*window-rules-source*
    #:config-pathname
    ;; User modules
    #:load-module

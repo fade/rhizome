@@ -270,7 +270,7 @@ tree hidden and focus stays put; :follow switches the output there and
 focuses the window."
   (when (gethash win *window-rules-applied*)
     (return-from apply-window-rules nil))
-  (dolist (rule (config-get '(:window-rules)))
+  (dolist (rule (window-rules))
     (when (window-rule-matches-p win rule)
       (setf (gethash win *window-rules-applied*) rule)
       (let ((workspace (getf rule :workspace))
