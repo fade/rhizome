@@ -158,6 +158,16 @@ the output's other workspaces keep theirs."
   "Cycle to the previous window in the current frame."
   (cycle-frame-window output (current-workspace output) -1))
 
+(defun focus-next-frame (output)
+  "Focus the next frame of the current workspace in tree order,
+wrapping, empty frames included (StumpWM's fnext)."
+  (cycle-frame output (current-workspace output) 1))
+
+(defun focus-previous-frame (output)
+  "Focus the previous frame of the current workspace in tree order,
+wrapping, empty frames included (StumpWM's fprev)."
+  (cycle-frame output (current-workspace output) -1))
+
 ;;; --- Manage/render sequence integration ---
 
 (defun gaps-inner ()

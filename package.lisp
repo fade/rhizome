@@ -53,6 +53,8 @@
    #:remove-split
    #:focus-next
    #:focus-previous
+   #:focus-next-frame
+   #:focus-previous-frame
    ;; Workspaces
    #:current-workspace
    #:switch-workspace
@@ -167,6 +169,7 @@
    #:split-current-frame
    #:remove-current-split
    #:resize-current-split
+   #:focus-frame
    #:focus-frame-direction
    #:cycle-frame-window
    #:move-window-to-frame-direction
