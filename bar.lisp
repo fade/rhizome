@@ -240,8 +240,8 @@ follows :bar-background unless set."
 bar re-render even when text modules are unchanged.")
 
 (defparameter *bar-hover-rendered* '%none
-  "The module under the pointer as of the last render ('%none when
-the pointer is off the bar). Pointer motion alone must re-render: the
+  "The bar-hover-key value as of the last render: the pointer's bar
+and the module under the pointer ('%none when it is off the bar). Pointer motion alone must re-render: the
 hover veil otherwise bakes into the buffer at click time and stays
 over the module until unrelated content changes.")
 
@@ -1138,7 +1138,7 @@ after it."
           (setf (gethash :hitboxes state) *bar-hitboxes*))))
     ;; stamp the hovered module even when no veil was drawn, so the
     ;; tick loop re-renders when the pointer leaves the bar
-    (setf *bar-hover-rendered* (bar-hover-module-now))
+    (setf *bar-hover-rendered* (bar-hover-key))
     (wl:wl-surface.attach (gethash :surface state) (gethash :wl-buffer state) 0 0)
     (wl:wl-surface.damage (gethash :surface state) 0 0 width height)
     (wl:wl-surface.commit (gethash :surface state))))
@@ -1343,6 +1343,12 @@ bar (see bar-pointer-hitboxes), or NIL."
 hitboxes and pointer position."
   (or (and *bar-pointer-x* (bar-module-at *bar-pointer-x*))
       '%none))
+
+(defun bar-hover-key ()
+  "What the hover veil depends on: the pointer's bar and the module
+under the pointer. Compared with EQUAL against *bar-hover-rendered*,
+so moving between two bars over modules of the same name re-renders."
+  (list *bar-pointer-ostate* (bar-hover-module-now)))
 
 (defun bar-module-at (x)
   "The module whose rendered area on the pointer's bar contains X, or NIL."
@@ -1674,8 +1680,8 @@ moved onto another module."
                      ;; pointer motion alone re-renders: the hover veil
                      ;; follows the module under the pointer
                      (let ((tray-dirty (/= *tray-render-stamp* *tray-changed*))
-                           (hover-moved (not (eq (bar-hover-module-now)
-                                                 *bar-hover-rendered*))))
+                           (hover-moved (not (equal (bar-hover-key)
+                                                    *bar-hover-rendered*))))
                        (dolist (ostate (bar-ostates))
                          (when (and (gethash :mapped ostate)
                                     (or (bar-content-changed-p ostate)

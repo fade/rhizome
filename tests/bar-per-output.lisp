@@ -359,5 +359,26 @@ open."
         (bar-pointer-event :leave (list :dvi-surface))
         (po-config)))))
 
+(po-case "hover follows the pointer's bar"
+  (let ((root (po-root)))
+    (setf *po-snapshot* (po-snap))
+    (bar-sync-visibility root)
+    (let ((dvi (po-ostate root 11))
+          (hdmi (po-ostate root 10)))
+      (setf (gethash :dvi-surface *bar-surface-states*) dvi
+            (gethash :hdmi-surface *bar-surface-states*) hdmi
+            (gethash :hitboxes dvi) (list (list :clock 400 500))
+            (gethash :hitboxes hdmi) (list (list :clock 600 700)))
+      (bar-pointer-event :enter (list 1 :hdmi-surface 650 5))
+      (let ((on-hdmi (bar-hover-key)))
+        (bar-pointer-event :leave (list :hdmi-surface))
+        (bar-pointer-event :enter (list 2 :dvi-surface 450 5))
+        (po-ok "the same module on another bar is a new hover"
+               (list (second on-hdmi) (second (bar-hover-key))
+                     (equal on-hdmi (bar-hover-key)))
+               '(:clock :clock nil)))
+      (bar-pointer-event :leave (list :dvi-surface))
+      (po-ok "off every bar: nothing hovered" (second (bar-hover-key)) '%none))))
+
 (format t "~&=== ~A passed, ~A failed ===~%" *po-pass* *po-fail*)
 (uiop:quit (if (zerop *po-fail*) 0 1))
