@@ -57,6 +57,7 @@
     :bar-background-active "#392e7a"
     :bar-background-inactive "#1a1b26"
     :screen-active-edge "#7aa2f7"
+    :bar-outline-active "#7aa2f7"
     :frame-outline "#7aa2f7"
     :frame-outline-empty "#ff9e64"
     :titlebar-focused "#7aa2f7"
