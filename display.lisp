@@ -48,7 +48,11 @@ offers it (or after the manager says finished).")
              (wl:wl-proxy-hooks head))))
     (:done
      (destructuring-bind (serial) args
-       (setf *display-serial* serial)))
+       (setf *display-serial* serial)
+       ;; Connector names are known now: per-screen workspace
+       ;; counts from (:workspaces :screens) apply
+       (when (fboundp 'reconcile-workspace-counts)
+         (funcall 'reconcile-workspace-counts))))
     (:finished
      (setf *output-manager* nil))))
 

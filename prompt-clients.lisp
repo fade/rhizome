@@ -35,21 +35,29 @@ focus it."
                              (request-manage-dirty)))))))))
 
 (defun workspace-list ()
-  "Interactive workspace picker."
-  (let* ((snapshot (bar-snapshot))
-         (current (getf snapshot :workspace 1))
-         (count (getf snapshot :workspace-count *workspace-count*))
-         (candidates
-           (loop for i from 1 to count
-                 collect (format nil "~A~A" i
-                                 (if (= i current) " *" "")))))
-    (prompt-open "Workspace:"
-                 :candidates candidates
-                 :on-complete
-                 (lambda (choice)
-                   (let ((n (parse-integer choice :junk-allowed t)))
-                     (when n
-                       (switch-workspace n)))))))
+  "Interactive workspace picker for the first output. Candidates show
+display numbers and names, the current workspace starred; a number or
+a name, typed or picked, switches."
+  (let ((out (first (all-outputs))))
+    (when out
+      (let* ((current (current-workspace out))
+             (candidates
+               (loop for ws from 1 to (workspace-count out)
+                     collect (format nil "~D~@[ ~A~]~:[~; *~]"
+                                     (workspace-to-display ws)
+                                     (workspace-name out ws)
+                                     (= ws current)))))
+        (prompt-open "Workspace:"
+                     :candidates candidates
+                     :on-complete
+                     (lambda (choice)
+                       (let* ((text (string-trim " *" choice))
+                              (ws (or (workspace-from-designator text out)
+                                      (workspace-from-display
+                                        (subseq text 0 (position #\Space text))))))
+                         (if (valid-workspace-p out ws)
+                             (switch-workspace ws out)
+                             (message "~A" (workspace-range-text out text))))))))))
 
 (defun command-palette ()
   "Run a command from the command table by name."

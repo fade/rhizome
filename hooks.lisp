@@ -13,7 +13,9 @@
 ;;;   :window-closed       (win)
 ;;;   :focus-changed       (win)
 ;;;   :layout-changed      (output layout-name)
-;;;   :workspace-changed  (workspace output)
+;;;   :workspace-changed  (workspace output)  ; 1-based, as the Lisp API;
+;;;                                          ; workspace-to-display gives
+;;;                                          ; the number shown
 ;;;   :output-created      (output)
 
 (in-package #:rhizome)

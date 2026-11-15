@@ -4,7 +4,7 @@
 ;;; bindings with the compositor. Bindings are defined with
 ;;; keysyms and modifiers, and trigger callbacks when pressed.
 ;;;
-;;; Default bindings (StumpWM-style; MOD is the user modifier — Super
+;;; Default bindings (StumpWM-style; MOD is the user modifier, Super
 ;;; by default, see *mod* in config.lisp):
 ;;;   Ctrl+T       - prefix key (StumpWM-style keychains)
 ;;;   MOD+Return   - launch terminal (foot)
@@ -12,8 +12,8 @@
 ;;;   MOD+J        - focus next window
 ;;;   MOD+K        - focus previous window
 ;;;   MOD+Space    - cycle layout
-;;;   MOD+1..9     - switch to workspace 1..9
-;;;   MOD+Shift+1..9 - move focused window to workspace 1..9
+;;;   MOD+0..9     - switch to the workspace with that display number
+;;;   MOD+Shift+0..9 - move focused window to that workspace
 ;;;   MOD+E        - launch emacs
 ;;;   MOD+D        - application launcher (native layer-shell popup)
 ;;;   MOD+B        - toggle the status bar
@@ -483,19 +483,20 @@ build-default-top-map, which directs the writes to *default-top-map*."
                          (otherwise :master-stack))))
             (switch-layout out next))))))
 
-  ;; MOD+1..9 - switch to workspace N
-  ;; MOD+Shift+1..9 - move focused window to workspace N
+  ;; MOD+0..9 - switch to the workspace with that display number
+  ;; MOD+Shift+0..9 - move focused window to that workspace
+  ;; (a number the screen does not have shows a message)
   ;; (MOD+Space cycles layouts; the old Alt+1/2/3 layout bindings
   ;; were replaced by workspaces)
-  (loop for i from 1 to 9
+  (loop for i from 0 to 9
         for keysym = (+ 48 i)
-        do (let ((ws i))
+        do (let ((number i))
              (define-key keysym *mod*
                (lambda ()
-                 (switch-workspace ws)))
+                 (switch-to-workspace-number number)))
              (define-key keysym (append *mod* *mod-shift*)
                (lambda ()
-                 (move-focused-window-to-workspace ws)))))
+                 (move-focused-window-to-workspace-number number)))))
 
   ;; MOD+E - launch emacs
   (define-key +xkb-key-E+ *mod*

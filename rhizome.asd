@@ -26,6 +26,7 @@
    (:file "wse" :depends-on ("window"))
    (:file "frames" :depends-on ("window" "output" "seat" "animate"))
    (:file "workspaces" :depends-on ("window" "output" "seat" "floating" "frames" "animate"))
+   (:file "workspace-numbers" :depends-on ("workspaces" "display"))
    (:file "placement" :depends-on ("window" "frames" "workspaces"))
    (:file "takeover" :depends-on ("workspaces" "floating" "frames"))
    (:file "tiling" :depends-on ("window" "output" "seat" "workspaces" "floating" "frames"))

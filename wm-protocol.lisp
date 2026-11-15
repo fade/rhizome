@@ -101,7 +101,10 @@ answered with another sequence — a self-sustaining churn."
                 :windows (hash-table-count *windows*)
                 :workspace (let ((outs (all-outputs)))
                              (when outs (current-workspace (first outs))))
-                :workspace-count *workspace-count*
+                :workspace-count (workspace-count)
+                ;; Per output: count, labels, occupancy, for the bar
+                ;; on that output (see workspace-screens-snapshot)
+                :screens (workspace-screens-snapshot)
                 :bar-hidden (not (config-getf '(:bar) :enabled :default t))
                 :occupied (let ((occ nil))
                             (dolist (win (all-windows))

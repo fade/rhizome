@@ -174,27 +174,50 @@ use it."
         (list (list* "REC " color)))
       ""))
 
+(defun bar-own-screen (snapshot)
+  "The SNAPSHOT :screens entry for the output this bar is on, matched
+by wl_output global name; else the first entry; else one built from
+the snapshot's top-level fields (a WM without :screens)."
+  (let ((screens (getf snapshot :screens))
+        (mine (and *bar-state*
+                   (gethash :output-global-name *bar-state*))))
+    (or (and mine
+             (find mine screens
+                   :key (lambda (screen) (getf screen :wl-name))
+                   :test #'eql))
+        (first screens)
+        (let ((count (getf snapshot :workspace-count 9)))
+          (list :index-base 1
+                :workspace (getf snapshot :workspace 1)
+                :count count
+                :labels (loop for i from 1 to count
+                              collect (princ-to-string i))
+                :occupied (getf snapshot :occupied))))))
+
 (defun bar-module-workspaces ()
-  "Workspace numbers with breathing room: the active workspace in
-the accent color, underlined; occupied workspaces in the
-foreground color; empty ones muted. Occupancy comes from the WM
-snapshot's :occupied list (workspace numbers with visible
-windows)."
-  (let* ((snapshot (bar-snapshot))
-         (current (getf snapshot :workspace 1))
-         (count (getf snapshot :workspace-count 9))
-         (occupied (getf snapshot :occupied))
+  "One cell per workspace of this bar's screen, labelled by name or
+display number: the active workspace in the accent colour, under a
+pill; occupied workspaces in the foreground colour; empty ones muted.
+Each part carries :cell (DISPLAY-NUMBER CONNECTOR) for clicks."
+  (let* ((screen (bar-own-screen (bar-snapshot)))
+         (current (getf screen :workspace 1))
+         (occupied (getf screen :occupied))
+         (base (getf screen :index-base 1))
+         (connector (getf screen :connector))
          (accent (config-getf '(:bar) :accent :default "#7aa2f7"))
          (fg (config-getf '(:bar) :foreground :default "#c0caf5"))
          (muted (config-getf '(:bar) :muted :default "#565f89"))
          (gap (config-getf '(:bar :workspaces) :gap :default 8)))
-    (loop for i from 1 to count
-          collect (list* (format nil "~A" i)
-                        (cond ((= i current) accent)
-                              ((member i occupied) fg)
-                              (t muted))
-                        (append (when (= i current) '(:pill t))
-                                (list :gap gap))))))
+    (loop for label in (getf screen :labels)
+          for i from 1
+          collect (list* label
+                         (cond ((= i current) accent)
+                               ((member i occupied) fg)
+                               (t muted))
+                         (append (when (= i current) '(:pill t))
+                                 (list :gap gap
+                                       :cell (list (+ i base -1)
+                                                   connector)))))))
 
 (defun bar-module-battery ()
   "Battery percentage from /sys/class/power_supply, e.g. \"75%\"."
@@ -704,6 +727,15 @@ for MODULE. Returns the x after the module plus gap."
           (incf x (bar-icon-width)))
         (bar-draw-text ptr width height text x y r g b)
         (let ((tw (bar-text-width text)))
+          ;; A workspace cell's click region: its drawn text plus
+          ;; half the gap on either side
+          (when (getf flags :cell)
+            (let* ((gap (or (getf flags :gap) 0))
+                   (half (floor gap 2)))
+              (push (list (list :workspace-cell (getf flags :cell))
+                          (- x half)
+                          (+ x tw (- gap half)))
+                    *bar-hitboxes*)))
           ;; The active-workspace marker: a rounded accent PILL
           ;; blended behind the text (radius 4, inset).
           (when (getf flags :pill)
@@ -933,7 +965,10 @@ Return T, or NIL when the shm file or mapping cannot be created."
                (wl:wl-registry.bind registry name iface-class version)))
         ((and (string= interface "wl_output")
               (null (gethash :output state)))
-         (setf (gethash :output state)
+         ;; The global name identifies this output in the WM's
+         ;; snapshot (:screens :wl-name)
+         (setf (gethash :output-global-name state) name
+               (gethash :output state)
                (wl:wl-registry.bind registry name iface-class version)))
         ((and (string= interface "wl_seat")
               (null (gethash :seat state)))
@@ -1019,20 +1054,28 @@ entries carry their actions inline."
                          (and (<= (second hb) x)
                               (< x (third hb))))
                        *bar-hitboxes*))
-         (module (first hit)))
-    (when module
+         (module (first hit))
+         (cell (find-if (lambda (hb)
+                          (and (consp (first hb))
+                               (eq (first (first hb)) :workspace-cell)
+                               (<= (second hb) x)
+                               (< x (third hb))))
+                        *bar-hitboxes*)))
+    (when (or module cell)
       (cond
+        ;; Workspace cell: switch to it on this bar's screen via IPC
+        (cell
+         (destructuring-bind (number connector) (second (first cell))
+           (format t "~&; Rhizome: bar: click workspace ~A~%" number)
+           (bar-run-command
+             (format nil "rhizome-cmd switch-workspace ~A~@[ ~A~]"
+                     number connector))))
         ;; Tray item: Activate / SecondaryActivate on the item
         ((and (listp module) (getf module :name))
          (format t "~&; Rhizome: bar: tray click ~A~%" (getf module :name))
          (tray-click module))
-        ;; Workspace numbers: switch to the clicked workspace via IPC
-        ((eq module :workspaces)
-         (let ((workspace (1+ (floor (- x (second hit)) 8))))
-           (when (<= 1 workspace (getf (bar-snapshot) :workspace-count 9))
-             (format t "~&; Rhizome: bar: click workspace ~D~%" workspace)
-             (bar-run-command
-               (format nil "rhizome-cmd switch-workspace ~D" workspace)))))
+        ;; The workspaces module outside any cell does nothing
+        ((eq module :workspaces))
         (t
          (format t "~&; Rhizome: bar: click on ~A~%" module)
          (let ((command (bar-module-action module :on-click)))

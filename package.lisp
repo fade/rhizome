@@ -40,6 +40,16 @@
    #:move-window-to-workspace
    #:move-focused-window-to-workspace
    #:window-workspace
+   #:workspace-count
+   #:workspace-index-base
+   #:workspace-to-display
+   #:workspace-from-display
+   #:workspace-name
+   #:workspace-label
+   #:switch-to-workspace-number
+   #:add-workspace
+   #:remove-workspace
+   #:output-connector-name
    ;; Screenshot
    #:take-screenshot
    ;; Power
