@@ -303,3 +303,9 @@ stubbed river requests. Run with:
   output: zone reported on A reserves on A, hidden on B reserves
   nothing on B, no reports fall back to config, and the no-argument
   form keeps any-output semantics.
+- `bar-system-modules.lisp` - the `:hostname`, `:memory`, and `:cpu`
+  bar modules: `/proc/meminfo` and `/proc/stat` parsing against
+  captures recorded on a real host (`fixtures/proc`), the CPU
+  percentage from the change between two samples, the `MEM --` and
+  `CPU --` placeholders for a missing, unreadable, or malformed file,
+  the memoized host name, and registration by name.

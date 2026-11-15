@@ -495,6 +495,136 @@ CONNECTOR) for clicks."
                              (list (list "ETH" nil :icon :ethernet)))
                             (t name))))))))))
 
+;;; --- System modules: hostname, memory, CPU ---
+;;;
+;;; Read from procfs in the bar process. Memory and CPU refresh through
+;;; bar-cached, so a sample is taken at most once per :interval seconds
+;;; on the bar's tick; no thread or timer of their own.
+
+(defvar *bar-hostname* nil
+  "The memoized host name shown by the :hostname module, or NIL before
+the first lookup.")
+
+(defparameter *bar-meminfo-path* "/proc/meminfo"
+  "File read by the :memory module.")
+
+(defparameter *bar-proc-stat-path* "/proc/stat"
+  "File read by the :cpu module.")
+
+(defvar *bar-cpu-previous* nil
+  "The previous /proc/stat sample, (total . idle) jiffies, or NIL.")
+
+(defun bar-split-fields (line)
+  "Split LINE on spaces and tabs, dropping empty fields."
+  (loop with start = 0
+        for end = (position-if (lambda (c) (member c '(#\Space #\Tab)))
+                               line :start start)
+        for field = (subseq line start end)
+        when (plusp (length field)) collect field
+        while end
+        do (setf start (1+ end))))
+
+(defun bar-read-meminfo (&optional (path *bar-meminfo-path*))
+  "Read MemTotal and MemAvailable, in kB, from the meminfo file at PATH.
+Return them as two values, or NIL when the file is missing, unreadable,
+or lacks either field. Never signals."
+  (handler-case
+      (with-open-file (s path :direction :input :if-does-not-exist nil)
+        (when s
+          (let (total available)
+            (loop for line = (read-line s nil nil)
+                  while (and line (not (and total available)))
+                  do (let ((fields (bar-split-fields line)))
+                       (when (second fields)
+                         (let ((value (parse-integer (second fields)
+                                                     :junk-allowed t)))
+                           (cond ((string= (first fields) "MemTotal:")
+                                  (setf total value))
+                                 ((string= (first fields) "MemAvailable:")
+                                  (setf available value)))))))
+            (when (and total available (plusp total))
+              (values total available)))))
+    (error () nil)))
+
+(defun bar-memory-percent (total available)
+  "Percentage of TOTAL kB in use, given AVAILABLE kB, rounded."
+  (round (* 100 (- total available)) total))
+
+(defun bar-module-memory ()
+  "Memory in use as a percentage of MemTotal, from /proc/meminfo:
+\"MEM 21%\", or \"MEM --\" when the file cannot be read. Refreshes every
+:interval seconds (default 5)."
+  (bar-cached :memory
+              (config-getf '(:modules :memory) :interval :default 5)
+              (lambda ()
+                (multiple-value-bind (total available) (bar-read-meminfo)
+                  (if total
+                      (format nil "MEM ~D%" (bar-memory-percent total available))
+                      "MEM --")))))
+
+(defun bar-read-proc-stat (&optional (path *bar-proc-stat-path*))
+  "Read the aggregate cpu line of the stat file at PATH. Return
+(total . idle) in jiffies: total sums user, nice, system, idle, iowait,
+irq, softirq, and steal; idle is idle plus iowait. Guest time is already
+counted in user and nice. Return NIL when the file is missing,
+unreadable, or has no aggregate cpu line. Never signals."
+  (handler-case
+      (with-open-file (s path :direction :input :if-does-not-exist nil)
+        (when s
+          (loop for line = (read-line s nil nil)
+                while line
+                do (let ((fields (bar-split-fields line)))
+                     (when (equal (first fields) "cpu")
+                       (let ((counts (mapcar (lambda (f)
+                                               (parse-integer f :junk-allowed t))
+                                             (subseq (rest fields)
+                                                     0 (min 8 (length (rest fields)))))))
+                         (return
+                           (when (and (>= (length counts) 5)
+                                      (every #'integerp counts))
+                             (cons (reduce #'+ counts)
+                                   (+ (fourth counts) (fifth counts)))))))))))
+    (error () nil)))
+
+(defun bar-cpu-percent (previous current)
+  "Busy percentage between two (total . idle) samples, rounded. NIL
+when PREVIOUS is NIL, no time elapsed, or a counter went backwards."
+  (when (and previous current)
+    (let ((total (- (car current) (car previous)))
+          (idle (- (cdr current) (cdr previous))))
+      (when (and (plusp total) (<= 0 idle total))
+        (round (* 100 (- total idle)) total)))))
+
+(defun bar-module-cpu ()
+  "CPU usage across all cores since the previous sample, from the
+aggregate line of /proc/stat: \"CPU 6%\". Shows \"CPU --\" on the first
+sample and when the file cannot be read. Samples every :interval
+seconds (default 2), so the figure covers that interval."
+  (bar-cached :cpu
+              (config-getf '(:modules :cpu) :interval :default 2)
+              (lambda ()
+                (let* ((current (bar-read-proc-stat))
+                       (percent (bar-cpu-percent *bar-cpu-previous* current)))
+                  (setf *bar-cpu-previous* current)
+                  (if percent
+                      (format nil "CPU ~D%" percent)
+                      "CPU --")))))
+
+(defun bar-module-hostname ()
+  "The host name, from /proc/sys/kernel/hostname or MACHINE-INSTANCE,
+looked up once and memoized in *bar-hostname*. Empty when neither
+yields a name."
+  (or *bar-hostname*
+      (let ((name (find-if (lambda (s) (and (stringp s) (plusp (length s))))
+                           (list (handler-case
+                                     (bar-read-file "/proc/sys/kernel/hostname")
+                                   (error () nil))
+                                 (handler-case (machine-instance)
+                                   (error () nil))))))
+        (if name
+            (setf *bar-hostname* name)
+            ""))))
+
 (defun bar-module-clock ()
   "Clock formatted per the config's :format (a small strftime subset:
 %H %M %S %d %m %y %Y %a %A %b %B). Typography hierarchy: the date
@@ -559,7 +689,10 @@ strftime subset: %H %M %S %d %m %y %Y %a %A %b %B."
     (:battery . bar-module-battery)
     (:volume . bar-module-volume)
     (:network . bar-module-network)
-    (:display . bar-module-display))
+    (:display . bar-module-display)
+    (:hostname . bar-module-hostname)
+    (:memory . bar-module-memory)
+    (:cpu . bar-module-cpu))
   "Maps configured module names to their rendering functions.")
 
 (defparameter *bar-module-gap* 16

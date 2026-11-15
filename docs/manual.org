@@ -650,10 +650,35 @@ list of modules:
 | =:volume=      | The default sink's volume from =wpctl=.                                                                                                                                |
 | =:network=     | The active connection from =nmcli=.                                                                                                                                    |
 | =:display=     | The screen brightness from =brightnessctl=.                                                                                                                            |
+| =:hostname=    | The host name, kept once found; looked up again on each update until one is found.                                                                                     |
+| =:memory=      | Memory in use as a percentage of =MemTotal=, from =/proc/meminfo=, e.g. =MEM 21%=.                                                                                     |
+| =:cpu=         | CPU usage across all cores since the previous sample, from =/proc/stat=, e.g. =CPU 6%=.                                                                                |
 | =:tray=        | The system tray.                                                                                                                                                       |
 | =(:icons ...)= | Application icons with click actions.                                                                                                                                  |
 
 A module whose program is missing, or that fails, shows nothing.
+
+=:memory= and =:cpu= show =MEM --= and =CPU --= when their =/proc= file
+cannot be read. =:cpu= also shows =CPU --= until it has two samples,
+and when the counters in =/proc/stat= run backwards.
+=:memory= samples every 5 seconds and =:cpu= every 2 seconds. Set
+=:interval= to change either one:
+
+#+begin_src lisp
+(rhizome:configure
+ '(:modules (:memory (:interval 10)
+             :cpu (:interval 5))))
+#+end_src
+
+The =:cpu= figure covers the time since the previous sample, so a
+longer interval gives a smoother figure. After a =configure= call the
+bar keeps its last =:cpu= sample, so the first new figure covers the
+time since that sample.
+
+The bar takes its module list from the window manager's settings. A
+module list added to the configuration file reaches the bar when the
+window manager loads that file again; =rhizome:configure= changes it
+at once.
 
 The clock format takes =%H= =%M= =%S= =%d= =%m= =%y= =%Y= =%a= =%A=
 =%b= =%B=. The part after the last space draws in the accent colour

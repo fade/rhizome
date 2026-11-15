@@ -39,8 +39,10 @@
 ;;;
 ;;; Modules: :workspaces (active on an accent pill, occupied in
 ;;; the foreground colour, empty muted), :layout, :windows, :focused,
-;;; :clock, :battery, :volume, :network, :tray, and (:icons (...))
-;;; blocks with PNG app icons and click actions.
+;;; :clock, :battery, :volume, :network, :hostname, :memory ("MEM 21%"
+;;; from /proc/meminfo), :cpu ("CPU 6%" from /proc/stat, the change
+;;; since the previous sample), :tray, and (:icons (...)) blocks with
+;;; PNG app icons and click actions.
 
 (configure '(:bar (:opacity 0.9                 ; translucent surfaces
                   :height 20                 ; px; match :font-size + headroom
@@ -156,6 +158,8 @@
 
 (configure '(:modules (:clock (:format "%a %d %b %H:%M")  ; default
               :battery (:interval 5)
+              :memory (:interval 5)
+              :cpu (:interval 2)
               :volume (:interval 5
                        :on-click "pavucontrol"
                        :on-scroll-up "wpctl set-volume -l 1.0 @DEFAULT_AUDIO_SINK@ 5%+"
