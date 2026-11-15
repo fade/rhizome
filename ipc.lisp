@@ -35,8 +35,9 @@
       (unless thunk (return))
       (handler-case
           (funcall thunk)
-        (error (e)
-          (format t "~&; Rhizome: ipc command error: ~A~%" e))))))
+        (serious-condition (e)
+          (format t "~&; Rhizome: ipc command error: ~A~%"
+                  (format-reply "~A" e)))))))
 
 ;;; --- Command dispatch ---
 
@@ -48,6 +49,8 @@ show-command-reply).")
   "Execute one command LINE and return the result as a string.
 A line starting with ( is evaluated as a Lisp form in the RHIZOME
 package; otherwise it is NAME ARGS..., looked up in *command-table*.
+The result is printed with FORMAT-REPLY, so any value, and any serious
+condition from the evaluation or the command, yields a bounded string.
 A command's reply is shown on screen only when it is non-empty and the
 command showed no message of its own."
   (let ((line (string-trim " " (remove #\newline line))))
@@ -57,11 +60,11 @@ command showed no message of its own."
        (let ((result
                (handler-case
                    (let ((*package* (find-package "RHIZOME")))
-                     (format nil "~{~A~^ ~}"
-                             (multiple-value-list
-                               (eval (read-from-string line)))))
-                 (error (e)
-                   (format nil "error: ~A" e)))))
+                     (format-reply "~{~A~^ ~}"
+                                   (multiple-value-list
+                                     (eval (read-from-string line)))))
+                 (serious-condition (e)
+                   (format-reply "error: ~A" e)))))
          (show-message result 1)
          result))
       (t
@@ -79,9 +82,9 @@ command showed no message of its own."
                       (handler-case
                           (let ((r (funcall handler (first (all-outputs))
                                                  args)))
-                            (format nil "~A" (or r "")))
-                        (error (e)
-                          (format nil "error: ~A" e)))))
+                            (format-reply "~A" (or r "")))
+                        (serious-condition (e)
+                          (format-reply "error: ~A" e)))))
                (show-command-reply result serial *command-reply-seconds*)))
            (t
              (format nil "unknown command: ~A (try: ~{~A~^ ~})"
