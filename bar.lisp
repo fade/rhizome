@@ -1116,6 +1116,27 @@ bolt when CHARGING."
       (:display (bar-draw-display-icon ptr width height x iy r g b))
       (:ethernet (bar-draw-ethernet-icon ptr width height x iy r g b)))))
 
+(defparameter *bar-dot-size* 3
+  "Diameter in px of the occupied-workspace dot.")
+
+(defun bar-occupied-dot-origin (x y tw)
+  "Top-left (VALUES DX DY) of the occupied dot under text of width TW
+drawn at (X Y): centred under the text, its top row two rows below
+the baseline so it clears the foot of every digit, and inside the
+line box."
+  (values (- (+ x (floor tw 2)) (floor *bar-dot-size* 2))
+          (min (+ y (font-ascent) 2)
+               (- (+ y (font-line-height)) *bar-dot-size*))))
+
+(defun bar-draw-occupied-dot (ptr width height x y tw r g b)
+  "Draw the occupied-workspace dot under text of width TW at (X Y): an
+antialiased disc *bar-dot-size* px across in R G B, at the surface
+alpha (see bar-occupied-dot-origin)."
+  (multiple-value-bind (dx dy) (bar-occupied-dot-origin x y tw)
+    (blend-rounded-rect ptr width height dx dy *bar-dot-size* *bar-dot-size*
+                        r g b :alpha (bar-surface-alpha)
+                        :radius (/ *bar-dot-size* 2))))
+
 (defun bar-draw-module (ptr width height x y parts base-r base-g base-b module)
   "Draw one module's PARTS starting at X, using the base color for
 parts without an explicit color. Parts may carry :gap, :pill,
@@ -1137,16 +1158,8 @@ for MODULE. Returns the x after the module plus gap."
         (bar-draw-text ptr width height text x y r g b
                        :bold (getf flags :bold))
         (let ((tw (bar-text-width text :bold (getf flags :bold))))
-          ;; The occupied-workspace dot: 2x2, centred horizontally,
-          ;; one pixel below the baseline, kept inside the line box.
           (when (getf flags :dot)
-            (let ((dx0 (+ x (floor tw 2) -1))
-                  (dy0 (min (+ y (font-ascent) 1)
-                            (+ y (font-line-height) -2))))
-              (dotimes (dy 2)
-                (dotimes (dx 2)
-                  (bar-set-pixel ptr width height (+ dx0 dx) (+ dy0 dy)
-                                 r g b)))))
+            (bar-draw-occupied-dot ptr width height x y tw r g b))
           ;; A workspace cell's click region: its drawn text plus
           ;; half the gap on either side
           (when (getf flags :cell)
