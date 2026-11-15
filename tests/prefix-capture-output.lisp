@@ -237,14 +237,23 @@
              (lambda () (length *pending-focus-requests*))
              1))
 
-      ;; A key the capture receives is logged
-      (two-heads)
-      (quiet #'enter-prefix-mode)
-      (let ((text (with-output-to-string (*standard-output*)
-                    (prefix-handle-key 65307))))
-        (try "a key reaching the prefix capture is logged"
-             (lambda () (and (search "prefix key Esc" text) t))
-             t)))
+      ;; A key the capture receives is logged only with debug event
+      ;; logging on, (:debug (:events t))
+      (flet ((key-log (events)
+               (let ((*config* (merge-plist *config*
+                                            (list :debug (list :events events)))))
+                 (two-heads)
+                 (quiet #'enter-prefix-mode)
+                 (with-output-to-string (*standard-output*)
+                   (prefix-handle-key 65307)))))
+        (let ((off (key-log nil))
+              (on (key-log t)))
+          (try "debug events off: a key reaching the prefix capture is not logged"
+               (lambda () (and (search "prefix key" off) t))
+               nil)
+          (try "debug events on: a key reaching the prefix capture is logged"
+               (lambda () (and (search "prefix key Esc" on) t))
+               t))))
 
     (format t "~&=== ~A passed, ~A failed ===~%" pass fail)
     (unless (zerop fail) (uiop:quit 1))))

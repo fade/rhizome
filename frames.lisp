@@ -962,7 +962,7 @@ suspends pruning), adopt frameless windows into the current frame, and
 propose each leaf's visible window its rectangle.
 A tiled window still outside a leaf after adoption (its frame left the
 tree, or no longer lists it) is adopted again and logged as
-\"; Rhizome: re-adopted frameless window <app-id>\"."
+\"; Rhizome: re-placed window <app-id>: saved frame no longer exists\"."
   (let* ((root (frame-tree-for output workspace))
          (leaves (frame-leaves root)))
     ;; Drop dead windows and windows whose frame moved elsewhere
@@ -994,7 +994,8 @@ tree, or no longer lists it) is adopted again and logged as
                     (window-in-frame-tree-p win output workspace))
           (frame-remove-window win)
           (frame-adopt-window win output workspace)
-          (format t "~&; Rhizome: re-adopted frameless window ~A~%"
+          (format t "~&; Rhizome: re-placed window ~A: ~
+                     saved frame no longer exists~%"
                   (or (window-app-id win) (window-title win) win)))))
     ;; Each frame proposes its rectangle for its visible window,
     ;; inset by the configured gap (:gaps :inner). Leaves are read

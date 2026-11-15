@@ -113,9 +113,10 @@ Returns (values value found-p)."
               ;; A window whose client names a parent floats on map;
               ;; a window rule with :float nil keeps one app's dialogs
               ;; tiled. A dialog that opens on a hidden workspace
-              ;; shows a notice for :notify-seconds in :notify-color.
+              ;; shows a notice for :notify-seconds in :notify-color;
+              ;; C-t d (goto-last-dialog) goes to it.
               :notify-seconds 10
-              :notify-color "#ff9e64")
+              :notify-color "#ff5fd7")
     :windows (:decorations :server
               ;; :server asks every client that supports it for
               ;; server-side decorations (no client titlebar; rhizome
@@ -182,6 +183,9 @@ Returns (values value found-p)."
             :frame-outline-empty "#ff9e64"
             ;; Outline colour of a focused frame that shows no
             ;; window; nil uses the :frame-outline colour
+            :frame-outline-empty-width 1
+            ;; Outline width in px of a focused frame that shows no
+            ;; window; nil uses the :frame-outline-width
             )
     :launcher (:background "#23142d"
                :opacity 0.9

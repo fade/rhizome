@@ -96,7 +96,8 @@
                  (remove-if-not (lambda (p) (equal (first p) app-id))
                                 proposals))
                (readopted-p (log app-id)
-                 (and (search (format nil "re-adopted frameless window ~A"
+                 (and (search (format nil "re-placed window ~A: ~
+                                           saved frame no longer exists"
                                       app-id)
                               log)
                       t)))

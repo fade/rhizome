@@ -299,9 +299,15 @@ layout order)."
                    0)))
     (values (format nil "~D:~D:~D" workspace screen index) screen index)))
 
+(defvar *last-dialog-elsewhere* nil
+  "The most recent dialog that opened on a workspace its output was not
+showing (see notify-dialog-elsewhere), or NIL.")
+
 (defun notify-dialog-elsewhere (win output workspace frame)
   "Show a notice naming the dialog WIN and the frame it opened in, for
-(:dialogs :notify-seconds) seconds in (:dialogs :notify-color)."
+(:dialogs :notify-seconds) seconds in (:dialogs :notify-color), and
+record WIN as *last-dialog-elsewhere* for goto-last-dialog."
+  (setf *last-dialog-elsewhere* win)
   (multiple-value-bind (location screen index)
       (frame-location output workspace frame)
     (show-message
@@ -310,7 +316,31 @@ layout order)."
              (or (window-app-id win) "unknown app")
              workspace screen index location)
      (config-getf '(:dialogs) :notify-seconds :default 10)
-     (config-getf '(:dialogs) :notify-color :default "#ff9e64"))))
+     (config-getf '(:dialogs) :notify-color :default "#ff5fd7"))))
+
+(defun goto-last-dialog ()
+  "Show the workspace of *last-dialog-elsewhere* on its output and
+focus the dialog. With no such dialog, or once it has closed, show a
+message and change nothing. Returns the dialog, or NIL."
+  (let ((win *last-dialog-elsewhere*))
+    (cond ((null win)
+           (message "No dialog has opened out of view")
+           nil)
+          ((not (and (eq (gethash (window-proxy win) *windows*) win)
+                     (window-output win)
+                     (window-workspace win)))
+           (setf *last-dialog-elsewhere* nil)
+           (message "The last dialog that opened out of view has closed")
+           nil)
+          (t
+           (let ((output (window-output win))
+                 (workspace (window-workspace win)))
+             (unless (eql workspace (current-workspace output))
+               (switch-workspace workspace output)))
+           (dolist (seat (all-seats))
+             (focus-window win seat))
+           (request-manage-dirty)
+           win))))
 
 (defun float-place-new (win)
   "Place WIN when it awaits its first placement and its client has

@@ -563,6 +563,7 @@ Default chains (the StumpWM classics, mapped to rhizome features):
 | C-t b   | Toggle the bar         |
 | C-t f   | Select a frame by its label (fselect) |
 | C-t F   | Float/tile the focused window |
+| C-t d   | Go to the last dialog that opened on a hidden workspace |
 | C-t s   | Split frame side-by-side |
 | C-t S   | Split frame stacked (top/bottom) |
 | C-t R   | Remove split (merge into sibling) |
@@ -1130,10 +1131,12 @@ frames holding windows, one visible at a time:
   =(:frames (:focus-empty t))= both move into an empty frame: keyboard focus
   clears, the frame outline moves there, and the next new window opens
   in it. Split, move into the empty half, launch. The outline of a
-  focused frame that shows no window is orange, which sets it apart
-  from an occupied one; set another colour with
+  focused frame that shows no window is orange and 1 px wide, which
+  sets it apart from an occupied one; set another colour with
   =(:theme (:frame-outline-empty "#rrggbb"))=, or =nil= for the usual
-  outline colour.
+  outline colour, and another width with
+  =(:theme (:frame-outline-empty-width 2))=, or =nil= for the usual
+  outline width.
 
   #+begin_src lisp
   (rhizome:configure '(:frames (:focus-empty t)))
@@ -1287,7 +1290,9 @@ be moved around freely. Rhizome handles these StumpWM-style as floats
     output and workspace. When that workspace is not the one its
     output shows, a notice names the dialog and its location as
     =group:screen:frame= (workspace number, output counted from 1 left
-    to right, frame counted from 0 in layout order).
+    to right, frame counted from 0 in layout order). =C-t d=, or
+    =rhizome-cmd goto-last-dialog=, shows that workspace and focuses
+    the dialog.
   - Otherwise (the parent floats, is minimized, sits in no frame, or
     its frame is smaller than the dialog in either dimension): centred
     on the current frame of the output in use, and focus goes with it.
@@ -1310,7 +1315,7 @@ A rule with =:float nil= keeps the matching app's dialogs tiled, and
 #+begin_src lisp
 (rhizome:configure
   '(:window-rules ((:match "inkscape" :float nil))
-    :dialogs (:float t :notify-seconds 10 :notify-color "#ff9e64")))
+    :dialogs (:float t :notify-seconds 10 :notify-color "#ff5fd7")))
 #+end_src
 
 A desktop portal's file picker carries the portal's app-id, such as

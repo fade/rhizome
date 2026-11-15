@@ -29,7 +29,10 @@ stubbed river requests. Run with:
   frame smaller than the dialog in either dimension; else to the
   parent's frame, with a `group:screen:frame` notice (length and colour
   from `:dialogs`) only when that workspace is hidden; a dialog that
-  would overhang its output moves back onto the usable area.
+  would overhang its output moves back onto the usable area;
+  `goto-last-dialog` (command, export, C-t d) shows and focuses the
+  last dialog that opened on a hidden workspace, and with none, or
+  once it has closed, changes nothing and shows a message.
 - `focus-on-close.lisp` - focus recovery when a window closes: the next
   window in its frame (or the next column of a scroll ribbon), else the
   newest window on its workspace, else a cleared seat; focus and clear
@@ -223,9 +226,10 @@ stubbed river requests. Run with:
   splits and removals), when it hides (fullscreen, scroll and floating
   workspaces, switched off), the theme settings, the ring pixels, and
   the shell surface lifecycle (one per output, redraw only on change,
-  destroyed with its output), and the empty-frame colour: default,
-  configured, `nil` falling back to the outline colour, and the redraw
-  when a window arrives in or leaves the focused frame.
+  destroyed with its output), and the empty-frame colour and width:
+  default, configured, `nil` falling back to the outline colour or
+  width, and the redraw when a window arrives in or leaves the focused
+  frame.
 - `titlebars.lisp` - float titlebars: which windows carry one (a plain
   float does; a tiled window, a window with a parent, a fixed-size
   window, a CSD-only window, a window whose rule sets `:titlebar nil`,

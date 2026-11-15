@@ -139,6 +139,7 @@
    #:unfloat-window
    #:toggle-float
    #:toggle-float-focused
+   #:goto-last-dialog
    #:window-floating-p
    #:window-float-x
    #:window-float-y

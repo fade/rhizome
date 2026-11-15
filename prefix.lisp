@@ -302,7 +302,8 @@ them. Returns the binding (or NIL) and the key it was found under."
   "Dispatch one key, KEYSYM with MODIFIERS (logical or river keywords),
 within a key sequence. Returns T."
   (let ((key (make-key keysym modifiers)))
-    (format t "~&; Rhizome [debug]: prefix key ~A~%" (key-description key))
+    (when (debug-events-p)
+      (format t "~&; Rhizome [debug]: prefix key ~A~%" (key-description key)))
     (cond
       ;; Escape aborts whatever prefix mode is running
       ((= keysym 65307)
@@ -709,6 +710,8 @@ by setup-default-prefix-bindings, which directs the writes to
   (define-prefix-key 102 (lambda () (enter-fselect)) "select frame by label") ; f
   ;; C-t F - float/tile the focused window (GIMP-style floats)
   (define-prefix-key 70 (lambda () (toggle-float-focused)) "float/tile window") ; F
+  ;; C-t d - go to the last dialog that opened on a hidden workspace
+  (define-prefix-key 100 (lambda () (goto-last-dialog)) "go to last dialog") ; d
   ;; C-t n / C-t p — pull the next/previous hidden window into the
   ;; current frame (StumpWM's pull-hidden-next/previous)
   (define-prefix-key 110 (lambda () (with-frame-context
