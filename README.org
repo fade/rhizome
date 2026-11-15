@@ -613,6 +613,18 @@ the process the command starts or one of its children: a program that
 hands the window to an instance already running opens where any new
 window does.
 
+Each label sits in the corner of its frame furthest from the message
+window, which appears in the middle of an output, and the hint shows in
+the middle of the bar, in place of the centre modules, rather than in
+the message window. Place =:echo= in a =(:bar :modules ...)= segment to
+show it there instead.
+Selection ends after 20 seconds without a key; set another limit, or =nil= to
+wait for a key as StumpWM does:
+
+#+begin_src lisp
+(rhizome:configure '(:fselect (:timeout nil)))
+#+end_src
+
 ** Message window and interactive prompts
 
 Transient on-screen messages (the StumpWM message-window equivalent):

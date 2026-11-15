@@ -46,6 +46,10 @@ Gates versioned requests (exit_session needs >= 4).")
 (defvar *wm-snapshot* '(:layout nil :windows 0 :focused nil)
   "Cached WM state for the bar thread, refreshed by update-wm-snapshot.")
 
+(defvar *bar-echo* nil
+  "Text the bar shows in place of its centre segment, or NIL. Carried
+to the bar process as the snapshot's :echo.")
+
 (defvar *wm-process-mode* nil
   "T only in the window manager process (set by run). Guards bar
 process management: a test process loading rhizome and calling
@@ -137,6 +141,7 @@ output's entry; :occupied spans every output."
                  :workspace (getf here :workspace)
                  :workspace-count *workspace-count*
                  :bar-hidden (not (config-getf '(:bar) :enabled :default t))
+                 :echo *bar-echo*
                  :occupied (let ((occ nil))
                              (dolist (win (all-windows))
                                (let ((ws (window-workspace win)))

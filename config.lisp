@@ -148,6 +148,10 @@ Returns (values value found-p)."
              ;; window opens there. NIL skips empty frames in C-t f
              ;; and leaves keyboard focus where it is.
              )
+    :fselect (:timeout 20
+              ;; Seconds C-t f waits for a frame label before the
+              ;; labels close; nil waits until a key arrives
+              )
     :animations (:enabled t
                  :duration-ms 200
                  ;; :easing :ease-out-cubic (default) | :linear |

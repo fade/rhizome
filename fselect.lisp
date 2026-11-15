@@ -5,9 +5,15 @@
 ;;; through each frame tree in layout order, with the characters of
 ;;; *frame-number-map*. Typing a label focuses that frame and its
 ;;; window, on whichever output it sits. C-g, Escape, any other key,
-;;; and the prefix timeout cancel without a change. Empty frames carry
-;;; a label only under (:frames (:focus-empty t)); picking one clears
-;;; keyboard focus, so the next new window opens there.
+;;; and the selection timeout cancel without a change. The timeout is
+;;; (:fselect :timeout) seconds, 20 by default; NIL waits for a key.
+;;; Empty frames carry a label only under (:frames (:focus-empty t));
+;;; picking one clears keyboard focus, so the next new window opens
+;;; there.
+;;;
+;;; Each label sits in the corner of its frame furthest from where the
+;;; message window appears on that output, and the hint text is shown
+;;; in the bar (*bar-echo*), not in the message window.
 ;;;
 ;;; Keys arrive through the prefix capture surface, as in expose and
 ;;; iresize. Each label is a small river_shell_surface_v1 placed at
@@ -29,7 +35,7 @@
 Frames past the end of the string carry no label.")
 
 (defparameter *fselect-label-inset* 8
-  "Pixels between a frame's top-left corner and its label.")
+  "Pixels between a label and the corner of its frame.")
 
 (defparameter *fselect-label-padding* 6
   "Pixels between a label's edges and its text.")
@@ -37,6 +43,22 @@ Frames past the end of the string carry no label.")
 (defvar *fselect-labels* (make-hash-table :test #'eq)
   "FRAME -> label state plist (:surface :shell :node :ptr :fd :size
 :pool :buffer :w :h :drawn :mapped :position).")
+
+(defparameter *fselect-hint* "fselect: type a frame label; C-g cancels"
+  "Text the bar shows while fselect waits for a label.")
+
+(defparameter *fselect-default-timeout* 20
+  "Seconds fselect waits for a label when (:fselect :timeout) is unset.")
+
+(defun fselect-timeout ()
+  "Seconds fselect waits for a label: (:fselect :timeout), a positive
+number, or NIL to wait until a key arrives. Any other value reads as
+*fselect-default-timeout*."
+  (let ((value (config-getf '(:fselect) :timeout
+                            :default *fselect-default-timeout*)))
+    (cond ((null value) nil)
+          ((and (realp value) (plusp value)) (ceiling value))
+          (t *fselect-default-timeout*))))
 
 ;;; --- Which frames ---
 
@@ -94,6 +116,8 @@ the next new window."
 
 (defun enter-fselect ()
   "C-t f: label the frames and wait for one key (StumpWM's fselect).
+The hint goes to the bar, not the message window, and the capture
+expires after (fselect-timeout) seconds, or never when that is NIL.
 Does nothing but report when no frame can be picked."
   (unless *fselect-active*
     (if (null (fselect-targets))
@@ -101,9 +125,14 @@ Does nothing but report when no frame can be picked."
         (progn
           (enter-prefix-mode)
           (when *prefix-mode-active*
-            (setf *fselect-active* t
-                  *prefix-expiry* (+ (get-universal-time) 10))
-            (show-message "fselect: type a frame label; C-g cancels" 10)
+            (let ((timeout (fselect-timeout)))
+              (setf *fselect-active* t
+                    *prefix-expiry* (if timeout
+                                        (+ (get-universal-time) timeout)
+                                        0)
+                    *bar-echo* *fselect-hint*))
+            ;; The which-key list would sit over the labels
+            (message-hide)
             (request-manage-dirty))))))
 
 (defun fselect-handle-key (key)
@@ -137,11 +166,56 @@ any other key cancel. Every path ends the capture. Returns T."
   (values (+ (font-text-width text) (* 2 *fselect-label-padding*))
           (+ (font-line-height) (* 2 *fselect-label-padding*))))
 
-(defun fselect-label-position (output frame)
-  "Global X and Y of FRAME's label on OUTPUT as (VALUES X Y)."
-  (values (+ (output-x output) (frame-x frame) *fselect-label-inset*)
-          (+ (output-y output) (frame-y frame) (bar-reserved-height output)
-             *fselect-label-inset*)))
+(defun fselect-message-rect (output)
+  "The message window's box on OUTPUT as (VALUES X Y W H), in the
+coordinates of OUTPUT's frames: *message-width* by *message-height*,
+centred in the area below the bar, where river places the unanchored
+message layer surface."
+  (let ((w *message-width*)
+        (h *message-height*))
+    (values (floor (- (output-width output) w) 2)
+            (floor (- (output-height output) (bar-reserved-height output) h)
+                   2)
+            w h)))
+
+(defun fselect-label-corner (output frame)
+  "The corner of FRAME furthest from the centre of the message window
+on OUTPUT: :top-left, :top-right, :bottom-left or :bottom-right. Ties
+go to the first in that order. The message window is centred below
+the bar, so its centre is that area's exact centre for any message
+size."
+  (let* ((cx (/ (output-width output) 2))
+         (cy (/ (- (output-height output) (bar-reserved-height output))
+                2))
+         (left (frame-x frame))
+         (top (frame-y frame))
+         (right (+ left (frame-width frame)))
+         (bottom (+ top (frame-height frame)))
+         (best nil)
+         (best-distance -1))
+    (loop for (corner x y) in `((:top-left ,left ,top)
+                                (:top-right ,right ,top)
+                                (:bottom-left ,left ,bottom)
+                                (:bottom-right ,right ,bottom))
+          for distance = (+ (expt (- x cx) 2) (expt (- y cy) 2))
+          when (> distance best-distance)
+            do (setf best corner best-distance distance))
+    best))
+
+(defun fselect-label-position (output frame w h)
+  "Global X and Y of a W x H label for FRAME on OUTPUT, inset from the
+corner fselect-label-corner names, as (VALUES X Y)."
+  (let* ((corner (fselect-label-corner output frame))
+         (x (if (member corner '(:top-left :bottom-left))
+                (+ (frame-x frame) *fselect-label-inset*)
+                (- (+ (frame-x frame) (frame-width frame))
+                   *fselect-label-inset* w)))
+         (y (if (member corner '(:top-left :top-right))
+                (+ (frame-y frame) *fselect-label-inset*)
+                (- (+ (frame-y frame) (frame-height frame))
+                   *fselect-label-inset* h))))
+    (values (+ (output-x output) x)
+            (+ (output-y output) (bar-reserved-height output) y))))
 
 (defun fselect-label-draw (state text w h fr fg fb tr tg tb)
   "Fill a W x H box in FR FG FB and write TEXT on it in TR TG TB, into
@@ -208,9 +282,12 @@ it waits, none otherwise. Render sequence only. Returns NIL."
             (let ((state (or (gethash frame *fselect-labels*)
                              (frame-outline-create))))
               (when state
-                (multiple-value-bind (x y) (fselect-label-position output frame)
-                  (setf (gethash frame *fselect-labels*)
-                        (fselect-label-show state (string char) x y))))))))
+                (font-ensure-initialized)
+                (multiple-value-bind (w h) (fselect-label-size (string char))
+                  (multiple-value-bind (x y)
+                      (fselect-label-position output frame w h)
+                    (setf (gethash frame *fselect-labels*)
+                          (fselect-label-show state (string char) x y)))))))))
     (error (e)
       (format t "~&; Rhizome: fselect label error: ~A~%" e)))
   nil)

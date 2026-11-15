@@ -230,8 +230,10 @@ created."
 prefix modes (command mode, iresize, expose, fselect)."
   (expose-restore-if-active)
   (when *fselect-active*
-    ;; The next render sequence removes the frame labels
-    (setf *fselect-active* nil)
+    ;; The next render sequence removes the frame labels, and the
+    ;; next snapshot the bar's hint
+    (setf *fselect-active* nil
+          *bar-echo* nil)
     (request-manage-dirty))
   (setf *prefix-mode-active* nil
         *prefix-current-map* nil
@@ -704,7 +706,7 @@ by setup-default-prefix-bindings, which directs the writes to
   ;; C-t b — toggle the bar
   (define-prefix-key 98 (lambda () (toggle-bar)) "toggle bar")   ; b
   ;; C-t f - label the frames and pick one (StumpWM's fselect)
-  (define-prefix-key 102 (lambda () (enter-fselect)) "select frame by number") ; f
+  (define-prefix-key 102 (lambda () (enter-fselect)) "select frame by label") ; f
   ;; C-t F - float/tile the focused window (GIMP-style floats)
   (define-prefix-key 70 (lambda () (toggle-float-focused)) "float/tile window") ; F
   ;; C-t n / C-t p — pull the next/previous hidden window into the

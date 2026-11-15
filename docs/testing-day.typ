@@ -109,6 +109,7 @@ get its own frame.
   columns: (auto, 1fr, 1fr),
   [ ], [Action], [Expected],
   [#cb], [C-t s, C-t S], [Manual side-by-side and stacked splits; the current frame stays on the original half, and the new half shows a hidden window or stays empty],
+  [#cb], [C-t f with several frames that hold windows], [Each frame with a visible window shows a label (0, 1, 2, and so on). Typing a label focuses that frame and its window. Escape, C-g, or any other key cancels with no change. Frames with no visible window carry no label],
   [#cb], [C-t arrows], [Focus moves to the nearest frame in that direction, preferring edge-sharing neighbors],
   [#cb], [C-t +/-], [Dividing line nudges ±30px; iresize (C-t r) then arrows works continuously, Enter commits, Escape cancels],
   [#cb], [C-t M + arrows], [Moves the focused window into that frame],
@@ -141,7 +142,7 @@ get its own frame.
   [#cb], [MOD+. / MOD+,], [Viewport scrolls alone in half-screen steps, clamped at both ribbon ends; focus unchanged; the scroll-x message appears],
   [#cb], [Open a new window while scrolled], [It enters as a new column immediately right of the focused one and gets focus],
   [#cb], [Close the focused window while scrolled], [Its column is pruned; focus falls to the vacated slot's successor, not the first column],
-  [#cb], [Float a column window (C-t f)], [It leaves the ribbon (column count drops); the float renders and drags normally],
+  [#cb], [Float a column window (C-t F)], [It leaves the ribbon (column count drops); the float renders and drags normally],
   [#cb], [C-t v again], [Back to the dynamic tiler; windows re-split into frames as if the ribbon never happened],
   [#cb], [C-t Return (expose) while scrolled], [The overview works over columns; restore returns to the ribbon exactly],
 )
@@ -191,13 +192,13 @@ get its own frame.
 #table(
   columns: (auto, 1fr, 1fr),
   [ ], [Action], [Expected],
-  [#cb], [C-t f on a tiled window], [Floats in place (no jump); "floated" message],
+  [#cb], [C-t F on a tiled window], [Floats in place (no jump); "floated" message],
   [#cb], [MOD+Left-drag a float], [Moves; alpha-blended border follows],
   [#cb], [MOD+Left-drag a *tiled* window], [StumpWM-style: it floats first, then moves],
   [#cb], [MOD+Right-drag a float], [Resizes from the bottom-right; respects min/max size hints],
   [#cb], [Drag a float mostly off-screen, release], [Clamped back so ~30px stays reachable],
   [#cb], [Titlebar-drag a CSD app (GIMP toolbox, if installed)], [Moves without floating it again],
-  [#cb], [C-t f again to unfloat], [Returns to tiling in the current frame],
+  [#cb], [C-t F again to unfloat], [Returns to tiling in the current frame],
   [#cb], [Drag a float across a workspace switch (MOD+1..9 while dragging is fine to skip) ], [No crash; float lands on its workspace],
 )
 
@@ -372,7 +373,7 @@ Exercise expose, splits, and workspace switches while the video plays.
 - *Workspace indicator:* with windows on workspaces 1 and 2 only,
   the bar must show 1 and 2 in the foreground color, 3-9 muted,
   and the active workspace underlined in accent with visible gaps
-  between numbers. Switch workspaces (MOD+N and MOD+J/K chains) —
+  between numbers. Switch workspaces (MOD+1..9, C-t N, and C-t P):
   the underline must follow within one bar poll (0.15s), the
   occupancy colors must track window opens/closes/moves, and
   minimizing the only window on a workspace must mute it.
@@ -471,7 +472,7 @@ Exercise expose, splits, and workspace switches while the video plays.
   only the second worked). Press C-t F11 once — fullscreen
   immediately; press again — back. Both directions on the first
   press, no double-press workaround.
-- *Built-in screenshot (bar included):* `MOD+Print` / `rhizome-cmd
+- *Built-in screenshot (bar included):* `Print` / `rhizome-cmd
   screenshot` captures the full composited output INCLUDING the bar
   (grim copies the output frame — layer surfaces are part of it).
   For a capture of an overlay state: `sleep 8 && rhizome-cmd
@@ -484,7 +485,7 @@ Exercise expose, splits, and workspace switches while the video plays.
   it immediately (12px default, accent-tinted when focused: focus
   another window and the shadow's color shifts). Resize the float
   (MOD+Right-drag) — the shadow follows with no flicker. Un-float
-  (menu → Tile, or `C-t f`) — the shadow must vanish. Close a
+  (menu Tile entry, or `C-t F`): the shadow must vanish. Close a
   floated window — the WM survives; `grep decoration
   ~/.cache/rhizome/rhizome.log` stays clean of errors. Tweak via
   `(:decorations (:radius 14 :alpha 0.5 :focused-alpha 0.7))`;
@@ -536,10 +537,11 @@ Exercise expose, splits, and workspace switches while the video plays.
   [MOD+B], [Toggle bar], [C-t Q], [Only (one frame)],
   [MOD+1..9], [Workspace], [C-t B], [Balance splits],
   [MOD+Shift+1..9], [Move window → ws], [C-t Return], [Expose],
-  [MOD+Shift+L], [Lock], [C-t f], [Float/tile],
+  [MOD+Shift+L], [Lock], [C-t F], [Float/tile],
   [MOD+Shift+E], [Logout (×2)], [C-t \#], [Mark window],
   [C-t q], [Quit (×2)], [C-t m], [Last message],
   [C-t h], [Help chains], [C-t C], [Command mode],
+  [Print], [Screenshot], [C-t f], [Select frame by label],
 )
 
 #v(1em)

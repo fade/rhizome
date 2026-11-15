@@ -1,15 +1,18 @@
 ;;; Tests for fselect (fselect.lisp): which frames carry a label and
 ;;; in what order, the key to frame mapping, cancel keys, the focus
-;;; move, the C-t f / C-t F bindings, and the label surfaces' lifecycle
-;;; across every exit path. River requests are stubbed and recorded;
-;;; the shm buffer path runs for real.
+;;; move, the C-t f / C-t F bindings, the selection timeout, the label
+;;; corner away from the message window, the bar echo of the hint, and
+;;; the label surfaces' lifecycle across every exit path. River
+;;; requests are stubbed and recorded; the shm buffer path runs for
+;;; real.
 (ql:quickload :rhizome)
 
 (in-package #:rhizome)
 
 (configure '(:bar (:enabled nil)))
 
-(let ((pass 0) (fail 0) (calls '()) (focused '()))
+(let ((pass 0) (fail 0) (calls '()) (focused '()) (shown '()) (hidden 0)
+      (snapshots '()))
   (labels ((ok (name actual expected)
              (if (equal actual expected)
                  (progn (incf pass)
@@ -43,10 +46,18 @@
                              (wl:wl-shm-pool.destroy :pool-destroy)
                              (wl:wl-buffer.destroy :buffer-destroy)))
                (setf (symbol-function (first spec)) (record (second spec))))
-             (dolist (fn '(message show-message message-hide
-                           request-manage-dirty reassert-seat-focus))
+             (dolist (fn '(message request-manage-dirty reassert-seat-focus))
                (setf (symbol-function fn)
                      (lambda (&rest args) (declare (ignore args)) nil)))
+             (setf (symbol-function 'show-message)
+                   (lambda (text &rest args)
+                     (declare (ignore args))
+                     (push text shown))
+                   (symbol-function 'message-hide)
+                   (lambda () (incf hidden))
+                   ;; The snapshot file is the live bar's: never write it
+                   (symbol-function 'bar-write-snapshot)
+                   (lambda (snapshot) (push snapshot snapshots)))
              ;; The capture surface: prefix mode opens without river
              (setf (symbol-function 'open-prefix-capture-surface)
                    (lambda () (setf *prefix-mode-active* t)))
@@ -87,7 +98,7 @@
       (setup-default-prefix-bindings)
       (check "C-t f is bound to fselect"
              (keymap-binding-doc *default-prefix-map* (make-key 102))
-             "select frame by number")
+             "select frame by label")
       (check "C-t F is bound to the float/tile toggle"
              (keymap-binding-doc *default-prefix-map* (make-key 70))
              "float/tile window")
@@ -188,7 +199,7 @@
                (length (calls-of :sync)) (length (calls-of :commit)))
         (check "label 2 sits inside t3's frame on the right head"
                (multiple-value-list
-                (fselect-label-position right (window-frame t3)))
+                (fselect-label-position right (window-frame t3) 20 28))
                (list (+ 1920 *fselect-label-inset*) *fselect-label-inset*))
         (check "a label lands at its frame's position"
                (not (null (member (list (+ 1920 *fselect-label-inset*)
@@ -202,6 +213,90 @@
         (check "an unchanged pass redraws nothing"
                (list (length (calls-of :buffer)) (length (calls-of :commit)))
                '(0 0))
+
+        ;; --- the hint: in the bar, not in the message window ---
+        (check "the hint is not shown in the message window"
+               (find *fselect-hint* shown :test #'equal) nil)
+        (check "entering fselect hides the which-key message"
+               (plusp hidden) t)
+        (check "the bar echoes the hint while selection is up"
+               *bar-echo* *fselect-hint*)
+        (setf snapshots '())
+        ;; No seats: the snapshot needs no focused window
+        (let ((seats (symbol-function 'all-seats)))
+          (setf (symbol-function 'all-seats) (lambda () '()))
+          (unwind-protect (update-wm-snapshot)
+            (setf (symbol-function 'all-seats) seats)))
+        (check "the snapshot carries the echo to the bar process"
+               (getf (first snapshots) :echo) *fselect-hint*)
+
+        ;; --- label corner, away from the message window ---
+        (check "the message window box is centred on its output"
+               (let ((*message-height* 22))
+                 (multiple-value-list (fselect-message-rect left)))
+               (list 610 529 700 22))
+        (check "a left frame on a wide head: top-left corner"
+               (fselect-label-corner left (window-frame t1)) :top-left)
+        (check "a right frame on a wide head: top-right corner"
+               (fselect-label-corner left (window-frame t2)) :top-right)
+        (check "a tall message keeps a full-height frame's label on top"
+               (let ((*message-height* 131))
+                 (list (fselect-label-corner left (window-frame t1))
+                       (fselect-label-corner left (window-frame t2))))
+               '(:top-left :top-right))
+        (check "a top-right label sits inset from that corner"
+               (multiple-value-list
+                (fselect-label-position left (window-frame t2) 20 28))
+               (list (- 1920 *fselect-label-inset* 20) *fselect-label-inset*))
+        (check "no label overlaps the message window"
+               (let ((*message-height* 22))
+                 (notany
+                  (lambda (target)
+                    (destructuring-bind (char output ws frame) target
+                      (declare (ignore char ws))
+                      (multiple-value-bind (lx ly)
+                          (fselect-label-position output frame 20 28)
+                        (multiple-value-bind (mx my mw mh)
+                            (fselect-message-rect output)
+                          (let ((mx (+ mx (output-x output)))
+                                (my (+ my (output-y output))))
+                            (and (< lx (+ mx mw)) (< mx (+ lx 20))
+                                 (< ly (+ my mh)) (< my (+ ly 28))))))))
+                  (fselect-targets)))
+               t)
+        (let* ((quad (make-instance 'rhizome-output :proxy :fs-quad
+                                                    :x 0 :y 2000
+                                                    :width 1000 :height 800))
+               (q1 (make-instance 'rhizome-window :proxy :fs-q1))
+               (q2 (make-instance 'rhizome-window :proxy :fs-q2))
+               (q3 (make-instance 'rhizome-window :proxy :fs-q3))
+               (q4 (make-instance 'rhizome-window :proxy :fs-q4)))
+          (dolist (w (list q1 q2 q3 q4))
+            (setf (window-output w) quad))
+          (set-workspace-tree quad 1 '((0 0 500 400) (500 0 500 400)
+                                       (0 400 500 400) (500 400 500 400))
+                              (list q1 q2 q3 q4))
+          (check "quadrants: each label in the corner away from the centre"
+                 (sort (mapcar (lambda (f)
+                                 (list (frame-y f) (frame-x f)
+                                       (fselect-label-corner quad f)))
+                               (frame-leaves (frame-tree-for quad 1)))
+                       (lambda (a b)
+                         (or (< (first a) (first b))
+                             (and (= (first a) (first b))
+                                  (< (second a) (second b))))))
+                 '((0 0 :top-left) (0 500 :top-right)
+                   (400 0 :bottom-left) (400 500 :bottom-right)))
+          (check "a bottom-right label sits inset from that corner"
+                 (multiple-value-list
+                  (fselect-label-position
+                   quad
+                   (find-if (lambda (f) (and (= (frame-x f) 500)
+                                             (= (frame-y f) 400)))
+                            (frame-leaves (frame-tree-for quad 1)))
+                   20 28))
+                 (list (- 1000 *fselect-label-inset* 20)
+                       (- 2800 *fselect-label-inset* 28))))
 
         ;; --- label pixels ---
         (let ((state (fselect-label-draw (list) "7" 30 28 255 255 255 0 0 0)))
@@ -255,6 +350,39 @@
                      (lambda ()
                        (setf *prefix-expiry* 1)
                        (prefix-drain))))
+        (check "every exit clears the bar echo" *bar-echo* nil)
+
+        ;; --- selection timeout ---
+        (check "the timeout defaults to 20 seconds" (fselect-timeout) 20)
+        (let ((now (get-universal-time)))
+          (enter-fselect)
+          (check "entering fselect arms the timeout 20 s out"
+                 (<= (+ now 20) *prefix-expiry* (+ now 21)) t)
+          (exit-prefix-mode))
+        (configure '(:fselect (:timeout 45)))
+        (check "a configured timeout is read" (fselect-timeout) 45)
+        (let ((now (get-universal-time)))
+          (enter-fselect)
+          (check "a configured timeout arms the capture"
+                 (<= (+ now 45) *prefix-expiry* (+ now 46)) t)
+          (exit-prefix-mode))
+        (configure '(:fselect (:timeout nil)))
+        (check "a NIL timeout reads as never" (fselect-timeout) nil)
+        (enter-fselect)
+        (check "a NIL timeout arms no expiry" *prefix-expiry* 0)
+        (prefix-drain)
+        (check "and the capture outlives the prefix drain"
+               (list *prefix-mode-active* *fselect-active*) '(t t))
+        (prefix-handle-key 65307)
+        (fselect-labels-render-pass)
+        (check "Escape still ends a selection that never times out"
+               (list *fselect-active* (live-labels) *bar-echo*)
+               '(nil 0 nil))
+        (configure '(:fselect (:timeout 20)))
+        (enter-prefix-mode)
+        (check "the shared prefix timeout stays at 5 seconds"
+               (<= (- *prefix-expiry* (get-universal-time)) 5) t)
+        (exit-prefix-mode)
 
         ;; --- output removal while active ---
         (enter-fselect)
@@ -268,6 +396,39 @@
         (exit-prefix-mode)
         (fselect-labels-render-pass)
         (check "and the rest on exit" (live-labels) 0)
+
+        ;; --- the bar side of the echo ---
+        (let ((saved (symbol-function 'bar-snapshot))
+              (left-only '(:bar (:modules (:left (:workspaces))))))
+          (unwind-protect
+               (progn
+                 (setf (symbol-function 'bar-snapshot)
+                       (lambda () '(:echo "pick one")))
+                 (check "with an echo, the centre segment shows only it"
+                        (let ((*config* (merge-plist *config* left-only)))
+                          (list (bar-segment-modules :left)
+                                (bar-segment-modules :center)))
+                        '((:workspaces) (:echo)))
+                 (check "a configured :echo is not added twice"
+                        (let ((*config*
+                                (merge-plist *config*
+                                             '(:bar (:modules
+                                                     (:left (:workspaces)
+                                                      :right (:echo :clock)))))))
+                          (list (bar-segment-modules :center)
+                                (bar-segment-modules :right)))
+                        '((:clock) (:echo :clock)))
+                 (check "the echo module shows the snapshot's text"
+                        (mapcar #'first (bar-module-parts :echo))
+                        '("pick one"))
+                 (setf (symbol-function 'bar-snapshot) (lambda () '()))
+                 (check "without an echo, the centre segment is as configured"
+                        (let ((*config* (merge-plist *config* left-only)))
+                          (bar-segment-modules :center))
+                        '(:clock))
+                 (check "the echo module is empty without one"
+                        (bar-module-parts :echo) nil))
+            (setf (symbol-function 'bar-snapshot) saved)))
 
         ;; --- nothing to select ---
         (setf *outputs* (make-hash-table))

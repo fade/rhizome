@@ -204,7 +204,7 @@
       (ok "C-t f is fselect and C-t F the float toggle"
           (list (keymap-binding-doc *default-prefix-map* 102)
                 (keymap-binding-doc *default-prefix-map* 70))
-          '("select frame by number" "float/tile window"))
+          '("select frame by label" "float/tile window"))
       (ok "every default key reads back from its spec string"
           (loop for (keys . nil) in entries
                 unless (equal (kbd (spec keys)) keys)
