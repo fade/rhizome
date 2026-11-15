@@ -1,7 +1,8 @@
 ;;; Tests for where a new floating window first appears (floating.lisp):
-;;; centred on the frame holding its parent window, on the parent itself
-;;; when the parent floats, else on its output's usable area; once its
-;;; size is known it is placed and left alone. River requests are stubbed.
+;;; centred on the frame holding its tiled parent window, on the active
+;;; frame when the parent floats, else on its output's usable area; once
+;;; its size is known it is placed and left alone. River requests are
+;;; stubbed. tests/dialog-placement.lisp covers the dialog cases in full.
 (ql:quickload :rhizome)
 
 (in-package #:rhizome)
@@ -86,7 +87,8 @@
           (ok "a new float is centred on its parent's frame"
               (pos win) (list 220 (+ 36 332)))))
 
-      ;; --- C: the parent floats: the parent's own rectangle ---
+      ;; --- C: the parent floats: the active frame (here the only
+      ;; output's single frame), not the parent ---
       (let* ((out (mk-out :fc-c-out))
              (parent (mk-win :fc-c-p out)))
         (setf (window-node parent) :parent-node)
@@ -95,8 +97,8 @@
         (let ((win (new-float :fc-c out :parent parent)))
           (commit-size win 200 100)
           (render out)
-          (ok "a new float over a floating parent is centred on it"
-              (pos win) '(800 200))))
+          (ok "a dialog of a floating parent is centred on the active frame"
+              (pos win) (list 540 (+ 36 332)))))
 
       ;; --- D: placed once its size is known, then left alone ---
       (let* ((out (mk-out :fc-d-out))
@@ -148,7 +150,7 @@
         (let ((win (new-float :fc-g out :parent parent)))
           (commit-size win 400 300)
           (render out)
-          (ok "a parent on a hidden workspace leaves the float on its output"
+          (ok "a floating parent on a hidden workspace leaves the dialog on the active frame"
               (pos win) (list 440 (+ 36 232))))))
 
     (format t "~&=== ~A passed, ~A failed ===~%" pass fail)

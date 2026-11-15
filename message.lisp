@@ -32,12 +32,18 @@
 (defvar *message-serial* 0
   "Number of messages shown so far; show-message increments it.")
 
-(defun show-message (text &optional (seconds 3))
-  "Show TEXT on screen for SECONDS (default 3), on the current output.
+(defvar *message-color* nil
+  "Text colour of the visible message as a \"#rrggbb\" string, or NIL
+for the bar's :accent.")
+
+(defun show-message (text &optional (seconds 3) color)
+  "Show TEXT on screen for SECONDS (default 3), on the current output,
+drawn in COLOR (a \"#rrggbb\" string; NIL for the bar's :accent).
 If a message is already showing there, replace it; one showing on
 another output is hidden first. Newlines start new lines."
   (incf *message-serial*)
-  (setf *last-message* text)
+  (setf *last-message* text
+        *message-color* color)
   (unless (and *compositor* *shm* *layer-shell*)
     (format t "~&; Rhizome: ~A~%" text)
     (return-from show-message))
@@ -115,8 +121,9 @@ wl_output OUTPUT when none exists (NIL leaves the output to river)."
                                              :default "#1a1b26"))
               (rhizome-rounded-clear ptr width height br bg bb))
             (multiple-value-bind (ar ag ab)
-                (parse-hex-color (config-getf '(:bar) :accent
-                                             :default "#7aa2f7"))
+                (parse-hex-color (or *message-color*
+                                     (config-getf '(:bar) :accent
+                                                  :default "#7aa2f7")))
               (loop for line in (message-lines text)
                     for i from 0
                     do (bar-draw-text ptr width height line

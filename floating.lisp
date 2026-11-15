@@ -25,19 +25,27 @@
   "Smallest float dimension a user resize may produce.")
 
 (defvar *float-centre-pending* (make-hash-table :test #'eq)
-  "Floats not yet shown that the render pass centres once their size is
-known (WINDOW -> T).")
+  "Floats not yet shown that the render pass places once their size is
+known (WINDOW -> T); see float-place-new.")
+
+(defvar *dialog-float-decided* (make-hash-table :test #'eq)
+  "Windows float-new-dialogs has considered: WINDOW -> the internal real
+time of that decision, or T once float-late-dialog has acted.")
+
+(defparameter *dialog-late-parent-seconds* 2
+  "How long after a window maps a parent arriving still floats it as a
+dialog; see float-late-dialog.")
 
 ;;; --- Float state ---
 
-(defun float-window (win &key x y width height (animate t))
+(defun float-window (win &key x y width height (animate t) quiet)
   "Make WIN float, keeping its current geometry by default (a window
 floated from its tiling position must not jump). A window never shown
-and given no position is centred once its size is known; see
-float-centre-new. Explicit :x :y
+and given no position is placed once its size is known; see
+float-place-new. Explicit :x :y
 :width :height overrides place it precisely. Placing at an
 explicit position glides when the animation engine is on (expose
-and maximize ride this)."
+and maximize ride this). QUIET suppresses the \"floated\" message."
   (if (window-floating-p win)
       ;; Already floating: an explicit reposition glides from the
       ;; current rendered position to the target
@@ -51,8 +59,8 @@ and maximize ride this)."
                                  (window-app-id win) "window"))
         (request-manage-dirty))
       (progn
-        ;; Never shown and no explicit position: centre it once its
-        ;; size is known (float-centre-new)
+        ;; Never shown and no explicit position: place it once its
+        ;; size is known (float-place-new)
         (when (and (null x) (null y) (null (window-node win)))
           (setf (gethash win *float-centre-pending*) t))
         (setf (window-floating-p win) t
@@ -74,8 +82,9 @@ and maximize ride this)."
         (when (and animate (or x y) (animations-enabled-p))
           (animation-start win :from-x (window-x win)
                                   :from-y (window-y win)))
-        (message "floated: ~A" (or (window-title win)
-                                   (window-app-id win) "window"))
+        (unless quiet
+          (message "floated: ~A" (or (window-title win)
+                                     (window-app-id win) "window")))
         (request-manage-dirty))))
 
 (defun unfloat-window (win)
@@ -231,76 +240,178 @@ the *float-min-size* floor. A hint of 0 means no preference."
 
 ;;; --- Where a new float first appears ---
 
-(defun float-parent-shown-p (parent)
-  "True when PARENT is managed, not minimized, and on its output's
-current workspace."
-  (let ((out (window-output parent)))
-    (and out
-         (gethash (window-proxy parent) *windows*)
-         (not (window-minimized-p parent))
-         (eql (window-workspace parent) (current-workspace out)))))
+(defun window-placement-pending-p (win)
+  "True while WIN, a float never shown, awaits its first placement.
+Autofocus waits for it, so focus follows the window to where it lands."
+  (and (gethash win *float-centre-pending*) t))
 
-(defun float-centre-area (win)
-  "The rectangle a new float WIN is centred on, as
-(VALUES X Y WIDTH HEIGHT) in layout coordinates.
-- WIN's parent floats: the parent's rectangle.
-- WIN's parent is tiled: the frame holding it, else the parent's
-  rectangle when no frame holds it.
-- Otherwise: the usable area of WIN's output.
-A parent counts only while shown on WIN's output."
-  (let ((parent (window-parent win))
-        (out (window-output win)))
-    (if (and parent
-             (float-parent-shown-p parent)
-             (eq (window-output parent) out))
-        (let ((frame (window-frame parent)))
-          (cond ((window-floating-p parent)
-                 (values (or (window-float-x parent) (window-x parent))
-                         (or (window-float-y parent) (window-y parent))
-                         (or (window-float-width parent) (window-width parent))
-                         (or (window-float-height parent)
-                             (window-height parent))))
-                (frame
-                 (values (+ (output-x out) (frame-x frame))
-                         (+ (output-y out) (bar-reserved-height out) (frame-y frame))
-                         (frame-width frame)
-                         (frame-height frame)))
-                (t
-                 (values (window-x parent) (window-y parent)
-                         (window-width parent) (window-height parent)))))
-        (output-usable-area out))))
+(defun frame-layout-area (output frame)
+  "FRAME's rectangle on OUTPUT as (VALUES X Y WIDTH HEIGHT) in layout
+coordinates."
+  (values (+ (output-x output) (frame-x frame))
+          (+ (output-y output) (bar-reserved-height output) (frame-y frame))
+          (frame-width frame)
+          (frame-height frame)))
 
-(defun float-centre-new (win)
-  "Centre WIN on float-centre-area when it awaits its first placement
-and its client has committed a size, then clear the pending mark.
-Otherwise do nothing."
+(defun dialog-active-output (win)
+  "The output the operator works on, for the dialog WIN: the output of
+the focused window other than WIN, else current-output, else WIN's own
+output."
+  (let ((focused (find-if (lambda (w)
+                            (and (not (eq w win))
+                                 (window-focused-p w)
+                                 (window-output w)))
+                          (all-windows))))
+    (or (and focused (window-output focused))
+        (current-output)
+        (window-output win))))
+
+(defun dialog-target (win)
+  "Where the dialog WIN first appears, as (VALUES OUTPUT WORKSPACE FRAME).
+- The parent is tiled in a frame at least WIN's size in both
+  dimensions: that frame, on the parent's output and workspace, shown
+  or not.
+- Otherwise (the parent floats, is minimized, is in no frame, is not
+  managed, or its frame is smaller than WIN in either dimension): the
+  current frame of the active output's current workspace."
+  (let* ((parent (window-parent win))
+         (frame (and parent (window-frame parent))))
+    (if (and frame
+             (not (window-floating-p parent))
+             (not (window-minimized-p parent))
+             (window-output parent)
+             (window-workspace parent)
+             (<= (window-width win) (frame-width frame))
+             (<= (window-height win) (frame-height frame)))
+        (values (window-output parent) (window-workspace parent) frame)
+        (let* ((output (dialog-active-output win))
+               (workspace (current-workspace output)))
+          (values output workspace (current-frame-for output workspace))))))
+
+(defun frame-location (output workspace frame)
+  "FRAME's location as (VALUES STRING SCREEN INDEX). STRING is
+\"group:screen:frame\": the workspace number, SCREEN (OUTPUT's 1-based
+position left to right), and INDEX (FRAME's 0-based position in
+layout order)."
+  (let ((screen (1+ (or (position output (all-outputs-sorted)) 0)))
+        (index (or (position frame
+                             (frame-leaves (frame-tree-for output workspace)))
+                   0)))
+    (values (format nil "~D:~D:~D" workspace screen index) screen index)))
+
+(defun notify-dialog-elsewhere (win output workspace frame)
+  "Show a notice naming the dialog WIN and the frame it opened in, for
+(:dialogs :notify-seconds) seconds in (:dialogs :notify-color)."
+  (multiple-value-bind (location screen index)
+      (frame-location output workspace frame)
+    (show-message
+     (format nil "Dialog ~S (~A) opened on workspace ~D, screen ~D, frame ~D (~A)"
+             (or (window-title win) "untitled")
+             (or (window-app-id win) "unknown app")
+             workspace screen index location)
+     (config-getf '(:dialogs) :notify-seconds :default 10)
+     (config-getf '(:dialogs) :notify-color :default "#ff9e64"))))
+
+(defun float-place-new (win)
+  "Place WIN when it awaits its first placement and its client has
+committed a size, then clear the pending mark; otherwise do nothing.
+A window with a parent moves to the output, workspace, and frame of
+dialog-target and is centred on that frame; a notice follows when that
+workspace is not the one its output shows. A window with no parent is
+centred on its output's usable area. Either way WIN then moves the
+least distance that keeps it inside that output's usable area, or to
+the area's top-left corner when it is larger. Returns true when WIN
+was placed."
   (when (and (gethash win *float-centre-pending*)
              (window-output win)
              (plusp (window-width win))
              (plusp (window-height win)))
     (remhash win *float-centre-pending*)
-    (multiple-value-bind (ax ay aw ah) (float-centre-area win)
-      (setf (window-float-x win) (+ ax (floor (- aw (window-width win)) 2))
-            (window-float-y win) (+ ay (floor (- ah (window-height win)) 2))))))
+    (flet ((centre (ax ay aw ah)
+             (setf (window-float-x win) (+ ax (floor (- aw (window-width win)) 2))
+                   (window-float-y win) (+ ay (floor (- ah (window-height win)) 2)))))
+      (if (window-has-parent-p win)
+          (multiple-value-bind (output workspace frame) (dialog-target win)
+            (setf (window-output win) output)
+            (assign-window-workspace win workspace)
+            (multiple-value-call #'centre (frame-layout-area output frame))
+            (unless (eql workspace (current-workspace output))
+              (notify-dialog-elsewhere win output workspace frame)))
+          (multiple-value-call #'centre (output-usable-area (window-output win))))
+      ;; Keep the window on its output's usable area: a dialog centred
+      ;; on a small frame moves the least distance to fit, and one
+      ;; larger than the area starts at its top-left corner
+      (multiple-value-bind (ux uy uw uh) (output-usable-area (window-output win))
+        (flet ((fit (pos size start length)
+                 (if (> size length)
+                     start
+                     (min (max pos start) (- (+ start length) size)))))
+          (setf (window-float-x win)
+                (fit (window-float-x win) (window-width win) ux uw)
+                (window-float-y win)
+                (fit (window-float-y win) (window-height win) uy uh)))))
+    ;; Autofocus waits on the placement: a manage pass applies it
+    (request-manage-dirty)
+    t))
 
-(defun float-follow-parent (win)
-  "Move WIN, a float awaiting its first placement, to its parent's
-output and workspace when the parent is shown on another output.
-Returns true when WIN moved."
-  (let ((parent (window-parent win)))
-    (when (and parent
-               (gethash win *float-centre-pending*)
-               (window-output win)
-               (float-parent-shown-p parent)
-               (not (eq (window-output parent) (window-output win))))
-      (setf (window-output win) (window-output parent))
-      (assign-window-workspace win (window-workspace parent))
-      (request-manage-dirty)
+(defun float-place-pending ()
+  "Place every float awaiting its first placement whose size is known
+(float-place-new), on any output."
+  (dolist (win (all-windows))
+    (float-place-new win)))
+
+(defun window-rule-tiles-dialogs-p (win)
+  "True when the first window rule matching WIN carries :float NIL."
+  (let ((rule (find-if (lambda (rule) (window-rule-matches-p win rule))
+                       (config-get '(:window-rules)))))
+    (and rule
+         (loop for (key value) on rule by #'cddr
+               thereis (and (eq key :float) (null value))))))
+
+(defun float-new-dialogs ()
+  "Float each window not yet seen by a manage pass whose client named a
+parent, unless (:dialogs :float) is NIL or the first window rule
+matching it carries :float NIL. Each window is considered once, so a
+dialog later tiled by hand stays tiled; float-late-dialog covers a
+parent that arrives just after. Run at the start of a manage pass,
+before new windows are stamped onto a workspace."
+  (dolist (win (all-windows))
+    (unless (or (gethash win *dialog-float-decided*)
+                (window-node win)
+                (window-frame win))
+      (setf (gethash win *dialog-float-decided*) (get-internal-real-time))
+      (when (and (window-has-parent-p win)
+                 (not (window-floating-p win))
+                 (not (window-minimized-p win))
+                 (config-getf '(:dialogs) :float :default t)
+                 (not (window-rule-tiles-dialogs-p win)))
+        (float-window win :animate nil :quiet t)))))
+
+(defun float-late-dialog (win)
+  "Float WIN when its parent arrives within *dialog-late-parent-seconds*
+of float-new-dialogs leaving it tiled, under the same rule and
+(:dialogs :float) checks, and place it as a new dialog. Clients that
+name a parent through xdg-foreign, such as a portal's file picker, do
+so only after the window maps. Returns true when WIN floated."
+  (let ((decided (gethash win *dialog-float-decided*)))
+    (when (and (realp decided)
+               (< (- (get-internal-real-time) decided)
+                  (* *dialog-late-parent-seconds*
+                     internal-time-units-per-second))
+               (window-has-parent-p win)
+               (not (window-floating-p win))
+               (not (window-minimized-p win))
+               (config-getf '(:dialogs) :float :default t)
+               (not (window-rule-tiles-dialogs-p win)))
+      (setf (gethash win *dialog-float-decided*) t)
+      (float-window win :animate nil :quiet t)
+      (setf (gethash win *float-centre-pending*) t)
       t)))
 
 (defun forget-float-centre (win)
-  "Drop WIN's pending first placement."
+  "Drop WIN's pending first placement and its dialog float decision."
   (remhash win *float-centre-pending*)
+  (remhash win *dialog-float-decided*)
   nil)
 
 (defun float-apply-resize (win op)
@@ -340,15 +451,13 @@ is not part of the tiling, and propose its float dimensions — 0x0
       (propose-window-dimensions win 0 0)))
 
 (defun float-manage-decisions (output)
-  "Manage-sequence decisions for floating windows on OUTPUT: move a
-new float to its parent's output (float-follow-parent), adopt
+  "Manage-sequence decisions for floating windows on OUTPUT: adopt
 new/unassigned floats onto the current workspace, and re-propose the
 dimensions of floats on the current workspace."
   (let ((workspace (current-workspace output)))
     (dolist (win (all-windows))
       (unless (or (window-minimized-p win)
                    (not (window-floating-p win)))
-        (float-follow-parent win)
         (cond ((and (null (window-output win))
                     (window-arrives-on-p win output))
                ;; Adopt: same as the tiling path stamping placements
@@ -363,11 +472,15 @@ dimensions of floats on the current workspace."
 
 (defun float-render-decisions (output tiled-wins)
   "Render-sequence decisions for floating windows on OUTPUT's current
-workspace: position each at its float coordinates, border it, show it
+workspace: place new floats whose size is known (float-place-pending),
+position each at its float coordinates, border it, show it
 if hidden, and stack the floats above the tiling (the raised float,
 *raised-window*, on top while any window holds focus). Returns the
 floats actually rendered, so the render pass can exclude them from
 its hide logic."
+  ;; First placements may move a float to another output or workspace:
+  ;; settle them before choosing what this output renders
+  (float-place-pending)
   (let* ((workspace (current-workspace output))
          (floats (remove-if-not
                    (lambda (win)
@@ -383,7 +496,6 @@ its hide logic."
     (let ((below (let ((top (first (last tiled-wins))))
                    (and top (window-node top)))))
       (dolist (win floats)
-        (float-centre-new win)
         (float-clamp-position win)
         (make-window-node win)
         (multiple-value-bind (ax ay)

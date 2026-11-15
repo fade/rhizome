@@ -375,6 +375,8 @@ handlers should make window management requests here."
   (let ((win *pending-autofocus*))
     (when (and win
                (gethash (window-proxy win) *windows*)
+               ;; A new float goes where it lands first
+               (not (window-placement-pending-p win))
                (let ((out (window-output win)))
                  (or (null out)
                      (eql (window-workspace win) (current-workspace out)))))
@@ -415,6 +417,12 @@ z-ordering) to the compositor."
 (defun float-op-manage-pass ()
   "Start/apply/end interactive float move/resize operations during a
 manage sequence. Placeholder: redefined by floating.lisp."
+  nil)
+
+(defun window-placement-pending-p (win)
+  "True while WIN awaits its first placement. Placeholder: redefined
+by floating.lisp."
+  (declare (ignore win))
   nil)
 
 (defun on-render-sequence ()

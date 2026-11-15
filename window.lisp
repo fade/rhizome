@@ -306,7 +306,10 @@ Does nothing when WIN is NIL."
          ;; A null parent clears it
          (destructuring-bind (parent) args
            (if parent
-               (setf (gethash win *window-parents*) parent)
+               (progn
+                 (setf (gethash win *window-parents*) parent)
+                 ;; A parent named just after map still makes a dialog
+                 (float-late-dialog win))
                (remhash win *window-parents*))
            (request-manage-dirty)))
 
