@@ -56,9 +56,10 @@
 ;;;   :floating - StumpWM's floating group: every window floats,
 ;;;               arrivals cascade
 ;;; The scroll ribbon is a third type, but only live: C-t l cycles the
-;;; current workspace through tile, scroll, and floating, and
-;;; rhizome-cmd set-group-type tile|scroll|floating sets it. A :scroll
-;;; entry in :types is reported by group-type but makes no ribbon.
+;;; current workspace through tile, scroll, and floating, and, with the
+;;; rhizome-display module loaded, rhizome-cmd set-group-type
+;;; tile|scroll|floating sets it. A :scroll entry in :types is reported
+;;; by group-type but makes no ribbon.
 
 (configure '(:workspaces (:types nil
                          ;; (2 :floating)

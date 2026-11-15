@@ -5,6 +5,17 @@
 
 (in-package #:rhizome)
 
+;; The example names module commands (set-group-type): load the modules
+;; that ship with rhizome from the repo's modules/ directory, the way a
+;; user loads them
+(let ((*module-directory*
+        (make-pathname
+          :directory (append (pathname-directory
+                               (asdf:system-source-directory :rhizome))
+                             '("modules")))))
+  (load-module "rhizome-display")
+  (load-module "rhizome-scratchpads"))
+
 ;; Never start the bar from a test run
 (configure '(:bar (:enabled nil)))
 
