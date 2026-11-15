@@ -905,10 +905,12 @@ frames holding windows, one visible at a time:
   =(:frames (:focus-empty t))= both move into an empty frame: keyboard focus
   clears, the frame outline moves there, and the next new window opens
   in it. Split, move into the empty half, launch. The outline of a
-  focused frame that shows no window is orange, which sets it apart
-  from an occupied one; set another colour with
+  focused frame that shows no window is orange and 1 px wide, which
+  sets it apart from an occupied one; set another colour with
   =(:theme (:frame-outline-empty "#rrggbb"))=, or =nil= for the usual
-  outline colour.
+  outline colour, and another width with
+  =(:theme (:frame-outline-empty-width 2))=, or =nil= for the usual
+  outline width.
 
   #+begin_src lisp
   (rhizome:configure '(:frames (:focus-empty t)))

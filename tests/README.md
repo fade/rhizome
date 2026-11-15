@@ -166,9 +166,10 @@ stubbed river requests. Run with:
   splits and removals), when it hides (fullscreen, scroll and floating
   workspaces, switched off), the theme settings, the ring pixels, and
   the shell surface lifecycle (one per output, redraw only on change,
-  destroyed with its output), and the empty-frame colour: default,
-  configured, `nil` falling back to the outline colour, and the redraw
-  when a window arrives in or leaves the focused frame.
+  destroyed with its output), and the empty-frame colour and width:
+  default, configured, `nil` falling back to the outline colour or
+  width, and the redraw when a window arrives in or leaves the focused
+  frame.
 - `fselect.lisp` - frame selection by label (C-t f): which frames
   carry a label and in what order across outputs (empty and
   minimized-only frames skipped, floating workspaces skipped), the key

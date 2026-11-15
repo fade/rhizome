@@ -29,6 +29,10 @@
 ;;;                         no window (default "#ff9e64"), or NIL (the
 ;;;                         :frame-outline colour)
 ;;;   :frame-outline-width  ring width in px (default 2; 0 is off)
+;;;   :frame-outline-empty-width
+;;;                         ring width in px for a focused frame that
+;;;                         shows no window (default 1), or NIL (the
+;;;                         :frame-outline-width)
 
 (in-package #:rhizome)
 
@@ -42,18 +46,24 @@
 (defun frame-outline-style (&optional empty-p)
   "The ring colour and width as (VALUES R G B WIDTH), or NIL when the
 outline is off. EMPTY-P selects (:theme :frame-outline-empty) when it
-is a colour; otherwise, and for an occupied frame, the colour is
-:frame-outline's."
+is a colour, and (:theme :frame-outline-empty-width) when it is a
+positive integer; otherwise, and for an occupied frame, the colour is
+:frame-outline's and the width :frame-outline-width."
   (let ((colour (config-getf '(:theme) :frame-outline :default t))
         (empty (config-getf '(:theme) :frame-outline-empty
                             :default "#ff9e64"))
-        (width (config-getf '(:theme) :frame-outline-width :default 2)))
+        (width (config-getf '(:theme) :frame-outline-width :default 2))
+        (empty-width (config-getf '(:theme) :frame-outline-empty-width
+                                  :default 1)))
     (when (and colour (integerp width) (plusp width))
       (multiple-value-bind (r g b)
           (cond ((and empty-p (stringp empty)) (parse-hex-color empty))
                 ((stringp colour) (parse-hex-color colour))
                 (t (theme-border-rgb t)))
-        (values r g b width)))))
+        (values r g b
+                (if (and empty-p (integerp empty-width) (plusp empty-width))
+                    empty-width
+                    width))))))
 
 ;;; --- Target ---
 

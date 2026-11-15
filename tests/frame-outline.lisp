@@ -98,24 +98,39 @@
       (check "the default config declares the empty-frame colour"
              (config-getf '(:theme) :frame-outline-empty :default :absent)
              "#ff9e64")
-      (check "empty frame: orange by default"
+      (check "the default config declares the empty-frame width"
+             (config-getf '(:theme) :frame-outline-empty-width :default :absent)
+             1)
+      (check "empty frame: orange, 1 px by default"
              (multiple-value-list (frame-outline-style t))
-             '(#xff #x9e #x64 2))
-      (check "occupied frame: the normal outline colour"
+             '(#xff #x9e #x64 1))
+      (check "occupied frame: the normal outline colour and width"
              (multiple-value-list (frame-outline-style nil))
              '(#x7a #xa2 #xf7 2))
       (configure '(:theme (:frame-outline-empty "#00ff00")))
       (check "configured empty-frame colour"
              (multiple-value-list (frame-outline-style t))
+             '(0 255 0 1))
+      (configure '(:theme (:frame-outline-empty-width 3)))
+      (check "configured empty-frame width"
+             (multiple-value-list (frame-outline-style t))
+             '(0 255 0 3))
+      (check "configured empty-frame width: occupied keeps its width"
+             (multiple-value-list (frame-outline-style nil))
+             '(#x7a #xa2 #xf7 2))
+      (configure '(:theme (:frame-outline-empty-width nil)))
+      (check ":frame-outline-empty-width nil: the :frame-outline-width"
+             (multiple-value-list (frame-outline-style t))
              '(0 255 0 2))
+      (configure '(:theme (:frame-outline-empty-width 1)))
       (configure '(:theme (:frame-outline-empty nil)))
       (check ":frame-outline-empty nil: the focused-border colour"
              (multiple-value-list (frame-outline-style t))
-             '(#x7a #xa2 #xf7 2))
+             '(#x7a #xa2 #xf7 1))
       (configure '(:theme (:frame-outline "#00ffff")))
       (check ":frame-outline-empty nil: the :frame-outline colour"
              (multiple-value-list (frame-outline-style t))
-             '(0 255 255 2))
+             '(0 255 255 1))
       (configure '(:theme (:frame-outline nil :frame-outline-empty "#ff9e64")))
       (check "outline off: off for empty frames too"
              (multiple-value-list (frame-outline-style t))
@@ -343,6 +358,13 @@
                  (let ((state (gethash out *frame-outlines*)))
                    (get-pixel-argb (getf state :ptr) (getf state :w)
                                    (getf state :h) 0 0)))
+               (ring-width ()
+                 ;; Width as drawn, and the first pixel inside the ring
+                 ;; left clear
+                 (let ((state (gethash out *frame-outlines*)))
+                   (list (car (last (getf state :drawn)))
+                         (get-pixel-argb (getf state :ptr) (getf state :w)
+                                         (getf state :h) 1 1))))
                (frame ()
                  (current-frame-for out (current-workspace out))))
           (check "a frame with no window is empty"
@@ -350,6 +372,8 @@
           (frame-outline-render-pass)
           (check "empty focused frame: the ring is the empty colour"
                  (ring-pixel) #xffff9e64)
+          (check "empty focused frame: the ring is 1 px wide"
+                 (ring-width) '(1 0))
           ;; A window arrives in the focused frame
           (setf (gethash :fe-win *windows*) win
                 (window-output win) out)
@@ -363,6 +387,8 @@
                  (length (calls-of :commit)) 1)
           (check "window arrives: the ring is the normal colour"
                  (ring-pixel) #xff7aa2f7)
+          (check "window arrives: the ring is the normal width"
+                 (ring-width) '(2 #xff7aa2f7))
           ;; Minimized, the window leaves the frame showing nothing
           (setf (window-minimized-p win) t)
           (check "a frame holding only a minimized window is empty"
@@ -376,6 +402,8 @@
                  (length (calls-of :commit)) 1)
           (check "window leaves: the ring is the empty colour again"
                  (ring-pixel) #xffff9e64)
+          (check "window leaves: the ring is 1 px again"
+                 (ring-width) '(1 0))
           (setf calls '())
           (frame-outline-render-pass)
           (check "unchanged empty frame: no redraw"

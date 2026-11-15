@@ -155,6 +155,9 @@ Returns (values value found-p)."
             :frame-outline-empty "#ff9e64"
             ;; Outline colour of a focused frame that shows no
             ;; window; nil uses the :frame-outline colour
+            :frame-outline-empty-width 1
+            ;; Outline width in px of a focused frame that shows no
+            ;; window; nil uses the :frame-outline-width
             )
     :launcher (:background "#23142d"
                :opacity 0.9
