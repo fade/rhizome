@@ -59,12 +59,18 @@ a name, typed or picked, switches."
                              (switch-workspace ws out)
                              (message "~A" (workspace-range-text out text))))))))))
 
-(defun command-palette ()
-  "Run a command from the command table by name."
+(defun command-palette (&optional (initial ""))
+  "Read a command line and run it through ipc-dispatch-line, as
+StumpWM's colon does. INITIAL is the starting text of the line.
+Candidates complete the command name. Enter runs the typed line when
+it has arguments or names a command exactly, runs the selected command
+for a partial name, and runs nothing for a blank line."
   (let ((commands
           (mapcar #'string-downcase (command-names))))
     (prompt-open "Command:"
                  :candidates commands
+                 :complete-line t
+                 :initial initial
                  :on-complete
                  (lambda (choice)
                    ;; Replies show for 3 s, never over the command's
@@ -75,6 +81,13 @@ a name, typed or picked, switches."
                       (let ((*command-reply-seconds* 3))
                         (ipc-dispatch-line choice))
                       serial))))))
+
+(define-command :colon (output args)
+  "Open the command palette, with ARGS as the start of the command
+line. Usage: colon [text]"
+  (declare (ignore output))
+  (command-palette (format nil "~{~A~^ ~}" args))
+  nil)
 
 (defun run-shell-command-prompt ()
   "Prompt for a shell command and run it in the background
