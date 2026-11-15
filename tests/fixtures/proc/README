@@ -1,0 +1,9 @@
+Recorded procfs captures for tests/bar-system-modules.lisp.
+
+Host: ghost, Linux 7.3.3-1-cachyos, recorded 2026-11-15 22:36 UTC.
+
+meminfo        cat /proc/meminfo
+stat-first     head -1 /proc/stat
+stat-second    head -1 /proc/stat, two seconds after stat-first
+
+The files are byte-for-byte copies of the command output.

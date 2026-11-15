@@ -38,7 +38,7 @@ SUITES    := animations decorations surface window-rules window-rules-reload flo
              xdg-paths workspace-numbering \
              fullscreen-toggle \
              network-menu bar-reserved-per-output \
-             colon-command
+             colon-command bar-system-modules
 
 .PHONY: all build test install docs clean help
 
