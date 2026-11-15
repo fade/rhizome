@@ -663,6 +663,8 @@ by setup-default-prefix-bindings, which directs the writes to
   (define-prefix-key 98 (lambda () (toggle-bar)) "toggle bar")   ; b
   ;; C-t f — float/tile the focused window (GIMP-style floats)
   (define-prefix-key 102 (lambda () (toggle-float-focused)) "float/tile window") ; f
+  ;; C-t d - go to the last dialog that opened on a hidden workspace
+  (define-prefix-key 100 (lambda () (goto-last-dialog)) "go to last dialog") ; d
   ;; C-t n / C-t p — pull the next/previous hidden window into the
   ;; current frame (StumpWM's pull-hidden-next/previous)
   (define-prefix-key 110 (lambda () (with-frame-context

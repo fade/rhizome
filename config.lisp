@@ -97,7 +97,8 @@ Returns (values value found-p)."
               ;; A window whose client names a parent floats on map;
               ;; a window rule with :float nil keeps one app's dialogs
               ;; tiled. A dialog that opens on a hidden workspace
-              ;; shows a notice for :notify-seconds in :notify-color.
+              ;; shows a notice for :notify-seconds in :notify-color;
+              ;; C-t d (goto-last-dialog) goes to it.
               :notify-seconds 10
               :notify-color "#ff5fd7")
     :windows (:decorations :server

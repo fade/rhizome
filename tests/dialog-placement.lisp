@@ -2,7 +2,8 @@
 ;;; on map unless a window rule or the :dialogs group says otherwise,
 ;;; and the first placement goes either to the active frame or to the
 ;;; parent's frame, with a notification when that frame is on a hidden
-;;; workspace (floating.lisp). River requests are stubbed.
+;;; workspace (floating.lisp); goto-last-dialog then shows that
+;;; workspace and focuses the dialog. River requests are stubbed.
 (ql:quickload :rhizome)
 
 (in-package #:rhizome)
@@ -262,6 +263,77 @@
                  (list 10 "#ff5fd7"))
           (check "a dialog placed on a hidden workspace is no longer pending"
                  (lambda () (window-placement-pending-p dlg)) nil)))
+
+      ;; --- goto-last-dialog: the last dialog that opened out of view ---
+      (check "the default config declares the notice length and colour"
+             (lambda ()
+               (list (config-getf '(:dialogs) :notify-seconds :default :absent)
+                     (config-getf '(:dialogs) :notify-color :default :absent)))
+             (list 10 "#ff5fd7"))
+      (check "goto-last-dialog is a command, exported, and bound to prefix d"
+             (lambda ()
+               (setup-default-prefix-bindings)
+               (list (and (gethash :goto-last-dialog *command-table*) t)
+                     (nth-value 1 (find-symbol "GOTO-LAST-DIALOG" "RHIZOME"))
+                     (functionp (keymap-lookup *prefix-map* 100))))
+             (list t :external t))
+      (let ((focused '())
+            (said '())
+            (saved-focus (symbol-function 'focus-window))
+            (saved-message (symbol-function 'message)))
+        (setf (symbol-function 'focus-window)
+              (lambda (win seat)
+                (declare (ignore seat))
+                (push win focused))
+              (symbol-function 'message)
+              (lambda (control &rest args)
+                (push (apply #'format nil control args) said)))
+        (unwind-protect
+             (progn
+               (fresh)
+               (setf (gethash :g-seat *seats*) :g-seat)
+               (let* ((right (mk-out :g-right 1280))
+                      (user (tiled (mk-win :g-u right) right))
+                      (parent (mk-win :g-p right :workspace 2)))
+                 (focus user)
+                 (let ((root (frame-tree-for right 2)))
+                   (split-frame root :horizontal 1/2)
+                   (frame-push-window parent (second (frame-leaves root))))
+                 (check "no dialog out of view: goto-last-dialog stays and says so"
+                        (lambda ()
+                          (setf *last-dialog-elsewhere* nil said '())
+                          (list (goto-last-dialog) (current-workspace right)
+                                (and (find-if (lambda (m) (search "dialog" m))
+                                              said)
+                                     t)))
+                        (list nil 1 t))
+                 (let ((dlg (new-dialog :g-d right :g-p)))
+                   (commit-size dlg 200 100)
+                   (render right)
+                   (check "a dialog that opens out of view is the last one"
+                          (lambda () (eq *last-dialog-elsewhere* dlg)) t)
+                   (check "goto-last-dialog shows its workspace and focuses it"
+                          (lambda ()
+                            (setf focused '())
+                            (list (eq (goto-last-dialog) dlg)
+                                  (current-workspace right)
+                                  (eq (first focused) dlg)))
+                          (list t 2 t))
+                   ;; The dialog closes; the operator is back on workspace 1
+                   (switch-workspace 1 right)
+                   (remhash :g-d *windows*)
+                   (check "a closed dialog: goto-last-dialog stays and says so"
+                          (lambda ()
+                            (setf said '() focused '())
+                            (list (goto-last-dialog) (current-workspace right)
+                                  focused
+                                  (and (find-if (lambda (m) (search "dialog" m))
+                                                said)
+                                       t)))
+                          (list nil 1 nil t)))))
+          (setf (symbol-function 'focus-window) saved-focus
+                (symbol-function 'message) saved-message)
+          (clrhash *seats*)))
 
       ;; --- B3: tiled parent on another visible output: no notification ---
       (fresh)

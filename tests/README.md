@@ -29,7 +29,10 @@ stubbed river requests. Run with:
   frame smaller than the dialog in either dimension; else to the
   parent's frame, with a `group:screen:frame` notice (length and colour
   from `:dialogs`) only when that workspace is hidden; a dialog that
-  would overhang its output moves back onto the usable area.
+  would overhang its output moves back onto the usable area;
+  `goto-last-dialog` (command, export, C-t d) shows and focuses the
+  last dialog that opened on a hidden workspace, and with none, or
+  once it has closed, changes nothing and shows a message.
 - `focus-on-close.lisp` - focus recovery when a window closes: the next
   window in its frame (or the next column of a scroll ribbon), else the
   newest window on its workspace, else a cleared seat; focus and clear

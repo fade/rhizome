@@ -104,6 +104,12 @@ describe-command."
   (declare (ignore output args))
   (toggle-float-focused))
 
+(define-command :goto-last-dialog (output args)
+  "Show and focus the last dialog that opened on a hidden workspace."
+  (declare (ignore output args))
+  (goto-last-dialog)
+  nil)
+
 (define-command :focus-next (output args)
   "Cycle to the next window in the current frame."
   (declare (ignore args))
