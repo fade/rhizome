@@ -65,6 +65,7 @@
         (let* ((ow 1920) (oh 1080)
                (w (or (window-float-width win) (window-width win) 800))
                (h (or (window-float-height win) (window-height win) 500)))
+          (declare (ignore oh h))
           (float-window win :x (- (floor ow 2) (floor w 2))
                               :y (+ (bar-reserved-height) 50))))
       ;; focus it (queued through the manage pass)
