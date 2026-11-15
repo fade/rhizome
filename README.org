@@ -905,6 +905,32 @@ see the optional package list above. The user config file lives at
 ~~/.config/rhizome/config.lisp~; the bar process logs to
 ~~/.cache/rhizome/bar.log~. MOD+B toggles the bar.
 
+*** Active screen
+
+With more than one output, the current output is marked. Its bar
+takes the active background and every other bar the inactive one, so
+the pair differs in lightness as well as hue. A focus change between
+outputs redraws both bars.
+
+#+begin_src lisp
+(rhizome:configure '(:bar (:background-active "#392e7a")))   ; current output's bar (default)
+(rhizome:configure '(:bar (:background-inactive "#1a1b26"))) ; other bars (default: :background)
+#+end_src
+
+The defaults keep the bar foreground at 7:1 contrast or better on both
+backgrounds.
+
+A current output without a bar shows a line along one of its edges
+instead, above every window. The line is hidden on the other outputs,
+on an output that carries a bar, and when only one output exists.
+
+#+begin_src lisp
+(rhizome:configure '(:screens (:active-edge :top)))          ; :top (default), :left, :bottom, :right
+(rhizome:configure '(:screens (:active-edge-width 3)))       ; 1 to 5 px (default 3)
+(rhizome:configure '(:screens (:active-edge-color "#ffffff"))) ; default T: the :focused-border colour
+(rhizome:configure '(:screens (:active-edge nil)))           ; no line
+#+end_src
+
 ** Native application launcher (MOD+D)
 
 The launcher is a native Wayland layer-shell overlay — no external process like fzf or rofi needed. It uses =zwlr_layer_shell_v1= + =river_layer_shell_v1= to create a top-layer popup with exclusive keyboard interactivity.

@@ -453,7 +453,10 @@ window positions, borders, and z-ordering here."
   (titlebars-render-pass)
   ;; fselect's frame labels (river_shell_surface_v1).
   ;; Placeholder: redefined by fselect.lisp, which loads later.
-  (fselect-labels-render-pass))
+  (fselect-labels-render-pass)
+  ;; The active-screen edge line (river_shell_surface_v1).
+  ;; Placeholder: redefined by active-edge.lisp, which loads later.
+  (active-edge-render-pass))
 
 ;;; --- Manage dirty --
 
@@ -473,6 +476,11 @@ frame-outline.lisp)."
 
 (defun fselect-labels-render-pass ()
   "fselect frame labels (placeholder: redefined by fselect.lisp)."
+  nil)
+
+(defun active-edge-render-pass ()
+  "The active-screen edge line (placeholder: redefined by
+active-edge.lisp)."
   nil)
 
 (defun request-manage-dirty ()

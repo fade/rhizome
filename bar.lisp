@@ -156,6 +156,22 @@ bar-head-segment-modules applies HEAD's primary status."
             (*bar-head-primary* (bar-head-primary-p ,h)))
        ,@body)))
 
+(defun bar-active-screen-p (&optional (entry *bar-output-view*)
+                                      (snapshot (bar-snapshot)))
+  "True when ENTRY, a snapshot :outputs entry, is the current output
+and SNAPSHOT lists more than one output."
+  (and (getf entry :current)
+       (> (length (getf snapshot :outputs)) 1)))
+
+(defun bar-background-color (active-p)
+  "The bar background as \"#rrggbb\": (:bar :background-active) when
+ACTIVE-P, otherwise (:bar :background-inactive), falling back to
+(:bar :background)."
+  (if active-p
+      (config-getf '(:bar) :background-active :default "#392e7a")
+      (or (config-getf '(:bar) :background-inactive)
+          (config-getf '(:bar) :background :default "#1a1b26"))))
+
 ;;; --- Pointer state (module click/scroll support) ---
 
 (defparameter *bar-pointer-x* nil
@@ -921,8 +937,8 @@ after it."
     (when (or (null ptr) (cffi:null-pointer-p ptr))
       (return-from %bar-render))
     (multiple-value-bind (br bg bb) (parse-hex-color
-                                       (config-getf '(:bar) :background
-                                                    :default "#1a1b26"))
+                                       (bar-background-color
+                                        (bar-active-screen-p)))
       (multiple-value-bind (fr fg fb) (parse-hex-color
                                         (config-getf '(:bar) :foreground
                                                      :default "#c0caf5"))
@@ -1119,13 +1135,16 @@ Return T, or NIL when the shm file or mapping cannot be created."
 ;;; buffer when something actually changed, so a fast poll is cheap.
 
 (defun bar-content-changed-p (head)
-  "True when a module HEAD's bar draws rendered differently since
-HEAD's last check. Records the new content on HEAD."
+  "True when a module HEAD's bar draws rendered differently, or HEAD's
+active status changed, since HEAD's last check. Records the new
+content on HEAD."
   (with-bar-head (head)
     (let* ((modules (append (bar-head-segment-modules :left)
                             (bar-head-segment-modules :center)
                             (bar-head-segment-modules :right)))
            (sig (with-output-to-string (s)
+                  (prin1 (bar-active-screen-p) s)
+                  (terpri s)
                   (dolist (module modules)
                     (princ module s)
                     (princ " = " s)

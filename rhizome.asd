@@ -51,6 +51,7 @@
    (:file "titlebar" :depends-on ("decorations" "font" "workspaces" "seat"))
    (:file "fselect" :depends-on ("frame-outline" "prefix" "commands" "font"))
    (:file "frame-launch" :depends-on ("fselect" "placement" "tiling" "workspaces"))
+   (:file "active-edge" :depends-on ("decorations" "bar" "output" "heads"))
    (:file "scratchpads" :depends-on ("floating" "workspaces" "prefix"))
    (:file "eval-prompt" :depends-on ("keybindings" "bar"))
    (:file "bar" :depends-on ("launcher" "config" "wm-protocol"))
