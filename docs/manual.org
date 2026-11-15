@@ -1246,9 +1246,10 @@ trace is large while windows animate.
   appears when the bar next starts, as after a window manager restart.
 - =rhizome-cmd= reports no socket :: The window manager is not
   running, or =(:ipc (:enabled nil))= is set. The socket is
-  =$XDG_RUNTIME_DIR/rhizome.sock=; when =XDG_RUNTIME_DIR= is unset the
-  window manager uses =/tmp/rhizome-UID.sock= while =rhizome-cmd= looks
-  for =/tmp/rhizome.sock=, so set =XDG_RUNTIME_DIR=.
+  =$XDG_RUNTIME_DIR/rhizome.sock=, or =/tmp/rhizome-UID.sock= when
+  =XDG_RUNTIME_DIR= is unset or empty. =rhizome-cmd= looks in the same
+  place, so it must run with the same =XDG_RUNTIME_DIR= as the window
+  manager.
 - An application never receives Control+T :: Control+T is the prefix
   key. Move it with =(rhizome:set-prefix-key "C-z")=.
 - Text uses the bitmap font :: Install freetype and fontconfig and
