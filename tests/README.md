@@ -169,3 +169,6 @@ stubbed river requests. Run with:
   of cold-starting a fresh one: pgrep parsing, adoption in start-bar
   (extras reaped, nothing launched), adopted liveness in bar-alive-p,
   and the handover flag. All subprocess calls stubbed.
+- `example-config.lisp` - examples/config.lisp loads without
+  signalling, the values it marks as defaults are the defaults, and
+  every `rhizome-cmd` command it names exists.
