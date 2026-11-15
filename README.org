@@ -1160,6 +1160,9 @@ A module extends rhizome through its exported interface:
 - keymaps: =define-key=, =undefine-key=, =make-keymap=, =*top-map*=,
   =*prefix-map*=, =define-prefix-key=;
 - hooks: =add-hook= and =remove-hook=;
+- commands: =define-command=, with =execute-command=, =find-command=,
+  and =command-names=; =reload-config= leaves commands in place, so a
+  module may define them at top level;
 - window rules: the =:window-rules= list, through =configure=.
 
 A module does not redefine rhizome's own functions. When a module needs

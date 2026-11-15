@@ -13,8 +13,8 @@
 ;;; Nothing is loaded until load-module is called, from the config
 ;;; file or the REPL. Module code runs inside the window manager
 ;;; process and uses the exported registration points:
-;;; define-placement-policy, keymaps, hooks, and window rules through
-;;; configure.
+;;; define-placement-policy, define-command, keymaps, hooks, and window
+;;; rules through configure.
 
 (in-package #:rhizome)
 
