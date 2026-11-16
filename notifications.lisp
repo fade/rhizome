@@ -453,18 +453,91 @@ was shown: a later message replaced it on screen when they differ.")
 (defvar *notification-wm-conn* nil
   "The window manager's bus connection for the Dismiss signal.")
 
+(defparameter *notification-request-max-length* 16384
+  "Characters a notification-show argument may hold. The bar's longest
+request, every character escaped, stays under it.")
+
+(defparameter +notification-request-keys+
+  '(("ID" . :id) ("APP" . :app) ("SUMMARY" . :summary)
+    ("LINES" . :lines) ("SECONDS" . :seconds))
+  "Keyword names a notification-show plist may hold, with their keywords.")
+
 (defun notification-read-request (text)
-  "The plist a notification-show line carries, read from TEXT with
-*READ-EVAL* off, or NIL when TEXT is not a plist with an integer :ID."
-  (let ((form (handler-case
-                  (with-standard-io-syntax
-                    (let ((*read-eval* nil))
-                      (read-from-string text)))
-                (error () nil))))
-    (and (consp form)
-         (evenp (length form))
-         (integerp (getf form :id))
-         form)))
+  "The plist a notification-show line carries, or NIL when TEXT is not
+one.
+TEXT is parsed without the Lisp reader, so nothing in it is interned or
+evaluated. It is a list of keyword and value pairs. Each keyword is one
+of :ID, :APP, :SUMMARY, :LINES, and :SECONDS. Each value is a string, an
+integer, NIL, or a list of strings.
+TEXT longer than *NOTIFICATION-REQUEST-MAX-LENGTH* characters, and a
+plist without an integer :ID, return NIL."
+  (let ((pos 0)
+        (end (length text)))
+    (when (> end *notification-request-max-length*)
+      (return-from notification-read-request nil))
+    (labels ((fail ()
+               (return-from notification-read-request nil))
+             (skip ()
+               (loop while (and (< pos end)
+                                (member (char text pos) '(#\Space #\Tab)))
+                     do (incf pos)))
+             (peek ()
+               (skip)
+               (if (< pos end) (char text pos) (fail)))
+             (expect (char)
+               (unless (eql (peek) char) (fail))
+               (incf pos))
+             (token ()
+               (skip)
+               (let ((start pos))
+                 (loop while (and (< pos end)
+                                  (not (find (char text pos)
+                                             '(#\Space #\Tab #\( #\) #\"))))
+                       do (incf pos))
+                 (when (= start pos) (fail))
+                 (subseq text start pos)))
+             (read-string ()
+               (expect #\")
+               (with-output-to-string (out)
+                 (loop
+                   (when (>= pos end) (fail))
+                   (let ((char (char text pos)))
+                     (incf pos)
+                     (case char
+                       (#\" (return))
+                       (#\\ (when (>= pos end) (fail))
+                        (write-char (char text pos) out)
+                        (incf pos))
+                       (t (write-char char out)))))))
+             (read-value ()
+               (case (peek)
+                 (#\" (read-string))
+                 (#\( (incf pos)
+                  (prog1 (loop until (eql (peek) #\))
+                               collect (read-string))
+                    (incf pos)))
+                 (t (let ((token (token)))
+                      (if (string-equal token "NIL")
+                          nil
+                          (handler-case (parse-integer token)
+                            (error () (fail))))))))
+             (read-key ()
+               (let ((token (token)))
+                 (or (and (> (length token) 1)
+                          (char= (char token 0) #\:)
+                          (cdr (assoc (subseq token 1)
+                                      +notification-request-keys+
+                                      :test #'string-equal)))
+                     (fail)))))
+      (expect #\()
+      (let ((plist (loop until (eql (peek) #\))
+                         append (let ((key (read-key)))
+                                  (list key (read-value))))))
+        (incf pos)
+        (skip)
+        (and (= pos end)
+             (integerp (getf plist :id))
+             plist)))))
 
 (defun notification-display-text (request)
   "The message window text for REQUEST: \"APP: SUMMARY\" (just the

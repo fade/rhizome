@@ -631,6 +631,60 @@ after them is answered."
       (%sock-close ours)
       (%sock-close theirs))))
 
+(defun test-request-parsing ()
+  "Application text crosses to the window manager as escaped strings,
+and the window manager's parser interns nothing."
+  (test-reset)
+  (let* ((summary "foo) (:zz-probe-key . #.(bar \\ \"q\"")
+         (body "zz-probe-symbol")
+         (id (notification-notify "app" 0 summary body 0 0)))
+    (notifications-tick 0)
+    (let* ((line (car (last (test-wm-lines))))
+           (request (test-show-request line)))
+      (ok "a hostile summary crosses as the same string"
+          (list (getf request :id) (getf request :summary)
+                (getf request :lines))
+          (list id summary (list body)))
+      (ok "the request holds only known keys, strings, and integers"
+          (loop for (key value) on request by #'cddr
+                always (and (member key '(:id :app :summary :lines :seconds))
+                            (or (null value) (integerp value)
+                                (stringp value)
+                                (and (listp value)
+                                     (every #'stringp value)))))
+          t)))
+  (ok "an unknown key is refused"
+      (notification-read-request "(:ID 1 :ZZ-PROBE-KEY-2 2)") nil)
+  (ok "a bare symbol value is refused"
+      (notification-read-request "(:ID 1 :APP ZZ-PROBE-BARE)") nil)
+  (ok "a refused request interns no symbol"
+      (list (find-symbol "ZZ-PROBE-KEY-2" :keyword)
+            (find-symbol "ZZ-PROBE-BARE" :rhizome)
+            (find-symbol "ZZ-PROBE-BARE" :cl-user)
+            (find-symbol "ZZ-PROBE-KEY" :keyword)
+            (find-symbol "ZZ-PROBE-SYMBOL" :rhizome)
+            (find-symbol "ZZ-PROBE-SYMBOL" :cl-user))
+      '(nil nil nil nil nil nil))
+  (ok "a request past the length bound is refused"
+      (notification-read-request
+        (format nil "(:ID 1 :APP ~S)"
+                (make-string (1+ *notification-request-max-length*)
+                             :initial-element #\a)))
+      nil)
+  (test-reset)
+  (notification-notify (make-string 300 :initial-element #\")
+                       0 (make-string 300 :initial-element #\\)
+                       (format nil "~{~A~^~%~}"
+                               (loop repeat 12
+                                     collect (make-string 300 :initial-element #\")))
+                       0 0)
+  (notifications-tick 0)
+  (let ((line (car (last (test-wm-lines)))))
+    (ok "the longest request the bar sends fits the bound and parses"
+        (and (<= (length line) *notification-request-max-length*)
+             (integerp (getf (test-show-request line) :id)))
+        t)))
+
 (defun test-run-all ()
   (test-ids-and-markup)
   (test-timeouts)
@@ -638,6 +692,7 @@ after them is answered."
   (test-capabilities)
   (test-dispatch)
   (test-wire-framing)
+  (test-request-parsing)
   (test-wm-commands)
   (test-disabled)
   (test-bus))
