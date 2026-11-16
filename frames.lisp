@@ -281,6 +281,11 @@ nearest in the raw direction."
 empty frame."
   (and (config-getf '(:frames) :focus-empty :default nil) t))
 
+(defun frames-cycle-skips-empty-p ()
+  "True when (:frames (:cycle-skips-empty t)) makes fnext and fprev pass
+over frames that hold no unminimized window."
+  (and (config-getf '(:frames) :cycle-skips-empty :default nil) t))
+
 (defun workspace-frame-leaf (output workspace index)
   "The leaf frame at 0-based INDEX in layout order of WORKSPACE's tree
 on OUTPUT, or NIL when the tree has fewer leaves."
@@ -325,15 +330,29 @@ is not a leaf of its tree."
 (defun cycle-frame (output workspace &optional (delta 1))
   "Focus the leaf DELTA steps from the current frame of WORKSPACE on
 OUTPUT, in tree order and wrapping, through focus-frame. An empty
-frame is a stop like any other. Returns the frame focused, or NIL with
-nothing changed when the tree has a single leaf."
+frame is a stop like any other, unless (:frames (:cycle-skips-empty t))
+is set: then focus moves to the nearest leaf in the direction of DELTA
+that has a frame-focus-window, passing over empty leaves.
+Returns the frame focused, or NIL with nothing changed when the tree
+has a single leaf or, when skipping empty frames, no other leaf holds
+an unminimized window."
   (let ((leaves (frame-leaves (frame-tree-for output workspace))))
     (when (cdr leaves)
-      (let ((pos (or (position (current-frame-for output workspace) leaves
-                               :test #'eq)
-                     0)))
-        (focus-frame output workspace
-                     (nth (mod (+ pos delta) (length leaves)) leaves))))))
+      (let* ((count (length leaves))
+             (pos (or (position (current-frame-for output workspace) leaves
+                                :test #'eq)
+                      0))
+             (target
+               (if (frames-cycle-skips-empty-p)
+                   (let ((step (if (minusp delta) -1 1)))
+                     (loop for k from 1 below count
+                           for leaf = (nth (mod (+ pos (* k step)) count)
+                                           leaves)
+                           when (frame-focus-window leaf)
+                             return leaf))
+                   (nth (mod (+ pos delta) count) leaves))))
+        (when target
+          (focus-frame output workspace target))))))
 
 (defun focus-frame-direction (output workspace direction)
   "Move frame focus one step in DIRECTION. If the target frame holds

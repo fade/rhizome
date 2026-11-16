@@ -188,14 +188,15 @@ Lisp callers of execute-command may pass strings."
   nil)
 
 (define-command :fnext (output args)
-  "Focus the next frame in tree order, wrapping, empty frames included."
+  "Focus the next frame in tree order, wrapping, empty frames included
+unless (:frames (:cycle-skips-empty t)) is set."
   (declare (ignore args))
   (focus-next-frame output)
   nil)
 
 (define-command :fprev (output args)
   "Focus the previous frame in tree order, wrapping, empty frames
-included."
+included unless (:frames (:cycle-skips-empty t)) is set."
   (declare (ignore args))
   (focus-previous-frame output)
   nil)

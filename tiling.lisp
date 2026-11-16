@@ -160,12 +160,14 @@ the output's other workspaces keep theirs."
 
 (defun focus-next-frame (output)
   "Focus the next frame of the current workspace in tree order,
-wrapping, empty frames included (StumpWM's fnext)."
+wrapping, empty frames included unless (:frames (:cycle-skips-empty t))
+is set (StumpWM's fnext). Returns the frame focused, or NIL."
   (cycle-frame output (current-workspace output) 1))
 
 (defun focus-previous-frame (output)
   "Focus the previous frame of the current workspace in tree order,
-wrapping, empty frames included (StumpWM's fprev)."
+wrapping, empty frames included unless (:frames (:cycle-skips-empty t))
+is set (StumpWM's fprev). Returns the frame focused, or NIL."
   (cycle-frame output (current-workspace output) -1))
 
 ;;; --- Manage/render sequence integration ---
