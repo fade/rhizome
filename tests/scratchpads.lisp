@@ -319,6 +319,57 @@ HEIGHT on OUT; its float position as (X Y)."
                                  800 500)
           (list (+ ux 100) (+ uy 100))))))
 
+(defun check-hide-moves-focus ()
+  (let ((stub (symbol-function 'focus-window)))
+    (setf (symbol-function 'focus-window) *real-focus-window*)
+    (unwind-protect
+         (flet ((mk-seat ()
+                  (setf (gethash :sp-seat *seats*)
+                        (make-instance 'rhizome-seat :proxy :sp-seat))))
+           (fresh)
+           (let* ((seat (mk-seat))
+                  (out (mk-out :sp-out))
+                  (under (mk-win :sp-under out))
+                  (win (scratchpad-on-screen "term" out :sp-focus)))
+             (focus-window win seat)
+             (toggle-scratchpad "term")
+             (ok "hiding a scratchpad focuses the window underneath"
+                 (seat-focused-window seat) under)
+             (ok "a hidden scratchpad is not marked focused"
+                 (window-focused-p win) nil)
+             (toggle-scratchpad "term")
+             (ok "showing a scratchpad focuses it"
+                 (seat-focused-window seat) win))
+           (fresh)
+           (let* ((seat (mk-seat))
+                  (out (mk-out :sp-out))
+                  (win (scratchpad-on-screen "term" out :sp-alone)))
+             (focus-window win seat)
+             (toggle-scratchpad "term")
+             (ok "hiding the only window on a workspace leaves no focus"
+                 (seat-focused-window seat) nil))
+           (fresh)
+           (let* ((seat (mk-seat))
+                  (out (mk-out :sp-out))
+                  (under (mk-win :sp-under out))
+                  (win (mk-float :sp-min out)))
+             (focus-window win seat)
+             (handle-window-event win :minimize-requested)
+             (ok "a minimize request focuses the window underneath"
+                 (seat-focused-window seat) under))
+           (fresh)
+           (let* ((seat (mk-seat))
+                  (out (mk-out :sp-out))
+                  (under (mk-win :sp-under out))
+                  (win (mk-float :sp-menu out)))
+             (focus-window win seat)
+             (funcall (cdr (assoc "Minimize" (menu-item-list win)
+                                  :test #'string=))
+                      win)
+             (ok "menu Minimize focuses the window underneath"
+                 (seat-focused-window seat) under)))
+      (setf (symbol-function 'focus-window) stub))))
+
 (dolist (check '(check-scratchpad-hide-and-show
                  check-minimize-request
                  check-menu-minimize-and-restore
@@ -326,7 +377,8 @@ HEIGHT on OUT; its float position as (X Y)."
                  check-claim-hooks
                  check-centring
                  check-centre-on-first-size
-                 check-show-keeps-scratchpad-on-output))
+                 check-show-keeps-scratchpad-on-output
+                 check-hide-moves-focus))
   (handler-case (funcall check)
     (error (e)
       (ok (format nil "~(~A~) runs without error" check)

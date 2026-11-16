@@ -219,7 +219,10 @@ stubbed river requests. Run with:
   pixels below that output's bar; a scratchpad claimed before its
   client commits a size centres again on that first size, and only
   that one; every show moves a scratchpad back inside its output's
-  usable area, and one already inside keeps its position.
+  usable area, and one already inside keeps its position; hiding a
+  scratchpad, a minimize request, and the menu's Minimize each move
+  the focus to a visible window on the workspace, or clear it when
+  none is left, and showing a scratchpad focuses it.
 - `display-layout.lisp` - the `(:displays (:layout ...))` output
   layout: relative placement against heads of different sizes,
   normalization to a 0,0 origin, explicit positions, mode and scale

@@ -58,9 +58,10 @@
       (list (cons (if (window-minimized-p win) "Restore" "Minimize")
                   (lambda (w)
                     ;; The next render pass sends river's hide or show
-                    (setf (window-minimized-p w)
-                          (not (window-minimized-p w)))
-                    (request-manage-dirty)))
+                    (if (window-minimized-p w)
+                        (progn (setf (window-minimized-p w) nil)
+                               (request-manage-dirty))
+                        (minimize-window w))))
             (cons (if (window-floating-p win) "Tile" "Float")
                   (lambda (w) (toggle-float w)))
             (cons (if (window-maximized-p win) "Unmaximize" "Maximize")

@@ -401,9 +401,7 @@ Does nothing when WIN is NIL."
          (unmaximize-window win))
 
         (:minimize-requested
-         ;; The next render pass sends river's hide
-         (setf (window-minimized-p win) t)
-         (request-manage-dirty))
+         (minimize-window win))
 
         (:capture-sessions
          ;; v5: how many active screen captures (screencasts, portals)
@@ -643,6 +641,14 @@ the successor or NIL. Call while WIN is still registered."
     (when moved
       (request-manage-dirty))
     successor))
+
+(defun minimize-window (win)
+  "Minimize WIN: every seat focused on it moves to its close-successor,
+or has its focus cleared when there is none (refocus-after-close).
+The next render pass sends river's hide."
+  (refocus-after-close win)
+  (setf (window-minimized-p win) t)
+  (request-manage-dirty))
 
 (defun reassert-seat-focus ()
   "Queue each seat's live focused window again for the next manage

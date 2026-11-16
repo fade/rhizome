@@ -612,7 +612,9 @@ pointer off the menu, closes it. An application that asks for its
 window menu gets the same menu.
 
 A minimized window stays hidden until you restore it from the menu or
-move it to another workspace.
+move it to another workspace. When the focused window is minimized,
+the focus moves to another visible window on its workspace, as it
+does when a window closes.
 
 ** Shadows and focus glow
 
@@ -886,7 +888,9 @@ seconds. The first time a scratchpad shows, it floats centred near
 the top of its output, below the bar. After that it stays where you
 move it, but each time it shows it moves back inside the output's
 usable area if any part of it would fall outside. A shown scratchpad
-takes the focus.
+takes the focus, and hiding it gives the focus back to a window still
+visible on that workspace, so what you type goes to the window you
+see.
 
 Configure scratchpads by name:
 
