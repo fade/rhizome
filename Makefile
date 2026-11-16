@@ -39,7 +39,7 @@ SUITES    := animations decorations surface window-rules window-rules-reload flo
              fullscreen-toggle \
              network-menu bar-reserved-per-output \
              colon-command bar-system-modules kill-client \
-             ipc-reply-printing
+             ipc-reply-printing ipc-reply-frame-tree
 
 .PHONY: all build test install docs clean help
 
