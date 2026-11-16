@@ -171,7 +171,7 @@ seat focused on a window of OUTPUT has its focus cleared."
                    *workspace-last-focus*)
           win))
   ;; Moving a minimized window restores it
-  (setf (window-minimized-p win) nil)
+  (restore-window win)
   (format t "~&; Rhizome: moved window to workspace ~D~%" workspace)
   (when output
     (switch-workspace workspace output)))
@@ -337,7 +337,7 @@ focuses the window."
             (when out
               (setf (window-output win) out))
             (assign-window-workspace win workspace)
-            (setf (window-minimized-p win) nil)
+            (restore-window win)
             (when (and out
                        (not follow)
                        (not (eql workspace (current-workspace out))))
@@ -512,7 +512,7 @@ takeover/relogin clustering bug."
             win (fit-saved-workspace (getf state :workspace)
                                      (or (window-output win)
                                          (current-output))))
-          (setf (window-minimized-p win) nil)
+          (restore-window win)
           ;; Stamp the output so the manage pass adopts the window
           ;; onto ITS remembered output and workspace
           (restore-window-output-or-defer win (getf state :output)))

@@ -124,8 +124,8 @@ stack it on that frame's window."
         (incf (window-float-x win) (- (output-x output) (output-x source)))
         (incf (window-float-y win) (- (output-y output) (output-y source))))
       (setf (window-output win) output
-            (window-minimized-p win) nil
             *selected-output* output)
+      (restore-window win)
       (assign-window-workspace win workspace)
       (unless (or (window-floating-p win)
                   (floating-workspace-p output workspace)

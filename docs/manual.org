@@ -1171,11 +1171,23 @@ affect the others or the window manager.
 |----------------------+-----------------------+---------------------------------|
 | =:window-created=    | window                | A window appears.               |
 | =:window-closed=     | window                | A window closes.                |
-| =:window-resized=    | window, width, height | A window commits a new size.    |
+| =:window-resized=    | window, width, height | River reports a window's size.  |
+| =:window-minimized=  | window                | A window is minimized.          |
+| =:window-restored=   | window                | A minimized window is restored. |
 | =:focus-changed=     | window                | A window takes the focus.       |
 | =:layout-changed=    | output, layout name   | A layout or group type changes. |
 | =:workspace-changed= | workspace, output     | An output switches workspace.   |
 | =:output-created=    | output                | An output appears.              |
+
+=:window-resized= runs on every size event river sends for a window,
+including one that repeats the size the window already has.
+
+=:window-minimized= runs for every way a window is minimized: a
+scratchpad hide, the client's own request, and the window menu's
+Minimize. =:window-restored= runs for every way a minimized window
+comes back: the window menu's Restore or Move to workspace, moving the
+window to another workspace or output, a window rule, and a remembered
+placement.
 
 =:layout-changed= also passes =:tile=, =:floating=, and =:scroll= when
 a workspace changes group type.

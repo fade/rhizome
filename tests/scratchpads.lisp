@@ -256,7 +256,7 @@ on no output yet when ON-OUTPUT is NIL; its float position as (X Y)."
                  (centred-at out :sp-qhd-win) '(880 50)))
            (fresh)
            (let ((out (mk-out :sp-fhd)))
-             (ok "a 1920x1080 output centres it as before"
+             (ok "a 1920x1080 output centres the scratchpad"
                  (centred-at out :sp-fhd-win) '(560 50)))
            (fresh)
            (let ((out (mk-out :sp-barred :width 2560 :height 1440)))
@@ -371,8 +371,8 @@ focused border on every side, and a 25 pixel titlebar above."
   (with-decorations
     (lambda ()
       (let ((bw (border-width t)))
-        ;; The run that failed: a 1222x631 terminal at 6,63 on a
-        ;; 1234x679 output whose usable area is 0 36 1234 643
+        ;; A 1222x631 terminal at 6,63 on a 1234x679 output whose
+        ;; usable area is 0 36 1234 643: the frame is too tall
         (fresh)
         (let* ((out (mk-out :sp-short :width 1234 :height 679))
                (log (with-output-to-string (*standard-output*)
@@ -520,6 +520,107 @@ focused border on every side, and a 25 pixel titlebar above."
       (ok "one toggle after menu Restore hides the scratchpad"
           (list (window-minimized-p win) (visible)) '(t nil)))))
 
+(defun check-restore-paths-show-scratchpad ()
+  (labels ((menu-action (win prefix)
+             (cdr (find-if (lambda (item)
+                             (eql 0 (search prefix (car item))))
+                           (menu-item-list win))))
+           (menu (win prefix)
+             (funcall (menu-action win prefix) win))
+           (visible () (getf (scratchpad-find "term") :visible))
+           (minimized-pad (proxy)
+             (let* ((out (mk-out :sp-out))
+                    (win (scratchpad-on-screen "term" out proxy)))
+               (menu win "Minimize")
+               (values win out))))
+    (fresh)
+    (let ((win (minimized-pad :sp-move-ws)))
+      (move-window-to-workspace win 2)
+      (ok "moving a minimized scratchpad to a workspace leaves it visible"
+          (visible) t)
+      (toggle-scratchpad "term")
+      (ok "one toggle after a move to a workspace hides the scratchpad"
+          (list (window-minimized-p win) (visible)) '(t nil)))
+    (fresh)
+    (let ((win (minimized-pad :sp-menu-ws)))
+      (menu win "Move to workspace")
+      (ok "menu Move to workspace leaves a minimized scratchpad visible"
+          (visible) t)
+      (toggle-scratchpad "term")
+      (ok "one toggle after menu Move to workspace hides the scratchpad"
+          (list (window-minimized-p win) (visible)) '(t nil)))
+    (fresh)
+    (multiple-value-bind (win out) (minimized-pad :sp-move-out)
+      (declare (ignore out))
+      (move-window-to-output win (mk-out :sp-right :x 1920))
+      (ok "moving a minimized scratchpad to an output leaves it visible"
+          (visible) t)
+      (toggle-scratchpad "term")
+      (ok "one toggle after a move to an output hides the scratchpad"
+          (list (window-minimized-p win) (visible)) '(t nil)))
+    ;; Each path that clears a minimize runs :window-restored once
+    (let* ((count 0)
+           (counter (lambda (win)
+                      (declare (ignore win))
+                      (incf count))))
+      (add-hook :window-restored counter)
+      (unwind-protect
+           (flet ((restores (name restore)
+                    (fresh)
+                    (let* ((out (mk-out :sp-out))
+                           (win (mk-float :sp-count out)))
+                      (setf count 0)
+                      (minimize-window win)
+                      (funcall restore win out)
+                      (ok (format nil "~A runs :window-restored once" name)
+                          (list count (window-minimized-p win)) '(1 nil)))))
+             (restores "menu Restore"
+                       (lambda (win out)
+                         (declare (ignore out))
+                         (menu win "Restore")))
+             (restores "menu Move to workspace"
+                       (lambda (win out)
+                         (declare (ignore out))
+                         (menu win "Move to workspace")))
+             (restores "move-window-to-workspace"
+                       (lambda (win out)
+                         (declare (ignore out))
+                         (move-window-to-workspace win 2)))
+             (restores "move-window-to-output"
+                       (lambda (win out)
+                         (declare (ignore out))
+                         (move-window-to-output win
+                                                (mk-out :sp-right :x 1920))))
+             (restores "a window rule's workspace"
+                       (lambda (win out)
+                         (declare (ignore out))
+                         (setf (window-app-id win) "sp-ruled")
+                         (set-window-rules '((:match "^sp-ruled$"
+                                              :workspace 2))
+                                           :source "scratchpad-tests")
+                         (unwind-protect
+                              (progn
+                                (remhash win *window-rules-applied*)
+                                (apply-window-rules win))
+                           (set-window-rules nil
+                                             :source "scratchpad-tests"))))
+             (restores "a remembered placement"
+                       (lambda (win out)
+                         (declare (ignore out))
+                         (setf (window-identifier win) "sp-remembered")
+                         (let ((*window-state* (make-hash-table
+                                                 :test 'equal)))
+                           (setf (gethash "sp-remembered" *window-state*)
+                                 (list :workspace 2 :float t))
+                           (restore-window-state win))))
+             (fresh)
+             (let ((win (mk-float :sp-shown (mk-out :sp-out))))
+               (setf count 0)
+               (move-window-to-workspace win 2)
+               (ok "moving a window that is not minimized runs no :window-restored"
+                   count 0)))
+        (remove-hook :window-restored counter)))))
+
 (dolist (check '(check-scratchpad-hide-and-show
                  check-minimize-request
                  check-menu-minimize-and-restore
@@ -530,7 +631,8 @@ focused border on every side, and a 25 pixel titlebar above."
                  check-show-keeps-scratchpad-on-output
                  check-decorated-frame-fits
                  check-hide-moves-focus
-                 check-minimize-paths-hide-scratchpad))
+                 check-minimize-paths-hide-scratchpad
+                 check-restore-paths-show-scratchpad))
   (handler-case (funcall check)
     (error (e)
       (ok (format nil "~(~A~) runs without error" check)

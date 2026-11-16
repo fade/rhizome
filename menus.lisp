@@ -76,7 +76,7 @@
                                     (workspace-label out n))
                             (lambda (w)
                               (assign-window-workspace w n)
-                              (setf (window-minimized-p w) nil)
+                              (restore-window w)
                               (request-manage-dirty)))))))
 
 ;;; --- Geometry helpers ---

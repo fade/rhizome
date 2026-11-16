@@ -653,11 +653,13 @@ hide."
   (run-hook :window-minimized win))
 
 (defun restore-window (win)
-  "Restore the minimized WIN and run the :window-restored hook. The
-next render pass sends river's show."
-  (setf (window-minimized-p win) nil)
-  (request-manage-dirty)
-  (run-hook :window-restored win))
+  "Restore WIN when it is minimized and run the :window-restored hook;
+do nothing when it is not. Every path that un-minimizes a window
+calls this. The next render pass sends river's show."
+  (when (window-minimized-p win)
+    (setf (window-minimized-p win) nil)
+    (request-manage-dirty)
+    (run-hook :window-restored win)))
 
 (defun reassert-seat-focus ()
   "Queue each seat's live focused window again for the next manage

@@ -226,7 +226,10 @@ stubbed river requests. Run with:
   the focus to a visible window on the workspace, or clear it when
   none is left, and showing a scratchpad focuses it; after a minimize
   request or the menu's Minimize one toggle shows the scratchpad, and
-  after the menu's Restore one toggle hides it.
+  after the menu's Restore, the menu's Move to workspace, or a move to
+  another workspace or output one toggle hides it; each way of
+  restoring a minimized window runs `:window-restored` once, and
+  moving a window that is not minimized runs it not at all.
 - `display-layout.lisp` - the `(:displays (:layout ...))` output
   layout: relative placement against heads of different sizes,
   normalization to a 0,0 origin, explicit positions, mode and scale
