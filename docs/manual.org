@@ -897,6 +897,8 @@ The same commands run from the command palette.
 | =toggle-float=                                                    |           | Float or tile the focused window.                                                                       |
 | =maximize=                                                        |           | Maximize or restore the focused window.                                                                 |
 | =toggle-fullscreen=                                               |           | Toggle fullscreen on the focused window.                                                                |
+| =delete=                                                          |           | Ask the focused window to close, as MOD+Q does.                                                         |
+| =kill=                                                            | [9]       | End the focused window's process: SIGTERM (also =15= or =term=), or SIGKILL with =9= or =kill=. See below. |
 | =list-windows=                                                    |           | Reply with every window's title.                                                                        |
 | =wse=                                                             | EXPR      | Reply with the windows matching a selection expression. The outer parentheses are optional.             |
 | =dump-frame=                                                      | NAME      | Save the workspace's frame tree.                                                                        |
@@ -937,6 +939,30 @@ rhizome-cmd putsel hello world
 #+end_src
 
 Most commands act on the first output.
+
+=delete= asks the application to close the window, and the
+application may refuse or ask to save first. =kill= ends the
+application's process instead, for a window that ignores =delete=.
+River reports a process id for each window, but the id is unreliable:
+the process may have exited and the number may since belong to another
+process. Killing a process also closes every other window it owns.
+=kill= sends nothing, and shows the reason, when:
+
+- river reported no id for the window, or the id is 1 or lower;
+- the id belongs to the window manager or to river;
+- =/proc= has no entry for the id.
+- the argument names a signal other than =9=, =kill=, =15=, or =term=.
+
+From Lisp, =(rhizome:kill-client window :signal :kill)= does the same
+for any window, and =rhizome:window-unreliable-pid= returns the id.
+No key is bound to =kill= by default. Bind it to =C-t K= as in
+StumpWM:
+
+#+begin_src lisp
+(rhizome:define-prefix-key "K"
+  (lambda () (rhizome:execute-command nil :kill nil))
+  "kill focused window")
+#+end_src
 
 * The REPL
 

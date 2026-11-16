@@ -224,6 +224,38 @@ Usage: pull <n>"
         (toggle-fullscreen win)
         (message "no focused window"))))
 
+(define-command :delete (output args)
+  "Ask the focused window to close (StumpWM: delete)."
+  (declare (ignore output args))
+  (let ((win (find-if #'window-focused-p (all-windows))))
+    (cond (win (close-window win)
+               (request-manage-dirty)
+               "closing")
+          (t (message "no focused window")
+             nil))))
+
+(define-command :kill (output args)
+  "Signal the focused window's process: SIGTERM, or SIGKILL with the
+argument 9 or kill (StumpWM: kill). The process id is river's
+unreliable one; every window of the process ends."
+  (declare (ignore output))
+  (let ((win (find-if #'window-focused-p (all-windows)))
+        (signal (let ((arg (first args)))
+                  (cond ((null arg) :term)
+                        ((eql (command-integer-argument arg) 9) :kill)
+                        ((eql (command-integer-argument arg) 15) :term)
+                        ;; find-symbol: IPC text never interns a keyword
+                        (t (or (find-symbol (string-upcase (princ-to-string arg))
+                                            :keyword)
+                               arg))))))
+    ;; The reply is printed by the IPC dispatcher: a string or NIL only
+    (cond ((null win) (message "no focused window")
+           nil)
+          ((kill-client win :signal signal)
+           (format nil "sent ~(~A~) to process ~D"
+                   signal (window-unreliable-pid win)))
+          (t nil))))
+
 (define-command :command-mode (output args)
   "Keep the prefix armed for successive commands until Escape
 (StumpWM: command-mode)."

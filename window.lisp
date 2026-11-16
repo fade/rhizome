@@ -676,6 +676,53 @@ sequence (flush-close-requests)."
       (push win *pending-close-requests*))
     t))
 
+(defparameter *kill-client-signals* '((:term . 15) (:kill . 9))
+  "Signals kill-client sends, as (keyword . Linux signal number).")
+
+(defun send-process-signal (pid signo)
+  "Send signal number SIGNO to process PID with kill(2). Return 0 on
+success and -1 on failure."
+  (cffi:foreign-funcall "kill" :int pid :int signo :int))
+
+(defun kill-client-refusal (pid signal)
+  "The reason kill-client refuses to send SIGNAL to PID, or NIL."
+  (cond ((not (assoc signal *kill-client-signals*))
+         (format nil "unknown signal ~S" signal))
+        ((not (integerp pid)) "the window has no process id")
+        ((<= pid 1) (format nil "process id ~D is not a client" pid))
+        ((= pid (cffi:foreign-funcall "getpid" :int))
+         (format nil "process id ~D is the window manager" pid))
+        ((= pid (cffi:foreign-funcall "getppid" :int))
+         (format nil "process id ~D is the compositor" pid))
+        ((not (probe-file (format nil "/proc/~D/" pid)))
+         (format nil "no process ~D" pid))))
+
+(defun kill-client (win &key (signal :term))
+  "Send SIGNAL, :term (the default) or :kill, to the process that owns
+WIN, and return T.
+The process id comes from river's unreliable_pid event: it may be stale,
+and the number may since belong to another process. Killing the process
+ends every window it owns.
+Send nothing, log a line, show a message, and return NIL when:
+  - the id is unknown, or 1 or lower;
+  - the id is the window manager's own or its parent's (river);
+  - /proc has no entry for the id;
+  - SIGNAL is neither :term nor :kill."
+  (let* ((pid (and win (window-unreliable-pid win)))
+         (refusal (kill-client-refusal pid signal)))
+    (cond (refusal
+           (format t "~&; Rhizome: kill refused: ~A~%" refusal)
+           (message "kill refused: ~A" refusal)
+           nil)
+          ((zerop (send-process-signal
+                   pid (cdr (assoc signal *kill-client-signals*))))
+           (format t "~&; Rhizome: sent ~A to process ~D~%" signal pid)
+           t)
+          (t
+           (format t "~&; Rhizome: kill of process ~D failed~%" pid)
+           (message "kill of process ~D failed" pid)
+           nil))))
+
 (defun decoration-mode ()
   "The configured (:windows :decorations) mode: :server (the default)
 or :client. Any value other than :client reads as :server."
