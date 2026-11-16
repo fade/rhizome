@@ -27,6 +27,8 @@
 
 (setf (symbol-function 'message)
       (lambda (fmt &rest args) (push (apply #'format nil fmt args) *said*) nil)
+      (symbol-function 'show-message)
+      (lambda (&rest args) (declare (ignore args)) nil)
       (symbol-function 'request-manage-dirty)
       (lambda (&rest args) (declare (ignore args)) nil)
       (symbol-function 'launch-spawn)
@@ -158,8 +160,9 @@
           (ok "and makes five frames"
               (length (frame-leaves (frame-tree-for dvi 3))) 5)
           (setf *spawned* nil *said* nil)
-          (ok "five past the count is refused"
-              (launch "4:1:6" "foot") nil)
+          (ok "five past the count is refused, replying why"
+              (launch "4:1:6" "foot")
+              "launch-into: no frame 6: 4:1 has 1 frame; at most 4 more can be made")
           (ok "with a message naming the existing count"
               (first *said*)
               "launch-into: no frame 6: 4:1 has 1 frame; at most 4 more can be made")
@@ -224,17 +227,34 @@
           (ok "a one-character target is still an fselect label"
               (launch "1" "foot") "launched foot into frame 1")
           (setf *said* nil)
-          (ok "a label with no command replies nothing"
-              (launch "1") nil)
+          (ok "a label with no command replies why"
+              (launch "1") "launch-into: no frame labelled 1, or no command")
           (ok "and says why"
               (first *said*) "launch-into: no frame labelled 1, or no command")
           (setf *said* nil)
-          (ok "an address naming no screen replies nothing"
-              (launch "1:5:1" "foot") nil)
+          (ok "an address naming no screen replies why"
+              (launch "1:5:1" "foot") "launch-into: no screen 5")
           (ok "and the message names the missing screen"
               (first *said*) "launch-into: no screen 5")
-          (ok "nothing at all is a usage message"
-              (launch) nil))
+          (ok "nothing at all replies the usage"
+              (launch) "launch-into: usage: launch-into [TARGET] COMMAND..."))
+
+        ;; --- A refusal over IPC ---
+
+        (reset)
+        (multiple-value-bind (dvi hdmi) (two-screens)
+          (declare (ignore hdmi))
+          (setf *selected-output* dvi)
+          (launch "1:1:4" "foot")
+          (setf *spawned* nil *said* nil)
+          (ok "with four frames, frame 9 over IPC replies the refusal"
+              (ipc-dispatch-line "launch-into 1:1:9 kitty")
+              "launch-into: no frame 9: 1:1 has 4 frames; at most 4 more can be made")
+          (ok "still shows it on screen"
+              (first *said*)
+              "launch-into: no frame 9: 1:1 has 4 frames; at most 4 more can be made")
+          (ok "and starts nothing"
+              *spawned* nil))
 
         (format t "~&=== ~D passed, ~D failed ===~%" pass fail)
         (sb-ext:exit :code (if (zerop fail) 0 1))))))

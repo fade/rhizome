@@ -588,6 +588,8 @@ is one character needs =.= before it.
   half, until the frame exists, at most four more frames. A number
   further past is refused with a message naming the frames the
   workspace has.
+- A refused launch shows its reason on screen and replies with the
+  same text, which a script can read to learn why nothing started.
 - On a scroll or floating workspace the frame part is ignored and the
   window joins the workspace as any new window does.
 

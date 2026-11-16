@@ -282,19 +282,22 @@ one character long. Any other first word starts COMMAND, and the
 window opens in the focused frame. A command whose name is one
 character therefore needs \".\" before it. On a scroll or floating
 workspace the frame part is ignored and the window joins the
-workspace by its own rule."
+workspace by its own rule. A refused launch shows its reason and
+replies with it."
   (let* ((words (mapcar #'princ-to-string args))
          (kind (launch-target-kind (first words)))
          (command (format nil "~{~A~^ ~}" (if kind (rest words) words))))
     (flet ((fail (control &rest arguments)
-             (message "launch-into: ~?" control arguments)
-             nil)
+             (let ((reason (format nil "launch-into: ~?" control arguments)))
+               (message "~A" reason)
+               reason))
            (start (out ws frame where)
              (if (launch-into-frame command out ws frame)
                  (format nil "launched ~A into ~A" command where)
-                 (progn
-                   (message "launch-into: ~A did not start" command)
-                   nil))))
+                 (let ((reason (format nil "launch-into: ~A did not start"
+                                       command)))
+                   (message "~A" reason)
+                   reason))))
       (cond
         ((null words)
          (fail "usage: launch-into [TARGET] COMMAND..."))
