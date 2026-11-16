@@ -720,17 +720,25 @@ every name CONN owns. Messages still queued are dropped."
       (%sock-close fd)))
   nil)
 
+(defun dbus-enqueue (conn item)
+  "Append ITEM to CONN's incoming queue under its queue lock. The queue
+holds messages oldest first, so a consumer that pops the head handles
+them in arrival order."
+  (bt:with-lock-held ((dbus-connection-queue-lock conn))
+    (setf (dbus-connection-queue conn)
+          (nconc (dbus-connection-queue conn) (list item)))))
+
 (defun dbus-reader-loop (conn)
   "The reader thread: read messages, complete pending calls,
-enqueue everything else for the main-loop drain. Exits when the
-socket closes, marking the connection down and waking the drain."
+enqueue everything else in arrival order for the main-loop drain.
+Exits when the socket closes, marking the connection down, queueing
+:CLOSED after every message read, and waking the drain."
   (let ((fd (dbus-connection-fd conn)))
     (loop
       (let ((msg (dbus-read-message fd)))
         (when (null msg)
           (setf (dbus-connection-running conn) nil)
-          (bt:with-lock-held ((dbus-connection-queue-lock conn))
-            (push :closed (dbus-connection-queue conn)))
+          (dbus-enqueue conn :closed)
           (bt:condition-notify (dbus-connection-queue-cond conn))
           (return))
         (cond
@@ -743,8 +751,7 @@ socket closes, marking the connection down and waking the drain."
                             (dbus-connection-pending conn))
                    msg)))
           (t
-           (bt:with-lock-held ((dbus-connection-queue-lock conn))
-             (push msg (dbus-connection-queue conn)))))))))
+           (dbus-enqueue conn msg)))))))
 
 (defun dbus-await-reply (conn serial &optional (timeout 5))
   "Block until the reply to SERIAL arrives (or TIMEOUT seconds)."

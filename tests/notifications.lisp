@@ -742,6 +742,53 @@ deadline."
     (ok "a message with no deadline survives the expiry check"
         (and *message-state* t) t)))
 
+(defun test-arrival-order ()
+  "Notify calls that arrive together are handled in arrival order."
+  (multiple-value-bind (ours theirs) (test-socketpair)
+    (let ((conn (test-fake-connection ours)))
+      (flet ((queue-both (first second)
+               (sock-write-all theirs first)
+               (sock-write-all theirs second)
+               (test-await (lambda ()
+                             (bt:with-lock-held
+                                 ((dbus-connection-queue-lock conn))
+                               (= 2 (length (dbus-connection-queue conn)))))
+                           2)
+               (setf *notify-conn* conn)
+               (notifications-drain 0)
+               (setf *notify-conn* nil)
+               (loop repeat 2
+                     collect (let ((reply (dbus-read-message theirs)))
+                               (list (message-field reply 5)
+                                     (dbus-message-body reply)))))
+             (shown-summary ()
+               (getf (test-show-request (car (last (test-wm-lines))))
+                     :summary))
+             (notify (summary serial &optional (replaces 0))
+               (test-notify-bytes summary :serial serial
+                                          :values (list "app" replaces ""
+                                                        summary "" nil nil
+                                                        0))))
+        (unwind-protect
+             (progn
+               (test-reset)
+               (ok "two Notify calls in one tick get ids in arrival order"
+                   (queue-both (notify "First" 1) (notify "Second" 2))
+                   '((1 (1)) (2 (2))))
+               (ok "the last to arrive is the newest notification"
+                   (getf (first *notifications*) :summary) "Second")
+               (ok "the last to arrive is the one shown" (shown-summary)
+                   "Second")
+               (test-reset)
+               (queue-both (notify "50%" 3 7) (notify "100%" 4 7))
+               (ok "two updates of one id in one tick end on the second"
+                   (getf (notification-find 7) :summary) "100%")
+               (ok "the window manager shows the second update"
+                   (shown-summary) "100%"))
+          (setf *notify-conn* nil)
+          (dbus-disconnect conn)
+          (%sock-close theirs))))))
+
 (defun test-run-all ()
   (test-ids-and-markup)
   (test-timeouts)
@@ -749,6 +796,7 @@ deadline."
   (test-capabilities)
   (test-dispatch)
   (test-wire-framing)
+  (test-arrival-order)
   (test-request-parsing)
   (test-wrap)
   (test-no-expiry)
