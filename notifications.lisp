@@ -95,13 +95,25 @@ replaced by spaces."
                        c))
          plain)))
 
+(defun notification-id-after (id)
+  "The id after ID in the uint32 range 1 to #xFFFFFFFF: #xFFFFFFFF
+wraps to 1, and 0 is never returned."
+  (if (>= id #xFFFFFFFF) 1 (1+ id)))
+
 (defun notification-notify (app-name replaces-id summary body timeout
                             &optional (now (notification-now-ms)))
   "Open a notification, or replace the open one with REPLACES-ID, and
-return its id. Either way it becomes the newest, the one shown. A REPLACES-ID of 0 takes a new id; ids only increase.
+return its id. Either way it becomes the newest, the one shown.
+A REPLACES-ID of 0 takes a new id. New ids increase within 1 to
+#xFFFFFFFF, wrap from #xFFFFFFFF to 1, and skip an id still open.
 A nonzero REPLACES-ID is returned as given, and opens a new
-notification under that id when none is open. TIMEOUT is the signed
-expire_timeout in milliseconds (see NOTIFICATION-TIMEOUT-MS)."
+notification under that id when none is open; a new id handed out
+later follows it. TIMEOUT is the signed expire_timeout in milliseconds
+(see NOTIFICATION-TIMEOUT-MS)."
+  (when (zerop replaces-id)
+    (loop while (notification-find *notification-next-id*)
+          do (setf *notification-next-id*
+                   (notification-id-after *notification-next-id*))))
   (let* ((ms (notification-timeout-ms timeout))
          (id (if (plusp replaces-id)
                  replaces-id
@@ -111,7 +123,8 @@ expire_timeout in milliseconds (see NOTIFICATION-TIMEOUT-MS)."
                        :body (notification-plain-text body)
                        :expires (and ms (+ now ms))))
          (existing (notification-find id)))
-    (setf *notification-next-id* (max *notification-next-id* (1+ id)))
+    (when (or (zerop replaces-id) (>= id *notification-next-id*))
+      (setf *notification-next-id* (notification-id-after id)))
     ;; a replacement moves to the front: it is the newest content
     (setf *notifications* (remove existing *notifications*))
     (push (list* :id id

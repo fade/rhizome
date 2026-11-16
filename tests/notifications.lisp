@@ -789,8 +789,31 @@ deadline."
           (dbus-disconnect conn)
           (%sock-close theirs))))))
 
+(defun test-id-range ()
+  "Ids stay within the uint32 range 1 to #xFFFFFFFF."
+  (test-reset)
+  (ok "replaces_id #xFFFFFFFF keeps that id"
+      (notification-notify "app" #xFFFFFFFF "Top" "" -1 0) #xFFFFFFFF)
+  (ok "the next new id after #xFFFFFFFF wraps to 1"
+      (notification-notify "app" 0 "Wrapped" "" -1 0) 1)
+  (test-reset)
+  (setf *notification-next-id* #xFFFFFFFF)
+  (ok "the last uint32 id is handed out"
+      (notification-notify "app" 0 "Last" "" -1 0) #xFFFFFFFF)
+  (ok "a new id never wraps to 0"
+      (notification-notify "app" 0 "First again" "" -1 0) 1)
+  (test-reset)
+  (notification-notify "app" 1 "Still open" "" 0 0)
+  (setf *notification-next-id* #xFFFFFFFF)
+  (notification-notify "app" 0 "Last" "" 0 0)
+  (ok "a wrapped id skips an id still open"
+      (notification-notify "app" 0 "Next" "" 0 0) 2)
+  (ok "the open notification under id 1 keeps its text"
+      (getf (notification-find 1) :summary) "Still open"))
+
 (defun test-run-all ()
   (test-ids-and-markup)
+  (test-id-range)
   (test-timeouts)
   (test-expiry-and-lines)
   (test-capabilities)
