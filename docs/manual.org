@@ -612,7 +612,9 @@ pointer off the menu, closes it. An application that asks for its
 window menu gets the same menu.
 
 A minimized window stays hidden until you restore it from the menu or
-move it to another workspace.
+move it to another workspace. When the focused window is minimized,
+the focus moves to another visible window on its workspace, as it
+does when a window closes.
 
 ** Shadows and focus glow
 
@@ -882,8 +884,17 @@ A scratchpad is a window that you show and hide with one key while
 its program keeps running. =C-t ;= shows or hides the scratchpad named
 =term=, which runs =foot= by default. On first use the window manager
 starts the program and claims the first window that opens within 10
-seconds. A shown scratchpad floats near the top of the screen and
-takes the focus.
+seconds. The first time a scratchpad shows, it floats centred near
+the top of its output, below the bar. After that it stays where you
+move it, but each time it shows it moves back inside the output's
+usable area if any part of it, titlebar and border included, would
+fall outside. A scratchpad keeps its size unless the decorated window
+is larger than the usable area; only then does it shrink to fit, and
+the log records the new size. A shown scratchpad
+takes the focus, and hiding it gives the focus back to a window still
+visible on that workspace, so what you type goes to the window you
+see. A scratchpad minimized from its window menu or by its own
+program counts as hidden: the next =C-t ;= shows it.
 
 Configure scratchpads by name:
 
@@ -1156,14 +1167,27 @@ affect the others or the window manager.
     (rhizome:message "new window: ~A" (rhizome:window-title win))))
 #+end_src
 
-| Hook                 | Arguments           | Runs when                       |
-|----------------------+---------------------+---------------------------------|
-| =:window-created=    | window              | A window appears.               |
-| =:window-closed=     | window              | A window closes.                |
-| =:focus-changed=     | window              | A window takes the focus.       |
-| =:layout-changed=    | output, layout name | A layout or group type changes. |
-| =:workspace-changed= | workspace, output   | An output switches workspace.   |
-| =:output-created=    | output              | An output appears.              |
+| Hook                 | Arguments             | Runs when                       |
+|----------------------+-----------------------+---------------------------------|
+| =:window-created=    | window                | A window appears.               |
+| =:window-closed=     | window                | A window closes.                |
+| =:window-resized=    | window, width, height | River reports a window's size.  |
+| =:window-minimized=  | window                | A window is minimized.          |
+| =:window-restored=   | window                | A minimized window is restored. |
+| =:focus-changed=     | window                | A window takes the focus.       |
+| =:layout-changed=    | output, layout name   | A layout or group type changes. |
+| =:workspace-changed= | workspace, output     | An output switches workspace.   |
+| =:output-created=    | output                | An output appears.              |
+
+=:window-resized= runs on every size event river sends for a window,
+including one that repeats the size the window already has.
+
+=:window-minimized= runs for every way a window is minimized: a
+scratchpad hide, the client's own request, and the window menu's
+Minimize. =:window-restored= runs for every way a minimized window
+comes back: the window menu's Restore or Move to workspace, moving the
+window to another workspace or output, a window rule, and a remembered
+placement.
 
 =:layout-changed= also passes =:tile=, =:floating=, and =:scroll= when
 a workspace changes group type.

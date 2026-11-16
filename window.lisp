@@ -324,7 +324,8 @@ Does nothing when WIN is NIL."
            (when (and (window-floating-p win)
                       (not (window-float-width win)))
              (setf (window-float-width win) width
-                   (window-float-height win) height))))
+                   (window-float-height win) height))
+           (run-hook :window-resized win width height)))
 
         (:dimensions-hint
          (destructuring-bind (min-w min-h max-w max-h) args
@@ -400,9 +401,7 @@ Does nothing when WIN is NIL."
          (unmaximize-window win))
 
         (:minimize-requested
-         (setf (window-hidden-p win) t)
-         (setf (window-minimized-p win) t)
-         (request-manage-dirty))
+         (minimize-window win))
 
         (:capture-sessions
          ;; v5: how many active screen captures (screencasts, portals)
@@ -642,6 +641,25 @@ the successor or NIL. Call while WIN is still registered."
     (when moved
       (request-manage-dirty))
     successor))
+
+(defun minimize-window (win)
+  "Minimize WIN: every seat focused on it moves to its close-successor,
+or has its focus cleared when there is none (refocus-after-close).
+Runs the :window-minimized hook. The next render pass sends river's
+hide."
+  (refocus-after-close win)
+  (setf (window-minimized-p win) t)
+  (request-manage-dirty)
+  (run-hook :window-minimized win))
+
+(defun restore-window (win)
+  "Restore WIN when it is minimized and run the :window-restored hook;
+do nothing when it is not. Every path that un-minimizes a window
+calls this. The next render pass sends river's show."
+  (when (window-minimized-p win)
+    (setf (window-minimized-p win) nil)
+    (request-manage-dirty)
+    (run-hook :window-restored win)))
 
 (defun reassert-seat-focus ()
   "Queue each seat's live focused window again for the next manage

@@ -208,6 +208,28 @@ stubbed river requests. Run with:
   hidden windows cycle in window-number order whatever order the
   workspace lists them in, wrapping at either end; unnumbered windows
   come after the numbered ones.
+- `scratchpads.lisp` - the scratchpad module and the minimize paths:
+  hiding a scratchpad, a client's minimize request, and the window
+  menu's Minimize each send one river hide in the next render pass;
+  showing a scratchpad and the menu's Restore each send one show;
+  reloading the module adds no second hook handler, and launching a
+  scratchpad and claiming its window leave the `:window-created`
+  handlers as they were; a scratchpad centres on its own output's
+  usable area (or the current output while it has none yet), 50
+  pixels below that output's bar; a scratchpad claimed before its
+  client commits a size centres again on that first size, and only
+  that one; every show moves a scratchpad's decorated frame (titlebar
+  and border included) back inside its output's usable area, and one
+  already inside keeps its position; a frame that fits keeps its size,
+  and one larger than the area shrinks to fit with one log line; hiding a
+  scratchpad, a minimize request, and the menu's Minimize each move
+  the focus to a visible window on the workspace, or clear it when
+  none is left, and showing a scratchpad focuses it; after a minimize
+  request or the menu's Minimize one toggle shows the scratchpad, and
+  after the menu's Restore, the menu's Move to workspace, or a move to
+  another workspace or output one toggle hides it; each way of
+  restoring a minimized window runs `:window-restored` once, and
+  moving a window that is not minimized runs it not at all.
 - `display-layout.lisp` - the `(:displays (:layout ...))` output
   layout: relative placement against heads of different sizes,
   normalization to a 0,0 origin, explicit positions, mode and scale

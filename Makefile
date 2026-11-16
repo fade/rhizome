@@ -43,7 +43,7 @@ SUITES    := animations decorations surface window-rules window-rules-reload flo
              ipc-reply-framing ipc-request-decoding ipc-slow-client \
              ipc-client-lifecycle ipc-client-idle \
              frame-cycling frame-cycle-skip-empty stumpwm-aliases \
-             stumpwm-group-eval-exec notifications
+             stumpwm-group-eval-exec notifications scratchpads
 
 .PHONY: all build test install docs clean help
 

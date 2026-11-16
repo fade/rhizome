@@ -57,11 +57,10 @@
     (append
       (list (cons (if (window-minimized-p win) "Restore" "Minimize")
                   (lambda (w)
-                    (setf (window-minimized-p w)
-                          (not (window-minimized-p w)))
-                    (setf (window-hidden-p w)
-                          (window-minimized-p w))
-                    (request-manage-dirty)))
+                    ;; The next render pass sends river's hide or show
+                    (if (window-minimized-p w)
+                        (restore-window w)
+                        (minimize-window w))))
             (cons (if (window-floating-p win) "Tile" "Float")
                   (lambda (w) (toggle-float w)))
             (cons (if (window-maximized-p win) "Unmaximize" "Maximize")
@@ -77,7 +76,7 @@
                                     (workspace-label out n))
                             (lambda (w)
                               (assign-window-workspace w n)
-                              (setf (window-minimized-p w) nil)
+                              (restore-window w)
                               (request-manage-dirty)))))))
 
 ;;; --- Geometry helpers ---
