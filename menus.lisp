@@ -57,10 +57,9 @@
     (append
       (list (cons (if (window-minimized-p win) "Restore" "Minimize")
                   (lambda (w)
+                    ;; The next render pass sends river's hide or show
                     (setf (window-minimized-p w)
                           (not (window-minimized-p w)))
-                    (setf (window-hidden-p w)
-                          (window-minimized-p w))
                     (request-manage-dirty)))
             (cons (if (window-floating-p win) "Tile" "Float")
                   (lambda (w) (toggle-float w)))

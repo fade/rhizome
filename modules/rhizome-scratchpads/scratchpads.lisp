@@ -41,12 +41,11 @@
        (gethash (window-proxy (getf state :window)) *windows*)))
 
 (defun scratchpad-hide (name state)
-  "Hide the scratchpad: minimize it (the process stays alive)."
+  "Hide the scratchpad: minimize it (the process stays alive). The
+next render pass sends river's hide, as for any minimized window."
   (let ((win (getf state :window)))
     (when (and win (gethash (window-proxy win) *windows*))
-      (setf (window-minimized-p win) t
-            (window-hidden-p win) t)
-      (setf (gethash win *minimized-windows*) t)
+      (setf (window-minimized-p win) t)
       (setf (getf state :visible) nil)
       (setf (gethash name *scratchpads*) state)
       (request-manage-dirty)
@@ -56,10 +55,8 @@
   "Show the scratchpad: un-minimize, float, center, focus."
   (let ((win (getf state :window)))
     (when (and win (gethash (window-proxy win) *windows*))
-      ;; un-minimize
-      (setf (window-minimized-p win) nil
-            (window-hidden-p win) nil)
-      (remhash win *minimized-windows*)
+      ;; Un-minimize; the next render pass sends river's show
+      (setf (window-minimized-p win) nil)
       ;; float centered
       (unless (window-floating-p win)
         (let* ((ow 1920) (oh 1080)

@@ -400,7 +400,7 @@ Does nothing when WIN is NIL."
          (unmaximize-window win))
 
         (:minimize-requested
-         (setf (window-hidden-p win) t)
+         ;; The next render pass sends river's hide
          (setf (window-minimized-p win) t)
          (request-manage-dirty))
 
