@@ -217,11 +217,57 @@ sent, in order."
                 (getf (scratchpad-find "term") :visible))
           '(nil nil)))))
 
+(defun centred-at (out proxy &key (on-output t))
+  "Show a hidden scratchpad whose tiled 800 pixel window is on OUT, or
+on no output yet when ON-OUTPUT is NIL; its float position as (X Y)."
+  (let ((win (mk-win proxy out)))
+    (unless on-output
+      (setf (window-output win) nil))
+    (setf (window-minimized-p win) t
+          (gethash "term" *scratchpads*)
+          (list :window win :command "foot" :visible nil))
+    (toggle-scratchpad "term")
+    (list (window-float-x win) (window-float-y win))))
+
+(defun check-centring ()
+  (let ((real-bar-height (symbol-function 'bar-reserved-height))
+        (barred nil))
+    ;; A 36 pixel bar on the output BARRED only
+    (setf (symbol-function 'bar-reserved-height)
+          (lambda (&optional output)
+            (if (and output (eq output barred)) 36 0)))
+    (unwind-protect
+         (progn
+           (fresh)
+           (let ((out (mk-out :sp-qhd :width 2560 :height 1440)))
+             (ok "a 2560x1440 output centres the scratchpad"
+                 (centred-at out :sp-qhd-win) '(880 50)))
+           (fresh)
+           (let ((out (mk-out :sp-fhd)))
+             (ok "a 1920x1080 output centres it as before"
+                 (centred-at out :sp-fhd-win) '(560 50)))
+           (fresh)
+           (let ((out (mk-out :sp-barred :width 2560 :height 1440)))
+             (setf barred out)
+             (ok "the scratchpad sits 50 pixels below its output's bar"
+                 (centred-at out :sp-barred-win) '(880 86)))
+           (fresh)
+           (mk-out :sp-left)
+           (let ((right (mk-out :sp-right :x 1920 :width 2560
+                                          :height 1440)))
+             (setf *selected-output* right
+                   barred nil)
+             (ok "a window on no output yet centres on the current output"
+                 (centred-at right :sp-new-win :on-output nil)
+                 '(2800 50))))
+      (setf (symbol-function 'bar-reserved-height) real-bar-height))))
+
 (dolist (check '(check-scratchpad-hide-and-show
                  check-minimize-request
                  check-menu-minimize-and-restore
                  check-module-reload-hooks
-                 check-claim-hooks))
+                 check-claim-hooks
+                 check-centring))
   (handler-case (funcall check)
     (error (e)
       (ok (format nil "~(~A~) runs without error" check)

@@ -52,20 +52,29 @@ next render pass sends river's hide, as for any minimized window."
       (request-manage-dirty)
       (format t "~&; Rhizome: scratchpad ~A hidden~%" name))))
 
+(defun scratchpad-centre-position (win)
+  "Where WIN floats when a scratchpad first shows it, as two values
+X and Y: centred horizontally on the usable area of WIN's output, 50
+pixels below the bar. A window not yet on an output uses
+CURRENT-OUTPUT; with no output known, a 1920 pixel wide screen."
+  (let ((out (or (window-output win) (current-output)))
+        (w (find-if (lambda (v) (and v (plusp v)))
+                    (list (window-float-width win) (window-width win) 800))))
+    (if (and out (plusp (output-width out)))
+        (multiple-value-bind (ux uy uw) (output-usable-area out)
+          (values (+ ux (floor (- uw w) 2)) (+ uy 50)))
+        (values (floor (- 1920 w) 2) (+ (bar-reserved-height) 50)))))
+
 (defun scratchpad-show (name state)
-  "Show the scratchpad: un-minimize, float, center, focus."
+  "Show the scratchpad: un-minimize, float, centre, focus."
   (let ((win (getf state :window)))
     (when (and win (gethash (window-proxy win) *windows*))
       ;; Un-minimize; the next render pass sends river's show
       (setf (window-minimized-p win) nil)
-      ;; float centered
+      ;; float centred
       (unless (window-floating-p win)
-        (let* ((ow 1920) (oh 1080)
-               (w (or (window-float-width win) (window-width win) 800))
-               (h (or (window-float-height win) (window-height win) 500)))
-          (declare (ignore oh h))
-          (float-window win :x (- (floor ow 2) (floor w 2))
-                              :y (+ (bar-reserved-height) 50))))
+        (multiple-value-bind (x y) (scratchpad-centre-position win)
+          (float-window win :x x :y y)))
       ;; focus it (queued through the manage pass)
       (dolist (seat (all-seats))
         (focus-window win seat))

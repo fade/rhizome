@@ -214,7 +214,9 @@ stubbed river requests. Run with:
   showing a scratchpad and the menu's Restore each send one show;
   reloading the module adds no second hook handler, and launching a
   scratchpad and claiming its window leave the `:window-created`
-  handlers as they were.
+  handlers as they were; a scratchpad centres on its own output's
+  usable area (or the current output while it has none yet), 50
+  pixels below that output's bar.
 - `display-layout.lisp` - the `(:displays (:layout ...))` output
   layout: relative placement against heads of different sizes,
   normalization to a 0,0 origin, explicit positions, mode and scale
