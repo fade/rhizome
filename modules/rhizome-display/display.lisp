@@ -142,7 +142,8 @@ The brightnessctl exit status is ignored."
 (define-command :balance (output args)
   "Equalize every split in the workspace (StumpWM: balance-frames)."
   (declare (ignore args))
-  (frame-balance output (current-workspace output)))
+  (frame-balance output (current-workspace output))
+  nil)
 
 (define-command :fclear (output args)
   "Clear the current frame; its windows move to the other frames

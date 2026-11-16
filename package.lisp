@@ -15,6 +15,8 @@
    #:execute-command
    #:find-command
    #:command-names
+   #:define-command-alias
+   #:command-alias-names
    ;; Window operations
    #:focus-window
    #:close-window

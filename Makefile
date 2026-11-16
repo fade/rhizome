@@ -40,7 +40,7 @@ SUITES    := animations decorations surface window-rules window-rules-reload flo
              network-menu bar-reserved-per-output \
              colon-command bar-system-modules kill-client \
              ipc-reply-printing ipc-reply-frame-tree \
-             frame-cycling
+             frame-cycling stumpwm-aliases
 
 .PHONY: all build test install docs clean help
 
