@@ -33,6 +33,9 @@ most recent first.")
   "Argument lists passed to the launch-program recorder, most recent
 first.")
 
+(defvar *real-focus-window* (symbol-function 'focus-window)
+  "FOCUS-WINDOW before the stubs below replace it, for the focus checks.")
+
 ;; River's show and hide: record, never send
 (setf (symbol-function 'rwm:river-window-v1.hide)
       (lambda (proxy) (push (list :hide proxy) *river-requests*) nil)
@@ -183,13 +186,16 @@ sent, in order."
                   "modules/rhizome-scratchpads/scratchpads.lisp"
                   (asdf:system-source-directory :rhizome)))
         (closed (hook-count :window-closed))
-        (created (hook-count :window-created)))
+        (created (hook-count :window-created))
+        (resized (hook-count :window-resized)))
     (load source)
     (load source)
     (ok "reloading the module adds no :window-closed handler"
         (hook-count :window-closed) closed)
     (ok "reloading the module adds no :window-created handler"
-        (hook-count :window-created) created)))
+        (hook-count :window-created) created)
+    (ok "reloading the module adds no :window-resized handler"
+        (hook-count :window-resized) resized)))
 
 (defun check-claim-hooks ()
   (fresh)
@@ -262,12 +268,65 @@ on no output yet when ON-OUTPUT is NIL; its float position as (X Y)."
                  '(2800 50))))
       (setf (symbol-function 'bar-reserved-height) real-bar-height))))
 
+(defun check-centre-on-first-size ()
+  (fresh)
+  (let ((out (mk-out :sp-narrow :width 1234 :height 800)))
+    (setf *selected-output* out)
+    (toggle-scratchpad "term")
+    ;; River announces a window with no output and no size
+    (let ((win (make-instance 'rhizome-window :proxy :sp-sized))
+          (top (+ (nth-value 1 (output-usable-area out)) 50)))
+      (setf (gethash :sp-sized *windows*) win)
+      (run-hook :window-created win)
+      (handle-window-event win :dimensions 1222 631)
+      (ok "a scratchpad claimed before its size centres on the first size"
+          (list (window-float-x win) (window-float-y win)) (list 6 top))
+      (handle-window-event win :dimensions 600 400)
+      (ok "a later size change leaves the scratchpad where it is"
+          (list (window-float-x win) (window-float-y win)) (list 6 top)))))
+
+(defun shown-after-hidden-at (out proxy x y width height)
+  "Show a hidden floating scratchpad placed at X Y with size WIDTH by
+HEIGHT on OUT; its float position as (X Y)."
+  (let ((win (mk-float proxy out)))
+    (setf (window-float-x win) x
+          (window-float-y win) y
+          (window-float-width win) width
+          (window-float-height win) height
+          (window-minimized-p win) t
+          (gethash "term" *scratchpads*)
+          (list :window win :command "foot" :visible nil))
+    (toggle-scratchpad "term")
+    (list (window-float-x win) (window-float-y win))))
+
+(defun check-show-keeps-scratchpad-on-output ()
+  (fresh)
+  (let ((out (mk-out :sp-out)))
+    (multiple-value-bind (ux uy uw uh) (output-usable-area out)
+      (ok "a scratchpad past the bottom-right edge moves back inside"
+          (shown-after-hidden-at out :sp-past (+ ux uw -300) (+ uy uh -100)
+                                 800 500)
+          (list (+ ux uw -800) (+ uy uh -500)))
+      (fresh)
+      (setf out (mk-out :sp-out))
+      (ok "a scratchpad wider than the usable area starts at its left edge"
+          (shown-after-hidden-at out :sp-wide 300 (+ uy 100) (+ uw 80) 500)
+          (list ux (+ uy 100)))
+      (fresh)
+      (setf out (mk-out :sp-out))
+      (ok "a scratchpad already inside keeps its position"
+          (shown-after-hidden-at out :sp-inside (+ ux 100) (+ uy 100)
+                                 800 500)
+          (list (+ ux 100) (+ uy 100))))))
+
 (dolist (check '(check-scratchpad-hide-and-show
                  check-minimize-request
                  check-menu-minimize-and-restore
                  check-module-reload-hooks
                  check-claim-hooks
-                 check-centring))
+                 check-centring
+                 check-centre-on-first-size
+                 check-show-keeps-scratchpad-on-output))
   (handler-case (funcall check)
     (error (e)
       (ok (format nil "~(~A~) runs without error" check)

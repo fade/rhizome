@@ -882,8 +882,11 @@ A scratchpad is a window that you show and hide with one key while
 its program keeps running. =C-t ;= shows or hides the scratchpad named
 =term=, which runs =foot= by default. On first use the window manager
 starts the program and claims the first window that opens within 10
-seconds. A shown scratchpad floats centred near the top of its
-output, below the bar, and takes the focus.
+seconds. The first time a scratchpad shows, it floats centred near
+the top of its output, below the bar. After that it stays where you
+move it, but each time it shows it moves back inside the output's
+usable area if any part of it would fall outside. A shown scratchpad
+takes the focus.
 
 Configure scratchpads by name:
 
@@ -1156,14 +1159,15 @@ affect the others or the window manager.
     (rhizome:message "new window: ~A" (rhizome:window-title win))))
 #+end_src
 
-| Hook                 | Arguments           | Runs when                       |
-|----------------------+---------------------+---------------------------------|
-| =:window-created=    | window              | A window appears.               |
-| =:window-closed=     | window              | A window closes.                |
-| =:focus-changed=     | window              | A window takes the focus.       |
-| =:layout-changed=    | output, layout name | A layout or group type changes. |
-| =:workspace-changed= | workspace, output   | An output switches workspace.   |
-| =:output-created=    | output              | An output appears.              |
+| Hook                 | Arguments             | Runs when                       |
+|----------------------+-----------------------+---------------------------------|
+| =:window-created=    | window                | A window appears.               |
+| =:window-closed=     | window                | A window closes.                |
+| =:window-resized=    | window, width, height | A window commits a new size.    |
+| =:focus-changed=     | window                | A window takes the focus.       |
+| =:layout-changed=    | output, layout name   | A layout or group type changes. |
+| =:workspace-changed= | workspace, output     | An output switches workspace.   |
+| =:output-created=    | output                | An output appears.              |
 
 =:layout-changed= also passes =:tile=, =:floating=, and =:scroll= when
 a workspace changes group type.

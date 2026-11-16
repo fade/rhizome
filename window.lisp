@@ -324,7 +324,8 @@ Does nothing when WIN is NIL."
            (when (and (window-floating-p win)
                       (not (window-float-width win)))
              (setf (window-float-width win) width
-                   (window-float-height win) height))))
+                   (window-float-height win) height))
+           (run-hook :window-resized win width height)))
 
         (:dimensions-hint
          (destructuring-bind (min-w min-h max-w max-h) args

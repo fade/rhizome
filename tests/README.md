@@ -216,7 +216,10 @@ stubbed river requests. Run with:
   scratchpad and claiming its window leave the `:window-created`
   handlers as they were; a scratchpad centres on its own output's
   usable area (or the current output while it has none yet), 50
-  pixels below that output's bar.
+  pixels below that output's bar; a scratchpad claimed before its
+  client commits a size centres again on that first size, and only
+  that one; every show moves a scratchpad back inside its output's
+  usable area, and one already inside keeps its position.
 - `display-layout.lisp` - the `(:displays (:layout ...))` output
   layout: relative placement against heads of different sizes,
   normalization to a 0,0 origin, explicit positions, mode and scale

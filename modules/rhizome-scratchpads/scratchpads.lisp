@@ -65,16 +65,48 @@ CURRENT-OUTPUT; with no output known, a 1920 pixel wide screen."
           (values (+ ux (floor (- uw w) 2)) (+ uy 50)))
         (values (floor (- 1920 w) 2) (+ (bar-reserved-height) 50)))))
 
+(defun scratchpad-window-size (win)
+  "WIN's size as two values, WIDTH and HEIGHT: its float size, else
+the size its client committed. NIL when neither is known."
+  (let ((w (or (window-float-width win)
+               (and (plusp (window-width win)) (window-width win))))
+        (h (or (window-float-height win)
+               (and (plusp (window-height win)) (window-height win)))))
+    (when (and w h)
+      (values w h))))
+
+(defun scratchpad-fit-usable-area (win)
+  "Move the floating WIN the least distance that keeps it inside the
+usable area of its output (CURRENT-OUTPUT while it has none), or to
+the area's left or top edge on an axis where it is larger than the
+area. A window already inside, or of unknown size, stays put."
+  (let ((out (or (window-output win) (current-output))))
+    (multiple-value-bind (w h) (scratchpad-window-size win)
+      (when (and w out (plusp (output-width out)))
+        (multiple-value-bind (ux uy uw uh) (output-usable-area out)
+          (flet ((fit (pos size start length)
+                   (if (> size length)
+                       start
+                       (min (max pos start) (- (+ start length) size)))))
+            (setf (window-float-x win) (fit (window-float-x win) w ux uw)
+                  (window-float-y win) (fit (window-float-y win) h uy uh))))))))
+
 (defun scratchpad-show (name state)
-  "Show the scratchpad: un-minimize, float, centre, focus."
+  "Show the scratchpad: un-minimize, float, place, focus. A window
+shown for the first time is centred (scratchpad-centre-position); a
+window with no size yet is centred again on its first size
+(scratchpad-centre-on-size). Every show then keeps the window inside
+its output's usable area (scratchpad-fit-usable-area)."
   (let ((win (getf state :window)))
     (when (and win (gethash (window-proxy win) *windows*))
       ;; Un-minimize; the next render pass sends river's show
       (setf (window-minimized-p win) nil)
-      ;; float centred
       (unless (window-floating-p win)
         (multiple-value-bind (x y) (scratchpad-centre-position win)
-          (float-window win :x x :y y)))
+          (float-window win :x x :y y))
+        (unless (scratchpad-window-size win)
+          (setf (getf state :centre-pending) t)))
+      (scratchpad-fit-usable-area win)
       ;; focus it (queued through the manage pass)
       (dolist (seat (all-seats))
         (focus-window win seat))
@@ -158,6 +190,25 @@ has no window and is not visible."
                    (getf state :visible) nil)
              (setf (gethash name *scratchpads*) state)))
 
+(defun scratchpad-centre-on-size (win width height)
+  "The :window-resized handler: a scratchpad whose window WIN was shown
+before its client committed a size is centred on that first size and
+kept inside its output's usable area. Later sizes leave it in place."
+  (declare (ignore width height))
+  (loop for name being the hash-keys of *scratchpads*
+        for state = (gethash name *scratchpads*)
+        when (and (eq (getf state :window) win)
+                  (getf state :centre-pending))
+          do (setf (getf state :centre-pending) nil)
+             (setf (gethash name *scratchpads*) state)
+             (when (window-floating-p win)
+               (multiple-value-bind (x y) (scratchpad-centre-position win)
+                 (setf (window-float-x win) x
+                       (window-float-y win) y))
+               (scratchpad-fit-usable-area win)
+               (request-manage-dirty))
+             (return)))
+
 (defun scratchpad-debug ()
   "Debug the scratchpad state (IPC: rhizome-cmd scratchpad list)."
   (loop for name being the hash-keys of *scratchpads*
@@ -180,6 +231,8 @@ has no window and is not visible."
 (add-hook :window-created 'scratchpad-claim-window)
 
 (add-hook :window-closed 'scratchpad-forget-window)
+
+(add-hook :window-resized 'scratchpad-centre-on-size)
 
 (define-prefix-key 59 (lambda () (toggle-scratchpad))
   "toggle the scratchpad")
