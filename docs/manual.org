@@ -481,6 +481,141 @@ Other frame commands, available from the command palette or
   later. Windows are placed by number, missing windows are skipped,
   and the tree is scaled if the output size has changed.
 
+** Index base
+
+Workspace, screen, and frame numbers all count from one base, set by
+=(:workspaces (:index-base ...))=: 1 by default, or 0. The same base
+applies on the digit keys, the bar, IPC commands, prompts, messages,
+and frame addresses. From Lisp, every function that takes or returns
+one of these numbers accepts an =:index-base= keyword that overrides
+the setting for that call, for example
+=(rhizome:frame-address frame :index-base 0)=.
+
+** Screen numbers
+
+Every screen (output) has a number. The primary screen is screen 1
+(0 under base 0). Name it by connector:
+
+#+begin_src lisp
+(rhizome:configure '(:screens (:primary "DVI-D-1")))
+#+end_src
+
+Without =:primary=, or when it names no connected screen, the first
+output river lists is primary. The other screens follow on a
+left-handed spiral out from the primary: nearest centre first, and at
+equal distance the screen met first turning counter-clockwise from the
+top. In a row L2 L1 M R1 R2 with M primary, the numbers run M, L1,
+R1, L2, R2. A screen above the primary comes before one the same
+distance below it.
+
+To number the screens yourself, list their connectors in order:
+
+#+begin_src lisp
+(rhizome:configure '(:screens (:order ("DVI-D-1" "HDMI-A-1"))))
+#+end_src
+
+=:order= takes precedence over =:primary=: its first connected screen is screen
+1. Connectors it lists that are not connected are skipped, and
+screens it does not list follow on the spiral from its first screen.
+Numbers change when a screen is added, removed, moved, or resized,
+and when =:primary= or =:order= changes.
+
+** Frame addresses
+
+Every frame has an address, =W:S:F=: the workspace, the screen, and
+the frame's place within that workspace on that screen, in the same
+order =C-t f= labels frames. Each workspace on each screen counts its
+frames on its own, and hidden workspaces have addresses too. With the
+default base, the first frame of workspace 1 on the primary screen is
+=1:1:1=.
+
+| Address         | Names                                                     |
+|-----------------+-----------------------------------------------------------|
+| =2:1:3=         | workspace 2, screen 1, frame 3                            |
+| =irc:DVI-D-1:1= | the workspace named =irc=, the screen on DVI-D-1, frame 1 |
+| =::2=           | frame 2 of the focused screen's current workspace         |
+| =:2:1=          | frame 1 of screen 2's current workspace                   |
+| =3:2:=          | workspace 3 on screen 2, frame not named                  |
+
+- The workspace is a number or a workspace name (see
+  =(:workspaces (:screens ...))=).
+- The screen is a number or a connector name.
+- An empty part is left out. A missing screen is the focused one,
+  and a missing workspace is that screen's current one.
+- A workspace name without a screen is looked up on the focused
+  screen first, then on the other screens in screen order.
+- A string without a colon is not an address.
+
+Each frame's address updates when frames split, close, or are
+pruned, when a frame tree is rebuilt, when screens change, and when
+workspaces are added or removed. A change of index base shows at
+once.
+
+- =frame-address= :: reply with the current frame's address, or with
+  the address of the frame an address names.
+- =frame-addresses= :: reply with every frame's address and what it
+  shows, one per line, in workspace, screen, frame order.
+
+From Lisp, =rhizome:frame-address= returns a frame's address as a
+string, =rhizome:resolve-frame-address= turns an address into its
+screen, workspace, and frame, and =rhizome:all-frame-addresses= lists
+them all.
+
+** Launching into a frame
+
+=launch-into= starts a program so its first window opens in a chosen
+frame, without switching workspaces:
+
+#+begin_src sh
+rhizome-cmd launch-into 2:1:3 foot      # frame 3 of workspace 2 on screen 1
+rhizome-cmd launch-into 3:2: firefox    # workspace 3 on screen 2, any frame
+rhizome-cmd launch-into b foot          # the frame C-t f labels b
+rhizome-cmd launch-into foot -a notes   # the focused frame
+rhizome-cmd launch-into . w             # the focused frame, explicitly
+#+end_src
+
+The first word is a target only when it is =.=, holds a colon, or is
+a single character (a =C-t f= label). Any other first word starts the
+command, which then opens in the focused frame. A command whose name
+is one character needs =.= before it.
+
+- An occupied target frame is split for the new window when
+  =(:tiling (:auto-split ...))= is on, and shared when it is off.
+- An address without a frame part leaves the frame to the placement
+  policy.
+- A frame number past the workspace's frame count makes the missing
+  frames: the largest frame splits along its longer side, half and
+  half, until the frame exists, at most four more frames. A number
+  further past is refused with a message naming the frames the
+  workspace has.
+- On a scroll or floating workspace the frame part is ignored and the
+  window joins the workspace as any new window does.
+
+The window is recognized by its process: the first window from the
+launched process, or a child of it, takes the frame. A frame waiting
+for its window stays through pruning until the window arrives or 30
+seconds pass. A program that hands its window to an instance already
+running (a terminal server, a browser with an open session) opens
+where any new window does.
+
+** The launch prompt
+
+=launch-into-prompt= asks where, then what. The first prompt lists
+every frame address with the title of the frame's window, or =empty=,
+plus one =new frame= row per workspace, with the current frame
+selected. Type to filter, and the list scrolls with the selection.
+Picking a row opens a second prompt for the command, which runs as
+=launch-into ADDRESS COMMAND=. Escape at either prompt, or a blank
+command, starts nothing.
+
+No key opens it by default. To bind it, for example on a launcher
+keymap:
+
+#+begin_src lisp
+(rhizome:define-key map "c" (lambda () (rhizome:launch-into-prompt))
+                    :doc "launch into a frame")
+#+end_src
+
 ** Gaps
 
 =(:gaps (:inner 6))= puts 6 pixels around each tiled window, so
@@ -1015,6 +1150,10 @@ The same commands run from the command palette.
 | =balance=                                                         |           | Make every split even.                                                                                  |
 | =resize-split=                                                    | [PIXELS]  | Move the current split's dividing line by PIXELS (default 30); a negative value moves it the other way. |
 | =fclear=                                                          |           | Move the current frame's windows to the other frames.                                                   |
+| =frame-address=                                                   | [ADDRESS] | Reply with the current frame's address, or the address of the frame ADDRESS names.                      |
+| =frame-addresses=                                                 |           | Reply with every frame's address and what it shows, one per line.                                       |
+| =launch-into=                                                     | [TARGET] COMMAND | Start COMMAND in a frame: an address, a =C-t f= label, =.=, or, with no target, the focused frame. |
+| =launch-into-prompt=                                              |           | Pick a frame address, then a command to start there.                                                    |
 | =focus-left=, =focus-right=, =focus-up=, =focus-down=             |           | Focus the frame in that direction.                                                                      |
 | =fnext=, =fprev=                                                  |           | Focus the next or previous frame in tree order, wrapping. Empty frames are included unless =:cycle-skips-empty= is set. |
 | =exchange-left=, =exchange-right=, =exchange-up=, =exchange-down= |           | Swap windows with the frame in that direction.                                                          |
