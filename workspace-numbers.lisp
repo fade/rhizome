@@ -142,6 +142,28 @@ output's workspaces shows a message naming the range instead."
            (move-focused-window-to-workspace workspace))
           (t (message "~A" (workspace-range-text output number))))))
 
+(defun cycle-workspace (output delta &key with-window)
+  "Show the workspace DELTA steps from OUTPUT's current one, wrapping
+at either end, as StumpWM's gnext and gprev do. With WITH-WINDOW, a
+focused window on OUTPUT's current workspace moves to that workspace
+and keeps focus; with none, only the view moves. Return the reply
+text: \"workspace LABEL\", \"no other workspace\" when OUTPUT has one
+workspace, or \"no output\" when OUTPUT is NIL."
+  (cond
+    ((null output) "no output")
+    ((< (workspace-count output) 2) "no other workspace")
+    (t
+     (let* ((current (current-workspace output))
+            (target (1+ (mod (+ (1- current) delta)
+                             (workspace-count output))))
+            (win (and with-window (focused-window))))
+       (if (and win
+                (eq (window-output win) output)
+                (eql (window-workspace win) current))
+           (move-window-to-workspace win target output)
+           (switch-workspace target output))
+       (format nil "workspace ~A" (workspace-label output target))))))
+
 (defun command-target-output (output name)
   "The output a command acts on: the one with connector NAME when
 NAME is given (NIL when there is none), else OUTPUT."

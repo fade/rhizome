@@ -87,7 +87,7 @@ ARGS and return its value. An unknown COMMAND is logged and returns NIL."
         (funcall handler output args)
         (format t "~&; Rhizome: unknown command ~A~%" command))))
 
-(defvar *rest-of-line-commands* '(:wse :putsel :colon)
+(defvar *rest-of-line-commands* '(:wse :putsel :colon :eval :exec)
   "Commands that take the rest of an IPC command line as one string
 argument, spaces included, instead of one argument per word.")
 
@@ -555,6 +555,32 @@ Usage: remove-workspace [connector]"
         (format nil "~D workspaces"
                 (or (remove-workspace target) (workspace-count target)))
         (format nil "no output ~A" (first args)))))
+
+(define-command :gnext (output args)
+  "Show the next workspace of the current output, wrapping (StumpWM's
+gnext)."
+  (declare (ignore args))
+  (cycle-workspace (or output (current-output)) 1))
+
+(define-command :gprev (output args)
+  "Show the previous workspace of the current output, wrapping
+(StumpWM's gprev)."
+  (declare (ignore args))
+  (cycle-workspace (or output (current-output)) -1))
+
+(define-command :gnext-with-window (output args)
+  "Show the next workspace of the current output, wrapping, and take
+the focused window along, still focused (StumpWM's gnext-with-window).
+With no focused window, act as gnext."
+  (declare (ignore args))
+  (cycle-workspace (or output (current-output)) 1 :with-window t))
+
+(define-command :gprev-with-window (output args)
+  "Show the previous workspace of the current output, wrapping, and
+take the focused window along, still focused (StumpWM's
+gprev-with-window). With no focused window, act as gprev."
+  (declare (ignore args))
+  (cycle-workspace (or output (current-output)) -1 :with-window t))
 
 ;;; --- Multiple outputs (heads.lisp) ---
 

@@ -138,7 +138,7 @@
          (remhash :alias-test-frame-next (symbol-value '*command-aliases*)))
 
         ;; Controls: unmapped StumpWM names stay unknown
-        (dolist (name '("gravity" "gnext" "float-this"))
+        (dolist (name '("gravity" "gmove" "float-this"))
           (check (format nil "unmapped ~A answers unknown command" name)
                  (let ((reply (ipc-dispatch-line name)))
                    (and (stringp reply)

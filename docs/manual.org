@@ -867,8 +867,9 @@ rhizome-cmd '(+ 1 2)'
 A line that starts with =(= is read and evaluated as Lisp in the
 =RHIZOME= package, and the reply is the printed values. Any other line
 is a command name followed by arguments separated by spaces. Each
-argument that reads as an integer arrives as one. =wse= and =putsel=
-take the rest of the line as one argument, spaces included. An
+argument that reads as an integer arrives as one. =wse=, =putsel=,
+=eval=, and =exec= take the rest of the line as one argument, spaces
+included. An
 unknown command replies with the list of command names.
 
 Commands run on the window manager's main thread, so a command can
@@ -883,6 +884,8 @@ The same commands run from the command palette.
 |-------------------------------------------------------------------+-----------+---------------------------------------------------------------------------------------------------------|
 | =switch-workspace=                                                | N         | Switch to workspace N.                                                                                  |
 | =current-workspace=                                               |           | Reply with the current workspace number.                                                                |
+| =gnext=, =gprev=                                                  |           | Show the next or previous workspace of the current output, wrapping.                                    |
+| =gnext-with-window=, =gprev-with-window=                          |           | As =gnext= or =gprev=, taking the focused window along, still focused.                                  |
 | =switch-layout=                                                   | NAME      | Apply the named layout to the current workspace.                                                        |
 | =list-layouts=                                                    |           | Write the layout names to the log.                                                                      |
 | =group-type=                                                      |           | Reply with the workspace's group type.                                                                  |
@@ -935,6 +938,8 @@ The same commands run from the command palette.
 | =copy-last-message=                                               |           | Copy the last message to the clipboard.                                                                 |
 | =lastmsg=                                                         |           | Show the last message again.                                                                            |
 | =time=                                                            |           | Show the date and time.                                                                                 |
+| =eval=                                                            | FORM      | Evaluate FORM as Lisp and reply with its values; with no FORM, open the eval prompt.                    |
+| =exec=                                                            | COMMAND   | Run the shell command line COMMAND without waiting; with no COMMAND, open the shell prompt.             |
 | =help=                                                            |           | Write the command names to the log.                                                                     |
 | =lock=                                                            |           | Lock the session.                                                                                       |
 | =logout=                                                          |           | Log out. Send it twice within 3 seconds.                                                                |
@@ -1008,21 +1013,31 @@ name typed in full runs, with or without arguments.
 
 These StumpWM names are rhizome commands under the same name:
 =clear-window-marks=, =colon=, =command-mode=, =copy-last-message=,
-=delete=, =fclear=, =fnext=, =fprev=, =fselect=, =getsel=,
+=delete=, =eval=, =exec=, =fclear=, =fnext=, =fprev=, =fselect=,
+=getsel=, =gnext=, =gnext-with-window=, =gprev=, =gprev-with-window=,
 =hibernate=, =kill=, =lastmsg=, =mark=, =only=, =pull=, =putsel=,
 =quit=, =remove-split=, =renumber=, =repack-window-numbers=,
-=select-window=, =set-prefix-key=, =suspend=, and =time=. Two of them
-differ from StumpWM: =renumber= renumbers every window of the
-workspace from 1 and takes no number, and =select-window= takes a
-window number, not a name. =fnext= and =fprev= match StumpWM by
-default; with =(:frames (:cycle-skips-empty t))= they pass over empty
-frames.
+=select-window=, =set-prefix-key=, =suspend=, and =time=. These
+differ from StumpWM:
+
+- =renumber= renumbers every window of the workspace from 1 and takes
+  no number.
+- =select-window= takes a window number, not a name.
+- =gnext=, =gprev=, and their =-with-window= forms cycle the
+  workspaces of the current output, where StumpWM cycles the groups of
+  the screen. Every workspace up to the output's count takes part;
+  rhizome has no hidden workspaces, so none is skipped. With one
+  workspace the reply is =no other workspace=.
+- =eval= prints values as =princ= does, so a string shows without
+  quotes.
+- =exec= runs the line with =bash -c=, not =/bin/sh -c=.
+- =fnext= and =fprev= match StumpWM by default; with
+  =(:frames (:cycle-skips-empty t))= they pass over empty frames.
 
 These StumpWM commands have no rhizome equivalent and answer
 =unknown command=:
 
-- group commands: =gnext=, =gprev=, =gnext-with-window=,
-  =gprev-with-window=, =gnew=, =gnewbg=, =gkill=, =gmove=, =gother=,
+- group commands: =gnew=, =gnewbg=, =gkill=, =gmove=, =gother=,
   =grename=, =gmerge=, =groups=, and =grouplist=. Switch workspaces
   with =switch-workspace= and the workspace keys;
 - window commands: =other= (=other-window=), =next=, =prev=,
@@ -1034,7 +1049,7 @@ These StumpWM commands have no rhizome equivalent and answer
 - =float-this= and =unfloat-this=. =toggle-float= toggles, so on a
   window that is already floating it tiles the window, where
   =float-this= leaves it floating;
-- =eval=, =exec=, =echo=, =banish=, =gravity=, =resize=,
+- =echo=, =banish=, =gravity=, =resize=,
   =hsplit-equally=, =vsplit-equally=, and =fother=.
 
 A configuration adds its own name with =define-command-alias=. A name
