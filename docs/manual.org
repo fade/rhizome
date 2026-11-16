@@ -554,7 +554,9 @@ once.
 - =frame-address= :: reply with the current frame's address, or with
   the address of the frame an address names.
 - =frame-addresses= :: reply with every frame's address and what it
-  shows, one per line, in workspace, screen, frame order.
+  shows, one per line, in workspace, screen, frame order. A frame
+  holds its window's title, =pending COMMAND= while a launch into it
+  waits for its window, or =empty=.
 
 From Lisp, =rhizome:frame-address= returns a frame's address as a
 string, =rhizome:resolve-frame-address= turns an address into its
@@ -603,7 +605,8 @@ where any new window does.
 ** The launch prompt
 
 =launch-into-prompt= asks where, then what. The first prompt lists
-every frame address with the title of the frame's window, or =empty=,
+every frame address with the title of the frame's window, the
+pending command, or =empty=,
 plus one =new frame= row per workspace, with the current frame
 selected. Type to filter, and the list scrolls with the selection.
 Picking a row opens a second prompt for the command, which runs as

@@ -100,6 +100,17 @@ connection to rhizome's streams. Returns its pid."
                *launch-claims*)
          t)))
 
+(defun frame-pending-launch-command (frame)
+  "The command of the oldest launch claim that has not lapsed and waits
+for FRAME, or NIL."
+  (let ((now (get-universal-time)))
+    (and frame
+         (let ((claim (find-if (lambda (claim)
+                                 (and (eq (launch-claim-frame claim) frame)
+                                      (>= (launch-claim-expires claim) now)))
+                               *launch-claims*)))
+           (and claim (launch-claim-command claim))))))
+
 (defun launch-into-frame (command output workspace frame &key switch)
   "Start COMMAND, a shell command line, so that its first window opens
 on WORKSPACE of OUTPUT: in FRAME, a leaf of that workspace's frame

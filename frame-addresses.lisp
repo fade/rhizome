@@ -173,13 +173,24 @@ second value: the reply text naming what is missing."
 
 ;;; --- Listing ---
 
+(defvar *frame-pending-function* 'frame-pending-launch-command
+  "Function of a leaf frame returning the command a pending launch into
+it runs, or NIL; NIL here lists no frame as pending. The default reads
+the launch claims (frame-launch.lisp).")
+
 (defun frame-address-context (frame)
   "What FRAME shows, for a listing: its window's title, else its app
-id, else \"empty\"."
-  (let ((win (frame-current-window frame)))
-    (if win
-        (or (window-title win) (window-app-id win) "window")
-        "empty")))
+id, else \"pending COMMAND\" while a launch waits for it, else
+\"empty\"."
+  (let ((win (frame-current-window frame))
+        (pending *frame-pending-function*))
+    (cond (win
+           (or (window-title win) (window-app-id win) "window"))
+          ((let ((command (and pending
+                               (or (functionp pending) (fboundp pending))
+                               (funcall pending frame))))
+             (and command (format nil "pending ~A" command))))
+          (t "empty"))))
 
 (defun all-frame-addresses (&key (index-base (index-base)))
   "Every frame of every workspace on every screen, as a list of

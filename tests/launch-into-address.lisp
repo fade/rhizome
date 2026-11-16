@@ -6,8 +6,10 @@
 ;;; along its longer axis, and five past it, which is refused; a frame
 ;;; made for a launch surviving pruning while its claim is pending, with
 ;;; a control run where the hold is switched off; the shorthand with no
-;;; target, "." for the focused frame, and an fselect label. Programs
-;;; are not started: launch-spawn is stubbed and records its command.
+;;; target, "." for the focused frame, and an fselect label. A refusal
+;;; replies with its reason, over IPC too, and frame-addresses lists a
+;;; frame a launch waits for as pending. Programs are not started:
+;;; launch-spawn is stubbed and records its command.
 (ql:quickload :rhizome)
 
 (in-package #:rhizome)
@@ -255,6 +257,30 @@
               "launch-into: no frame 9: 1:1 has 4 frames; at most 4 more can be made")
           (ok "and starts nothing"
               *spawned* nil))
+
+        ;; --- A frame waiting for its window is listed as pending ---
+
+        (reset)
+        (multiple-value-bind (dvi hdmi) (two-screens)
+          (declare (ignore hdmi))
+          (setf *selected-output* dvi)
+          (window-in :d1 dvi 3 (frame-tree-for dvi 3) "li-d")
+          (launch "3:1:2" "kitty" "-T" "li-e")
+          (flet ((listed (address)
+                   (find-if (lambda (line)
+                              (and (> (length line) (length address))
+                                   (string= address line
+                                            :end2 (length address))))
+                            (uiop:split-string
+                             (execute-command dvi :frame-addresses nil)
+                             :separator '(#\Newline)))))
+            (ok "a hidden workspace's target frame shows the pending command"
+                (listed "3:1:2 ") "3:1:2 pending kitty -T li-e")
+            (ok "its occupied frame still shows its window"
+                (listed "3:1:1 ") "3:1:1 li-d")
+            (setf (launch-claim-expires (claim)) 0)
+            (ok "once the claim lapses the frame shows empty"
+                (listed "3:1:2 ") "3:1:2 empty")))
 
         (format t "~&=== ~D passed, ~D failed ===~%" pass fail)
         (sb-ext:exit :code (if (zerop fail) 0 1))))))
