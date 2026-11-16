@@ -1,6 +1,8 @@
 ;;; Tests for free-text completion: a prompt opened without
 ;;; candidates completes with the typed query, and a prompt opened
 ;;; with candidates still completes only with a selected candidate.
+;;; Also: keys keep a prompt open past its idle timeout, and the
+;;; timeout still closes a prompt left without keys.
 (ql:quickload :rhizome)
 
 (in-package #:rhizome)
@@ -95,7 +97,24 @@
              (prompt-handle-key 65293))
         (setf (fdefinition 'uiop:launch-program) saved))
       (ok "the shell prompt runs the typed command"
-          launches '(("bash" "-c" "true")))))
+          launches '(("bash" "-c" "true"))))
+
+    ;; Typing keeps a prompt open past the unattended timeout. Moving
+    ;; the deadline back by SECONDS stands in for that much time passing.
+    (flet ((wait (seconds)
+             (decf *prompt-expiry* seconds)
+             (prompt-drain)))
+      (prompt-open "Slow:" :candidates nil :on-complete #'identity)
+      (dotimes (i 12)
+        (wait 5)
+        (prompt-handle-key (char-code #\a)))
+      (wait 5)
+      (ok "a key every five seconds keeps the prompt open for a minute"
+          (list *prompt-active* *prompt-query*)
+          (list t "aaaaaaaaaaaa"))
+      (wait 31)
+      (ok "thirty seconds without a key still close it"
+          *prompt-active* nil)))
 
   (format t "~&=== ~A passed, ~A failed ===~%" pass fail)
   (uiop:quit (if (zerop fail) 0 1)))

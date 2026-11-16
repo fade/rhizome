@@ -42,9 +42,17 @@ width, height.")
 (defparameter *prompt-expiry* 0
   "Universal time after which an unattended prompt auto-closes.")
 
+(defparameter *prompt-idle-seconds* 30
+  "Seconds without a key after which an open prompt closes.")
+
+(defun prompt-extend-deadline ()
+  "Push the open prompt's auto-close *prompt-idle-seconds* past now."
+  (setf *prompt-expiry* (+ (get-universal-time) *prompt-idle-seconds*)))
+
 (defun prompt-drain ()
-  "Auto-close an unattended prompt after 30 seconds, so a keyboard-
-exclusive surface can never trap input. Called from the main loop."
+  "Close a prompt that has had no key for *prompt-idle-seconds*, so a
+keyboard-exclusive surface the keys no longer reach cannot trap input.
+Called from the main loop."
   (when (and *prompt-active*
              (plusp *prompt-expiry*)
              (>= (get-universal-time) *prompt-expiry*))
@@ -105,7 +113,8 @@ opened with COMPLETE-LINE. A complete-line prompt yields:
   "Handle KEYSYM while the prompt is open. Return T.
 Enter closes the prompt and calls the completion function with the
 string prompt-choice returns; when that is NIL the function is not
-called."
+called. Every key restarts the idle deadline (prompt-drain)."
+  (prompt-extend-deadline)
   (let ((filtered-count (length (prompt-filtered))))
     (cond
       ;; Escape — cancel
@@ -237,7 +246,7 @@ line (see prompt-choice). Clear *prompt-exact-names*."
         *prompt-selection* 0
         *prompt-on-complete* on-complete
         *prompt-state* (make-hash-table)
-        *prompt-expiry* (+ (get-universal-time) 30))
+        *prompt-expiry* (+ (get-universal-time) *prompt-idle-seconds*))
   (let ((state *prompt-state*))
     ;; The render helpers expect the global wl_shm in the state hash
     (setf (gethash :shm state) *shm*)
