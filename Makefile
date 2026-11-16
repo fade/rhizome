@@ -44,7 +44,7 @@ SUITES    := animations decorations surface window-rules window-rules-reload flo
              ipc-client-lifecycle ipc-client-idle \
              frame-cycling frame-cycle-skip-empty stumpwm-aliases \
              stumpwm-group-eval-exec notifications scratchpads \
-             wallpaper screen-numbering frame-addresses
+             wallpaper screen-numbering frame-addresses launch-into-address
 
 .PHONY: all build test install docs clean help
 

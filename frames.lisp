@@ -956,6 +956,19 @@ every empty frame. Any other value, or no :frames group, is :auto."
         value
         :auto)))
 
+(defvar *frames-held-function* 'frame-launch-pending-p
+  "Function of a leaf frame, true when pruning must keep it although it
+is empty, or NIL to hold none. The default keeps a frame a pending
+launch waits for (frame-launch.lisp).")
+
+(defun frame-held-p (frame)
+  "True when *frames-held-function* holds FRAME against pruning."
+  (let ((held *frames-held-function*))
+    (and held
+         (or (functionp held) (fboundp held))
+         (funcall held frame)
+         t)))
+
 (defun prune-empty-frames (output workspace)
   "Absorb empty leaf frames into their siblings as the
 (:frames (:prune-empty ...)) policy allows: under :never nothing is
@@ -963,7 +976,8 @@ pruned; under :always every empty non-root leaf is; under :auto an
 empty leaf survives when its parent is a user split. A pruned leaf's
 sibling takes over the parent's rectangle and slot, with internal
 nodes rescaled to keep their split ratios. The root frame always
-survives, so new windows always have a place to land."
+survives, so new windows always have a place to land, and so does a
+leaf frame-held-p holds, such as one a pending launch waits for."
   (let ((key (frame-key output workspace))
         (policy (frame-prune-policy))
         (pruned nil))
@@ -975,6 +989,7 @@ survives, so new windows always have a place to land."
                       (find-if (lambda (leaf)
                                  (and (null (frame-windows leaf))
                                       (frame-parent leaf)
+                                      (not (frame-held-p leaf))
                                       (or (eq policy :always)
                                           (not (frame-user-split
                                                 (frame-parent leaf))))))
