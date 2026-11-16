@@ -767,11 +767,15 @@ With :region t, select the area with slurp first."
     (:mode-line . :toggle-bar)
     (:balance-frames . :balance)
     (:delete-window . :delete)
-    (:kill-window . :kill))
+    (:kill-window . :kill)
+    (:backgrounds . :wallpaper))
   "StumpWM command names and the closest matching rhizome command for
 each. The manual notes where the two behave differently. Names StumpWM
 shares with rhizome are commands, not aliases.
-balance runs only once the rhizome-display module is loaded.")
+balance runs only once the rhizome-display module is loaded, and
+wallpaper only once the rhizome-wallpaper module is loaded.
+backgrounds is a command from a StumpWM configuration, not from
+StumpWM itself.")
 
 (loop for (alias . command) in *stumpwm-command-aliases*
       do (define-command-alias alias command))

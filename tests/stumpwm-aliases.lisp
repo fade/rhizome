@@ -32,7 +32,8 @@
     (:mode-line :toggle-bar nil)
     (:balance-frames :balance nil)
     (:delete-window :delete nil)
-    (:kill-window :kill nil))
+    (:kill-window :kill nil)
+    (:backgrounds :wallpaper nil))
   "Each StumpWM name, the rhizome command it runs, and test arguments.")
 
 (defun run-stumpwm-alias-tests ()

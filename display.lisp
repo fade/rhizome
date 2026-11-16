@@ -57,7 +57,9 @@ offers it (or after the manager says finished).")
        ;; Connector names are known now: per-screen workspace
        ;; counts from (:workspaces :screens) apply
        (when (fboundp 'reconcile-workspace-counts)
-         (funcall 'reconcile-workspace-counts))))
+         (funcall 'reconcile-workspace-counts))
+       ;; The set of named, enabled heads may have changed
+       (run-hook :outputs-changed)))
     (:finished
      (setf *output-manager* nil))))
 
