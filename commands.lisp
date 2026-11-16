@@ -53,7 +53,8 @@ takes precedence over an alias of the same name."
   "Make ALIAS (a keyword) run COMMAND (a keyword) at execute-command,
 the IPC dispatcher, and the command palette. Return ALIAS. Redefining
 ALIAS replaces its command. Signal an error when ALIAS names a
-registered command, which always runs itself."
+registered command: a registered command name always runs that
+command."
   (check-type alias keyword)
   (check-type command keyword)
   (when (gethash alias *command-table*)
@@ -741,8 +742,9 @@ With :region t, select the area with slurp first."
     (:balance-frames . :balance)
     (:delete-window . :delete)
     (:kill-window . :kill))
-  "StumpWM command names and the rhizome commands that do the same
-thing. Names StumpWM shares with rhizome are commands, not aliases.
+  "StumpWM command names and the closest matching rhizome command for
+each. The manual notes where the two behave differently. Names StumpWM
+shares with rhizome are commands, not aliases.
 balance runs only once the rhizome-display module is loaded.")
 
 (loop for (alias . command) in *stumpwm-command-aliases*

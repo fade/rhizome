@@ -1,8 +1,15 @@
 ;;; Tests for cycling frame focus in tree order (StumpWM's fnext and
-;;; fprev): the exported entry points, next and previous order across
-;;; three leaves with an empty one between occupied ones, wrapping in
-;;; both directions, keyboard focus clearing on the empty frame, the
-;;; command-table entries, and the single-frame no-op.
+;;; fprev):
+;;;
+;;; - the exported entry points;
+;;; - next and previous order across three leaves, with an empty one
+;;;   between occupied ones;
+;;; - wrapping in both directions;
+;;; - keyboard focus clearing on the empty frame;
+;;; - the command-table entries;
+;;; - the IPC fnext and fprev replies and the frames they move to;
+;;; - the single-frame no-op.
+;;;
 ;;; River requests are stubbed and recorded.
 (ql:quickload :rhizome)
 
