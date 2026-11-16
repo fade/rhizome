@@ -887,7 +887,10 @@ starts the program and claims the first window that opens within 10
 seconds. The first time a scratchpad shows, it floats centred near
 the top of its output, below the bar. After that it stays where you
 move it, but each time it shows it moves back inside the output's
-usable area if any part of it would fall outside. A shown scratchpad
+usable area if any part of it, titlebar and border included, would
+fall outside. A scratchpad keeps its size unless the decorated window
+is larger than the usable area; only then does it shrink to fit, and
+the log records the new size. A shown scratchpad
 takes the focus, and hiding it gives the focus back to a window still
 visible on that workspace, so what you type goes to the window you
 see.

@@ -301,23 +301,134 @@ HEIGHT on OUT; its float position as (X Y)."
 
 (defun check-show-keeps-scratchpad-on-output ()
   (fresh)
-  (let ((out (mk-out :sp-out)))
+  (let ((out (mk-out :sp-out))
+        (bw (border-width t)))
     (multiple-value-bind (ux uy uw uh) (output-usable-area out)
       (ok "a scratchpad past the bottom-right edge moves back inside"
           (shown-after-hidden-at out :sp-past (+ ux uw -300) (+ uy uh -100)
                                  800 500)
-          (list (+ ux uw -800) (+ uy uh -500)))
+          (list (- (+ ux uw) 800 bw) (- (+ uy uh) 500 bw)))
       (fresh)
       (setf out (mk-out :sp-out))
-      (ok "a scratchpad wider than the usable area starts at its left edge"
+      (ok "a scratchpad wider than the usable area starts inside its left edge"
           (shown-after-hidden-at out :sp-wide 300 (+ uy 100) (+ uw 80) 500)
-          (list ux (+ uy 100)))
+          (list (+ ux bw) (+ uy 100)))
+      (ok "a scratchpad wider than the usable area shrinks to fit"
+          (window-float-width (gethash :sp-wide *windows*))
+          (- uw bw bw))
       (fresh)
       (setf out (mk-out :sp-out))
       (ok "a scratchpad already inside keeps its position"
           (shown-after-hidden-at out :sp-inside (+ ux 100) (+ uy 100)
                                  800 500)
           (list (+ ux 100) (+ uy 100))))))
+
+(defun with-decorations (thunk)
+  "Call THUNK with a 36 pixel bar on every output and 25 pixel
+titlebars on floats; restore both afterwards."
+  (let ((real-bar-height (symbol-function 'bar-reserved-height)))
+    (setf (symbol-function 'bar-reserved-height)
+          (lambda (&optional output)
+            (declare (ignore output))
+            36))
+    (configure '(:theme (:titlebar t :titlebar-height 25)))
+    (unwind-protect (funcall thunk)
+      (configure '(:theme (:titlebar nil :titlebar-height nil)))
+      (setf (symbol-function 'bar-reserved-height) real-bar-height))))
+
+(defun frame-box (win)
+  "WIN's decorated frame as (LEFT TOP RIGHT BOTTOM): its float box, the
+focused border on every side, and a 25 pixel titlebar above."
+  (let ((bw (border-width t))
+        (x (window-float-x win))
+        (y (window-float-y win)))
+    (list (- x bw) (- y bw 25)
+          (+ x (window-float-width win) bw)
+          (+ y (window-float-height win) bw))))
+
+(defun frame-inside-p (win out)
+  "True when WIN's decorated frame lies inside OUT's usable area."
+  (multiple-value-bind (ux uy uw uh) (output-usable-area out)
+    (destructuring-bind (left top right bottom) (frame-box win)
+      (and (<= ux left) (<= uy top)
+           (<= right (+ ux uw)) (<= bottom (+ uy uh))))))
+
+(defun count-matches (needle text)
+  "How many times NEEDLE occurs in TEXT."
+  (loop with start = 0
+        for hit = (search needle text :start2 start)
+        while hit
+        count t
+        do (setf start (1+ hit))))
+
+(defun check-decorated-frame-fits ()
+  (with-decorations
+    (lambda ()
+      (let ((bw (border-width t)))
+        ;; The run that failed: a 1222x631 terminal at 6,63 on a
+        ;; 1234x679 output whose usable area is 0 36 1234 643
+        (fresh)
+        (let* ((out (mk-out :sp-short :width 1234 :height 679))
+               (log (with-output-to-string (*standard-output*)
+                      (shown-after-hidden-at out :sp-tall 6 63 1222 631)))
+               (win (gethash :sp-tall *windows*))
+               (fit-h (- 643 25 bw bw)))
+          (render out)
+          (ok "a decorated frame taller than the usable area shrinks to fit"
+              (list (window-float-width win) (window-float-height win))
+              (list 1222 fit-h))
+          (ok "the shrunk frame lies inside the usable area"
+              (frame-inside-p win out) t)
+          (ok "shrinking a scratchpad logs one line naming its new size"
+              (count-matches
+                (format nil "; Rhizome: scratchpad term shrunk to 1222x~D to fit output"
+                        fit-h)
+                log)
+              1))
+        ;; The same terminal claimed before its first size
+        (fresh)
+        (let ((out (mk-out :sp-short :width 1234 :height 679)))
+          (setf *selected-output* out)
+          (toggle-scratchpad "term")
+          (let ((win (make-instance 'rhizome-window :proxy :sp-first)))
+            (setf (gethash :sp-first *windows*) win)
+            (run-hook :window-created win)
+            (let ((log (with-output-to-string (*standard-output*)
+                         (handle-window-event win :dimensions 1222 631))))
+              (setf (window-output win) out)
+              (render out)
+              (ok "a first size too tall for the usable area shrinks to fit"
+                  (window-float-height win) (- 643 25 bw bw))
+              (ok "a frame shrunk on its first size lies inside"
+                  (frame-inside-p win out) t)
+              (ok "shrinking on the first size logs one line"
+                  (count-matches "shrunk to" log) 1))))
+        ;; A frame that fits keeps its size and position
+        (fresh)
+        (let* ((out (mk-out :sp-short :width 1234 :height 679))
+               (log (with-output-to-string (*standard-output*)
+                      (ok "a decorated frame that fits keeps its position"
+                          (shown-after-hidden-at out :sp-fits 100 100 800 500)
+                          '(100 100))))
+               (win (gethash :sp-fits *windows*)))
+          (render out)
+          (ok "a decorated frame that fits keeps its size"
+              (list (window-float-width win) (window-float-height win))
+              '(800 500))
+          (ok "a frame that fits lies inside the usable area"
+              (frame-inside-p win out) t)
+          (ok "a frame that fits logs no shrink"
+              (count-matches "shrunk to" log) 0))
+        ;; A frame that fits but hangs past the bottom moves up only
+        (fresh)
+        (let* ((out (mk-out :sp-short :width 1234 :height 679))
+               (pos (shown-after-hidden-at out :sp-low 6 100 1222 600))
+               (win (gethash :sp-low *windows*)))
+          (ok "a frame that fits moves the least distance back inside"
+              pos (list 6 (- 679 bw 600)))
+          (ok "a frame that moves back inside keeps its size"
+              (list (window-float-width win) (window-float-height win))
+              '(1222 600)))))))
 
 (defun check-hide-moves-focus ()
   (let ((stub (symbol-function 'focus-window)))
@@ -378,6 +489,7 @@ HEIGHT on OUT; its float position as (X Y)."
                  check-centring
                  check-centre-on-first-size
                  check-show-keeps-scratchpad-on-output
+                 check-decorated-frame-fits
                  check-hide-moves-focus))
   (handler-case (funcall check)
     (error (e)

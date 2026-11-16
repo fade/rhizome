@@ -75,28 +75,56 @@ the size its client committed. NIL when neither is known."
     (when (and w h)
       (values w h))))
 
-(defun scratchpad-fit-usable-area (win)
-  "Move the floating WIN the least distance that keeps it inside the
-usable area of its output (CURRENT-OUTPUT while it has none), or to
-the area's left or top edge on an axis where it is larger than the
-area. A window already inside, or of unknown size, stays put."
+(defun scratchpad-frame-insets (win)
+  "The decoration around WIN's float box as four values, LEFT TOP
+RIGHT BOTTOM, in pixels. Each side carries the float border; the top
+also carries the titlebar strip when WIN has one (TITLEBAR-GEOMETRY).
+The border is the wider of the focused and unfocused widths, so a
+focus change cannot push the frame out of the usable area."
+  (let ((bw (max (border-width t) (border-width nil))))
+    (values bw
+            (+ bw (if (window-titlebar-p win) (titlebar-height) 0))
+            bw
+            bw)))
+
+(defun scratchpad-fit-usable-area (win name)
+  "Keep the decorated frame of the floating WIN, the scratchpad NAME,
+inside the usable area of its output (CURRENT-OUTPUT while it has
+none). The frame is WIN's float box plus SCRATCHPAD-FRAME-INSETS.
+
+A frame that fits moves the least distance that puts it inside, and
+keeps its size. On an axis where the frame is larger than the area,
+WIN shrinks to the area minus the decoration, its frame starts at the
+area's edge, and one line naming NAME and the new size is logged. A
+window of unknown size stays put."
   (let ((out (or (window-output win) (current-output))))
     (multiple-value-bind (w h) (scratchpad-window-size win)
       (when (and w out (plusp (output-width out)))
         (multiple-value-bind (ux uy uw uh) (output-usable-area out)
-          (flet ((fit (pos size start length)
-                   (if (> size length)
-                       start
-                       (min (max pos start) (- (+ start length) size)))))
-            (setf (window-float-x win) (fit (window-float-x win) w ux uw)
-                  (window-float-y win) (fit (window-float-y win) h uy uh))))))))
+          (multiple-value-bind (left top right bottom)
+              (scratchpad-frame-insets win)
+            (let ((fit-w (max 1 (min w (- uw left right))))
+                  (fit-h (max 1 (min h (- uh top bottom)))))
+              (flet ((fit (pos size start length before after)
+                       (min (max pos (+ start before))
+                            (- (+ start length) after size))))
+                (setf (window-float-x win)
+                      (fit (window-float-x win) fit-w ux uw left right)
+                      (window-float-y win)
+                      (fit (window-float-y win) fit-h uy uh top bottom)))
+              (when (or (< fit-w w) (< fit-h h))
+                (setf (window-float-width win) fit-w
+                      (window-float-height win) fit-h)
+                (format t "~&; Rhizome: scratchpad ~A shrunk to ~Dx~D to fit output~%"
+                        name fit-w fit-h)))))))))
 
 (defun scratchpad-show (name state)
   "Show the scratchpad: un-minimize, float, place, focus. A window
 shown for the first time is centred (scratchpad-centre-position); a
 window with no size yet is centred again on its first size
-(scratchpad-centre-on-size). Every show then keeps the window inside
-its output's usable area (scratchpad-fit-usable-area)."
+(scratchpad-centre-on-size). Every show then keeps the decorated
+frame inside its output's usable area, shrinking the window only when
+the frame is larger than the area (scratchpad-fit-usable-area)."
   (let ((win (getf state :window)))
     (when (and win (gethash (window-proxy win) *windows*))
       ;; Un-minimize; the next render pass sends river's show
@@ -106,7 +134,7 @@ its output's usable area (scratchpad-fit-usable-area)."
           (float-window win :x x :y y))
         (unless (scratchpad-window-size win)
           (setf (getf state :centre-pending) t)))
-      (scratchpad-fit-usable-area win)
+      (scratchpad-fit-usable-area win name)
       ;; focus it (queued through the manage pass)
       (dolist (seat (all-seats))
         (focus-window win seat))
@@ -193,7 +221,8 @@ has no window and is not visible."
 (defun scratchpad-centre-on-size (win width height)
   "The :window-resized handler: a scratchpad whose window WIN was shown
 before its client committed a size is centred on that first size and
-kept inside its output's usable area. Later sizes leave it in place."
+its decorated frame kept inside its output's usable area
+(scratchpad-fit-usable-area). Later sizes leave it in place."
   (declare (ignore width height))
   (loop for name being the hash-keys of *scratchpads*
         for state = (gethash name *scratchpads*)
@@ -205,7 +234,7 @@ kept inside its output's usable area. Later sizes leave it in place."
                (multiple-value-bind (x y) (scratchpad-centre-position win)
                  (setf (window-float-x win) x
                        (window-float-y win) y))
-               (scratchpad-fit-usable-area win)
+               (scratchpad-fit-usable-area win name)
                (request-manage-dirty))
              (return)))
 

@@ -218,8 +218,10 @@ stubbed river requests. Run with:
   usable area (or the current output while it has none yet), 50
   pixels below that output's bar; a scratchpad claimed before its
   client commits a size centres again on that first size, and only
-  that one; every show moves a scratchpad back inside its output's
-  usable area, and one already inside keeps its position; hiding a
+  that one; every show moves a scratchpad's decorated frame (titlebar
+  and border included) back inside its output's usable area, and one
+  already inside keeps its position; a frame that fits keeps its size,
+  and one larger than the area shrinks to fit with one log line; hiding a
   scratchpad, a minimize request, and the menu's Minimize each move
   the focus to a visible window on the workspace, or clear it when
   none is left, and showing a scratchpad focuses it.
