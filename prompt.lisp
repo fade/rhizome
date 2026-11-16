@@ -34,8 +34,16 @@ does its candidates, without listing them as candidates.")
 width, height.")
 
 (defparameter *prompt-width* 700)
+
 (defparameter *prompt-height* 200
-  "Input line plus visible candidate rows; sized on open.")
+  "Input line plus visible candidate rows; sized on open by
+prompt-surface-height.")
+
+(defparameter *prompt-padding* 6
+  "Pixels above the input line and below the last candidate row.")
+
+(defparameter *prompt-max-rows* 10
+  "Most candidate rows a prompt shows at once; the rest scroll.")
 
 ;;; --- Filtering ---
 
@@ -154,17 +162,61 @@ called."
 ;;; --- Rendering ---
 
 (defun prompt-visible-rows (height row-height)
-  "How many candidate rows fit below the input line of a prompt HEIGHT
-pixels tall with rows ROW-HEIGHT pixels tall, at least 1."
-  (max 1 (loop for rows from 0
-               while (< (+ row-height 8) (- height (* row-height rows)))
-               count t)))
+  "How many whole candidate rows of ROW-HEIGHT pixels fit below the
+input line of a prompt HEIGHT pixels tall, inside its padding; at
+least 1."
+  (max 1 (1- (floor (- height (* 2 *prompt-padding*)) row-height))))
+
+(defun prompt-row-top (slot row-height)
+  "The top pixel row of visible candidate row SLOT, counted from 0
+below the input line, for rows ROW-HEIGHT pixels tall."
+  (+ *prompt-padding* (* row-height (1+ slot))))
+
+(defun prompt-surface-height (rows row-height)
+  "The height of a prompt that shows ROWS candidate rows of ROW-HEIGHT
+pixels: padding, the input line, the rows, and padding."
+  (+ (* 2 *prompt-padding*) (* row-height (1+ rows))))
 
 (defun prompt-scroll-offset (selection visible)
   "The first candidate row to draw so that row SELECTION shows when
 VISIBLE rows fit: 0 until the selection passes the last visible row,
 then enough to keep it on the bottom row."
   (max 0 (- selection (1- visible))))
+
+(defun prompt-paint (ptr width height)
+  "Draw the prompt into PTR, a premultiplied ARGB buffer WIDTH by
+HEIGHT pixels. The background is opaque whatever the bar's opacity.
+The input line holds the title and the query. Below it, the filtered
+candidates scroll so the selected one shows, on a highlight the full
+height of its row."
+  (font-ensure-initialized)
+  (let* ((row-height (font-line-height))
+         (visible (prompt-visible-rows height row-height))
+         (offset (prompt-scroll-offset *prompt-selection* visible))
+         (text-x 10))
+    (multiple-value-bind (r g b) (theme-rgb :prompt-background)
+      (multiple-value-bind (br bg bb) (theme-rgb :prompt-border)
+        (paint-rounded-surface ptr width height r g b
+                               :radius (config-getf '(:bar) :corner-radius
+                                                    :default 8)
+                               :border-r br :border-g bg :border-b bb)))
+    (flet ((text (string x y element)
+             (multiple-value-bind (r g b) (theme-rgb element)
+               (font-draw-text ptr width height string x y r g b))))
+      (text *prompt-title* text-x *prompt-padding* :prompt-title)
+      (text *prompt-query* (+ text-x (font-text-width *prompt-title*)
+                              (font-text-width " "))
+            *prompt-padding* :prompt-query)
+      (loop for candidate in (nthcdr offset (prompt-filtered))
+            for slot below visible
+            for top = (prompt-row-top slot row-height)
+            for selected = (= (+ offset slot) *prompt-selection*)
+            do (when selected
+                 (multiple-value-bind (r g b) (theme-rgb :prompt-selection)
+                   (fill-rounded-rect ptr width height 4 top (- width 8)
+                                      row-height r g b :radius 4)))
+               (text candidate text-x top
+                     (if selected :prompt-selected :prompt-candidate))))))
 
 (defun prompt-redraw ()
   "Render the prompt into its shm buffer and commit."
@@ -174,48 +226,7 @@ then enough to keep it on the bottom row."
         (when (and ptr (not (cffi:null-pointer-p ptr)))
           (let ((width (gethash :width state))
                 (height (gethash :height state)))
-            (multiple-value-bind (br bg bb) (theme-rgb :prompt-background)
-              (rhizome-rounded-clear ptr width height br bg bb))
-            (let ((y (floor (- height (font-line-height)) 2))
-                  (row-height (font-line-height))
-                  (row-count 0))
-              ;; Title and query on the input line
-              (multiple-value-bind (ar ag ab) (theme-rgb :prompt-title)
-                (bar-draw-text ptr width height *prompt-title*
-                               8 2 ar ag ab))
-              (multiple-value-bind (fr fg fb) (theme-rgb :prompt-query)
-                (bar-draw-text ptr width height *prompt-query*
-                               (+ 8 (bar-text-width *prompt-title*)) 2
-                               fr fg fb)
-                ;; Candidate rows below the input line, scrolled so
-                ;; the selected row shows
-                (dolist (candidate (nthcdr (prompt-scroll-offset
-                                            *prompt-selection*
-                                            (prompt-visible-rows
-                                             height row-height))
-                                           (prompt-filtered)))
-                  (when (>= (+ row-height 8) (- height (* row-height
-                                                          row-count)))
-                    (return))
-                  (let ((row-y (* row-height row-count)))
-                    (when (= (+ row-count
-                                (prompt-scroll-offset
-                                 *prompt-selection*
-                                 (prompt-visible-rows height row-height)))
-                             *prompt-selection*)
-                      ;; Highlight the selected row
-                      (multiple-value-bind (ar ag ab)
-                          (theme-rgb :prompt-selection)
-                        (loop for dx below (- width 16)
-                              do (bar-set-pixel ptr width height (+ 8 dx)
-                                                (+ row-height row-y)
-                                                ar ag ab))))
-                    (multiple-value-bind (cr cg cb)
-                        (theme-rgb :prompt-candidate)
-                      (bar-draw-text ptr width height candidate
-                                     8 (+ row-height row-y)
-                                     cr cg cb))
-                    (incf row-count)))))
+            (prompt-paint ptr width height)
             ;; Attach, damage, commit
             (wl:wl-surface.attach (gethash :surface state)
                                   (gethash :wl-buffer state) 0 0)
@@ -241,7 +252,8 @@ ON-COMPLETE with the selected candidate. Without candidates, the prompt
 takes free text and Enter calls ON-COMPLETE with the non-empty query.
 COMPLETE-LINE makes a candidates prompt a complete-line prompt:
 candidates match the first word, and Enter may complete with the whole typed
-line (see prompt-choice). Clear *prompt-exact-names*."
+line (see prompt-choice). Clear *prompt-exact-names*. The prompt is
+tall enough for every candidate row up to *prompt-max-rows*."
   (when *prompt-active*
     (prompt-close))
   (unless (and *compositor* *shm* *layer-shell*)
@@ -251,7 +263,11 @@ line (see prompt-choice). Clear *prompt-exact-names*."
   ;; its close already freed it
   (when *prompt-state*
     (bar-destroy-shm *prompt-state*))
-  (setf *prompt-title* title
+  (font-ensure-initialized)
+  (setf *prompt-height* (prompt-surface-height
+                         (min *prompt-max-rows* (length candidates))
+                         (font-line-height))
+        *prompt-title* title
         *prompt-query* initial
         *prompt-candidates* candidates
         *prompt-complete-line* complete-line

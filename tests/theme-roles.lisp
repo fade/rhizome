@@ -34,7 +34,8 @@
     :prompt-title "#7aa2f7"
     :prompt-query "#c0caf5"
     :prompt-candidate "#c0caf5"
-    :prompt-selection "#7aa2f7"
+    :prompt-selection "#503278"
+    :prompt-selected "#f0e6ff"
     :eval-background "#1a1b26"
     :eval-label "#7aa2f7"
     :eval-query "#c0caf5"
@@ -64,7 +65,8 @@
     :fselect-label "#7aa2f7"
     :dialog-notice "#ff5fd7")
   "Every element's colour as drawn before themes: the default-config
-values and the defaults written at each drawing site.")
+values and the defaults written at each drawing site. The prompt's
+selection takes the :selection role, as the launcher's does.")
 
 (defun collect-warnings (thunk)
   "Call THUNK; return the text of every warning it signals."

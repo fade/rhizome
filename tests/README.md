@@ -181,6 +181,11 @@ stubbed river requests. Run with:
   completes with the typed text (and with nothing when it is empty),
   Enter on a candidate prompt still needs a matching candidate, and the
   shell prompt launches the command typed into it.
+- `prompt-popup.lisp` - how a candidate prompt draws: its height holds
+  whole rows, no more than it has candidates; the selected row is a
+  highlight the full height of the row, inside the popup at every
+  scroll position; and the background is opaque whatever the bar's
+  opacity.
 - `palette-message.lisp` - the message a command leaves on screen when
   run from the command palette or over IPC: the command's own message
   stays, a non-empty reply is shown when the command showed nothing,

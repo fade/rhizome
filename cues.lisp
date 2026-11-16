@@ -40,8 +40,8 @@
      :cues ((:shape :pill :none)))
     (:prompt-selected
      :against :prompt-unselected
-     :elements (:prompt-selection :prompt-candidate)
-     :cues ((:shape :rule :none)))
+     :elements (:prompt-selected :prompt-candidate)
+     :cues ((:shape :pill :none)))
     (:bar-hovered
      :against :bar-unhovered
      :elements (:bar-hover :bar-background)

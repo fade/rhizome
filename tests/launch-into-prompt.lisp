@@ -188,8 +188,8 @@
 
         ;; --- Scrolling the candidate list ---
 
-        (ok "nine 20 px rows fit a 200 px prompt"
-            (prompt-visible-rows 200 20) 9)
+        (ok "eight whole 20 px rows fit a 200 px prompt below its input line"
+            (prompt-visible-rows 200 20) 8)
         (ok "a selection in view scrolls nothing"
             (prompt-scroll-offset 4 9) 0)
         (ok "a selection below the last row scrolls it to the bottom row"
