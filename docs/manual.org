@@ -463,6 +463,12 @@ Other frame commands, available from the command palette or
 - =balance= :: make every split even (=C-t B=).
 - =fclear= :: empty the current frame; its windows move to the other
   frames.
+- =fnext= and =fprev= :: focus the next or previous frame in tree
+  order, wrapping at either end, as in StumpWM. An empty frame is a
+  stop like any other: focusing it clears keyboard focus, so under the
+  default placement the next new window opens there. From Lisp, call =rhizome:focus-next-frame=
+  and =rhizome:focus-previous-frame= with an output, or
+  =rhizome:focus-frame= to focus a given frame.
 - =dump-frame NAME= and =restore-frame NAME= :: save the workspace's
   frame tree to =~/.local/share/rhizome/frame-dumps/= and rebuild it
   later. Windows are placed by number, missing windows are skipped,
@@ -884,6 +890,7 @@ The same commands run from the command palette.
 | =resize-split=                                                    | [PIXELS]  | Move the current split's dividing line by PIXELS (default 30); a negative value moves it the other way. |
 | =fclear=                                                          |           | Move the current frame's windows to the other frames.                                                   |
 | =focus-left=, =focus-right=, =focus-up=, =focus-down=             |           | Focus the frame in that direction.                                                                      |
+| =fnext=, =fprev=                                                  |           | Focus the next or previous frame in tree order, wrapping. Empty frames are included.                    |
 | =exchange-left=, =exchange-right=, =exchange-up=, =exchange-down= |           | Swap windows with the frame in that direction.                                                          |
 | =focus-next=, =focus-previous=                                    |           | Cycle the windows of the current frame.                                                                 |
 | =pull-next=, =pull-prev=                                          |           | Show the next or previous hidden window in the current frame.                                           |

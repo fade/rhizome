@@ -147,6 +147,19 @@ Lisp callers of execute-command may pass strings."
   (declare (ignore args))
   (focus-previous output))
 
+(define-command :fnext (output args)
+  "Focus the next frame in tree order, wrapping, empty frames included."
+  (declare (ignore args))
+  (focus-next-frame output)
+  nil)
+
+(define-command :fprev (output args)
+  "Focus the previous frame in tree order, wrapping, empty frames
+included."
+  (declare (ignore args))
+  (focus-previous-frame output)
+  nil)
+
 (define-command :list-layouts (output args)
   "List available layouts."
   (declare (ignore output args))

@@ -322,6 +322,19 @@ is not a leaf of its tree."
     (request-manage-dirty)
     frame))
 
+(defun cycle-frame (output workspace &optional (delta 1))
+  "Focus the leaf DELTA steps from the current frame of WORKSPACE on
+OUTPUT, in tree order and wrapping, through focus-frame. An empty
+frame is a stop like any other. Returns the frame focused, or NIL with
+nothing changed when the tree has a single leaf."
+  (let ((leaves (frame-leaves (frame-tree-for output workspace))))
+    (when (cdr leaves)
+      (let ((pos (or (position (current-frame-for output workspace) leaves
+                               :test #'eq)
+                     0)))
+        (focus-frame output workspace
+                     (nth (mod (+ pos delta) (length leaves)) leaves))))))
+
 (defun focus-frame-direction (output workspace direction)
   "Move frame focus one step in DIRECTION. If the target frame holds
 windows, the nearest one takes keyboard focus. An empty target takes
