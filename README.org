@@ -502,7 +502,8 @@ bad hook never breaks others or the WM.
 
 Available hooks: =:window-created= (win), =:window-closed= (win),
 =:focus-changed= (win), =:layout-changed= (output layout-name),
-=:workspace-changed= (workspace output), =:output-created= (output).
+=:workspace-changed= (workspace output), =:output-created= (output),
+=:outputs-changed= (no arguments).
 Also: =remove-hook=, =clear-hook=, =list-hooks=, =run-hook=.
 
 ** IPC — the stumpish equivalent
@@ -1363,10 +1364,11 @@ rules under =:repl= beside the old set. Rules that a dependency sets
 when =load-module= loads it for the first time belong to the module
 that pulled it in. A complete, commented
 one-file example
-lives in =examples/modules/rhizome-hello/=. Three modules ship under
+lives in =examples/modules/rhizome-hello/=. Four modules ship under
 =modules/=: the network configurator (=rhizome-net=), the display
-configurator (=rhizome-display=), and scratchpads
-(=rhizome-scratchpads=). Symlink or copy one into the module
+configurator (=rhizome-display=), scratchpads
+(=rhizome-scratchpads=), and the wallpaper painter
+(=rhizome-wallpaper=). Symlink or copy one into the module
 directory and add, for example, =(rhizome:load-module "rhizome-net")=
 to your config.
 

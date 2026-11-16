@@ -329,6 +329,24 @@ whole list.
                            (:name "calc" :command "foot -e bc")))))
 #+end_src
 
+* :wallpaper
+
+Read by the =rhizome-wallpaper= module. Each key is read at the next
+pick or output change.
+
+| Key            | Type    | Default                      | Applies | Effect                                                                                                         |
+|----------------+---------+------------------------------+---------+----------------------------------------------------------------------------------------------------------------|
+| =:directories= | list    | =("~/Pictures/Wallpapers/")= | live    | Image directories. A leading =~/=, =$HOME/=, or =${HOME}/= names the home directory; a trailing =*= adds every subdirectory. |
+| =:selection=   | keyword | =:random=                    | live    | =:random= or =:sequential= (path order, wrapping).                                                            |
+| =:per-output=  | boolean | =t=                          | live    | =t= gives each output its own image; =nil= shows one image everywhere.                                         |
+| =:mode=        | keyword | =:fill=                      | live    | =:fill=, =:fit=, =:stretch=, =:center=, or =:tile=, passed to =swaybg -m=.                                    |
+| =:enabled=     | boolean | =t=                          | live    | =nil= paints nothing and stops the module's painters.                                                          |
+
+#+begin_src lisp
+(rhizome:configure
+ '(:wallpaper (:directories ("~/Pictures/Wallpapers/") :mode :fit)))
+#+end_src
+
 * :output
 
 Replaced whole by each =configure= call.

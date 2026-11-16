@@ -25,6 +25,10 @@
 ;;;                                          ; workspace-to-display gives
 ;;;                                          ; the number shown
 ;;;   :output-created      (output)
+;;;   :outputs-changed     ()                 ; the output manager's
+;;;                                          ; done event: heads may
+;;;                                          ; have appeared, gone, or
+;;;                                          ; been enabled or disabled
 
 (in-package #:rhizome)
 

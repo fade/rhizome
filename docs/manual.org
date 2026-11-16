@@ -64,7 +64,8 @@ The default bindings and bar modules run external programs: =foot=,
 =emacs=, =grim=, =slurp=, =wl-copy=, =wl-paste=, =wpctl=, =nmcli=,
 =brightnessctl=, =swayidle=, =swaylock=, =wlopm=, =pavucontrol=,
 =nm-connection-editor=, =alacritty= (for =Terminal=true= launcher
-entries), =hyprsunset= (the night light), and =systemctl=. A missing
+entries), =hyprsunset= (the night light), =swaybg= (the wallpaper
+module), and =systemctl=. A missing
 program disables only the feature that runs it.
 
 ** Installing the session files
@@ -908,6 +909,63 @@ Configure scratchpads by name:
 =music=, =rhizome-cmd scratchpad= with no name shows or hides =term=,
 and =rhizome-cmd scratchpad list= lists them.
 
+** Wallpaper
+
+The =rhizome-wallpaper= module paints a background image on each
+output with =swaybg=, which must be installed. Load it from your
+configuration:
+
+#+begin_src lisp
+(rhizome:load-module "rhizome-wallpaper")
+#+end_src
+
+Nothing is painted until the module is loaded. Once it is, every
+enabled output gets an image as soon as the window manager knows the
+output's connector name, and an output that appears later gets one
+too. The module stops the painter of an output that goes away.
+
+| Key            | Default                        | Effect                                                                                             |
+|----------------+--------------------------------+----------------------------------------------------------------------------------------------------|
+| =:directories= | =("~/Pictures/Wallpapers/")=   | Directories to take images from. Files ending in =jpg=, =jpeg=, =png=, =webp=, or =bmp= count, in any case. |
+| =:selection=   | =:random=                      | =:random= picks at random. =:sequential= takes the images in path order and wraps at the end.      |
+| =:per-output=  | =t=                            | =t= gives each output its own image. =nil= shows one image on every output.                        |
+| =:mode=        | =:fill=                        | How the image fits the output: =:fill=, =:fit=, =:stretch=, =:center=, or =:tile=.                |
+| =:enabled=     | =t=                            | =nil= paints nothing and stops the painters the module started, at the next pick or output change. |
+
+A directory may begin with =~/=, =$HOME/=, or =${HOME}/=. A trailing =*= also takes
+the images in every directory below it:
+
+#+begin_src lisp
+(rhizome:configure
+ '(:wallpaper (:directories ("~/Pictures/Wallpapers/"
+                             "$HOME/Pictures/Cities/*")
+               :selection :random
+               :per-output t
+               :mode :fill)))
+#+end_src
+
+The =wallpaper= command picks again and paints every output.
+The =backgrounds= alias runs it too. Bind it to a key in your
+configuration, for example =F9=:
+
+#+begin_src lisp
+(rhizome:define-key rhizome:*top-map* "F9"
+  (lambda () (rhizome:execute-command nil :wallpaper nil))
+  :doc "new wallpaper")
+#+end_src
+
+From a shell, run =rhizome-cmd wallpaper=. The new painter starts
+first, and the old one stops about a second later. The log shows one line per output painted, with
+the output and the file, or one line when the directories hold no
+images, in which case nothing is painted.
+
+The module only ever stops =swaybg= processes it started itself. Other
+wallpaper programs, such as =variety= with its =swaybg= script, keep
+running beside it. Run only one of them: remove =variety= from your
+session, or leave the module unloaded or set
+=(:wallpaper (:enabled nil))=, which stops the module's painters at the
+next pick or output change.
+
 * Controlling rhizome from a shell
 
 The window manager listens on the Unix socket
@@ -1070,6 +1128,7 @@ name typed in full runs, with or without arguments.
 | =balance-frames=          | =balance=               | Needs the =rhizome-display= module.                                                                                                                    |
 | =delete-window=           | =delete=                |                                                                                                                                                        |
 | =kill-window=             | =kill=                  | Ends the window's process; see =kill= above.                                                                                                           |
+| =backgrounds=             | =wallpaper=             | Needs the =rhizome-wallpaper= module. Comes from a StumpWM configuration, not StumpWM itself; here it picks new images for every output.             |
 
 These StumpWM names are rhizome commands under the same name:
 =clear-window-marks=, =colon=, =command-mode=, =copy-last-message=,
@@ -1178,6 +1237,7 @@ affect the others or the window manager.
 | =:layout-changed=    | output, layout name   | A layout or group type changes. |
 | =:workspace-changed= | workspace, output     | An output switches workspace.   |
 | =:output-created=    | output                | An output appears.              |
+| =:outputs-changed=   | none                  | The output manager finishes a round of changes; outputs may have appeared, gone, or changed state. |
 
 =:window-resized= runs on every size event river sends for a window,
 including one that repeats the size the window already has.
