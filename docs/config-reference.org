@@ -387,6 +387,20 @@ names. To use another locker on idle, turn this one off and set
 (rhizome:configure '(:lock (:command "hyprlock" :idle-seconds 300)))
 #+end_src
 
+* :notifications
+
+| Key                | Type            | Default | Applies     | Effect                                                                                       |
+|--------------------+-----------------+---------+-------------+----------------------------------------------------------------------------------------------|
+| =:enabled=         | boolean         | =t=     | bar restart | Serve =org.freedesktop.Notifications= from the bar unless another process owns the name.     |
+| =:timeout-seconds= | seconds or =nil= | =5=     | bar restart | How long a notification that asks for the default stays; =nil= keeps it until it is dismissed. |
+
+The bar reads this group when it starts; the window manager does not
+send it to a running bar. See "Desktop notifications" in the manual.
+
+#+begin_src lisp
+(rhizome:configure '(:notifications (:timeout-seconds 8)))
+#+end_src
+
 * :ipc
 
 | Key                    | Type    | Default     | Applies         | Effect                                                                |

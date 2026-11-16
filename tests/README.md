@@ -309,3 +309,15 @@ stubbed river requests. Run with:
   percentage from the change between two samples, the `MEM --` and
   `CPU --` placeholders for a missing, unreadable, or malformed file,
   the memoized host name, and registration by name.
+- `notifications.lisp` - the desktop notification server: ids
+  increase and `replaces_id` keeps its id and becomes the newest;
+  markup is stripped; -1 takes `(:notifications :timeout-seconds)`, 0
+  never expires; NotificationClosed carries reason 1 on expiry, 2 on
+  dismiss, and 3 on CloseNotification; the window manager gets one
+  line per change carrying the summary and body lines, and its
+  notification commands return NIL or a string. The bus section runs
+  on a private `dbus-daemon` with no activatable services, started for
+  the run: a name another client owns leaves the server off with one log line, then Notify, GetCapabilities,
+  GetServerInformation, Introspect, CloseNotification, Dismiss, and
+  expiry over the bus. That section is skipped when `dbus-daemon` is
+  not installed.

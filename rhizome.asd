@@ -61,4 +61,5 @@
    (:file "bar" :depends-on ("launcher" "config" "wm-protocol" "theme" "cues"))
    (:file "commands" :depends-on ("keybindings" "launcher" "scroll" "groups" "display" "heads"))
    (:file "ipc" :depends-on ("commands" "message" "reply"))
-   (:file "main" :depends-on ("commands" "bar" "ipc"))))
+   (:file "notifications" :depends-on ("dbus" "commands" "message" "ipc"))
+   (:file "main" :depends-on ("commands" "bar" "ipc" "notifications"))))

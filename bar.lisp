@@ -1810,6 +1810,9 @@ moved onto another module."
                          ;; new/removed items: invalidate content
                          (dolist (ostate (bar-ostates))
                            (setf (gethash :last-content ostate) nil))))
+                     (handler-case (notifications-drain)
+                       (error (e)
+                         (format t "~&; Rhizome: notifications: ~A~%" e)))
                      ;; pointer motion alone re-renders: the hover veil
                      ;; follows the module under the pointer
                      (let ((tray-dirty (/= *tray-render-stamp* *tray-changed*))
@@ -1856,6 +1859,11 @@ no matter what the user config asks for."
   (handler-case (tray-start)
     (error (e)
       (format t "~&; Rhizome: tray: startup failed: ~A~%" e)))
+  ;; The notification server lives here too; the window manager draws
+  ;; what it receives (notifications.lisp)
+  (handler-case (notifications-start)
+    (error (e)
+      (format t "~&; Rhizome: notifications: startup failed: ~A~%" e)))
   (let ((state (make-hash-table)))
     (setf *bar-state* state)
     (bar-run-loop state)

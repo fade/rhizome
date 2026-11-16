@@ -210,6 +210,14 @@ Returns (values value found-p)."
                ;; (("HDMI-A-1" :position (0 0)) ("DVI-D-1" :position (1920 0)))
                ;; Per head, also :mode "1920x1200@60" and :scale 1.5.
                )
+    :notifications (:enabled t
+                    ;; The bar serves org.freedesktop.Notifications
+                    ;; unless another process owns the name.
+                    :timeout-seconds 5
+                    ;; Seconds a notification that asks for the
+                    ;; server's default stays; nil keeps it until it
+                    ;; is dismissed
+                    )
     :ipc (:enabled t
           ;; :client-idle-seconds drops a client that neither sends
           ;; nor reads for that long; unset uses

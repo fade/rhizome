@@ -25,7 +25,8 @@ Three processes cooperate in a running session:
   launcher, and the IPC socket.
 - the bar :: a second SBCL process running =(rhizome:run-bar)=. The
   window manager starts it, restarts it when it dies, and passes it
-  state through a snapshot file. The bar also hosts the system tray.
+  state through a snapshot file. The bar also hosts the system tray
+  and the desktop notification server.
 
 ** Terms
 
@@ -828,6 +829,51 @@ as the workspace number after a switch. Show your own with
 A message stays for 3 seconds. =C-t m= shows the last message again,
 and =rhizome-cmd copy-last-message= copies it to the clipboard.
 
+** Desktop notifications
+
+The bar process serves =org.freedesktop.Notifications= (Desktop
+Notifications Specification 1.2), so =notify-send= and other
+applications' notifications appear in the message window. The server
+is on by default and needs a D-Bus session bus.
+
+- The message window shows =APP: SUMMARY= and then the body, as plain
+  text. Markup tags are removed. The body shows at most 10 lines of
+  200 characters.
+- One notification shows at a time: the newest, counting a
+  replacement (=replaces_id=) as new. When it closes, the next newest
+  open notification shows for the rest of its own time.
+- A notification that asks for the server's default stays for
+  =(:notifications :timeout-seconds)= seconds (5). One that asks for
+  0 stays until you dismiss it, or until its application closes it.
+- =rhizome-cmd notification-dismiss= closes the notification last
+  shown, and the next open one shows. No key is bound to it by default; bind one in your
+  configuration:
+
+#+begin_src lisp
+(rhizome:define-prefix-key "N"
+  (lambda () (rhizome:execute-command nil :notification-dismiss nil))
+  "dismiss notification")
+#+end_src
+
+A later message, such as a workspace number, replaces a notification
+on screen without closing it, and it does not come back while it
+stays newest.
+
+The server advertises the =body= capability only: it shows no icons
+and no action buttons.
+
+To leave notifications to another daemon, such as dunst, mako, or
+Plasma's, turn the server off:
+
+#+begin_src lisp
+(rhizome:configure '(:notifications (:enabled nil)))
+#+end_src
+
+The bar reads this setting when it starts. The bar never takes the
+name from a daemon that already owns it: when another daemon got there
+first, the bar writes one line to its log and runs without a
+notification server.
+
 ** Scratchpads
 
 A scratchpad is a window that you show and hide with one key while
@@ -946,6 +992,7 @@ The same commands run from the command palette.
 | =suspend=                                                         |           | Run =systemctl suspend=.                                                                                |
 | =hibernate=                                                       |           | Run =systemctl hibernate=.                                                                              |
 | =detach=                                                          |           | Stop managing the session without ending it.                                                            |
+| =notification-dismiss=                                            |           | Close the notification last shown; the next open one shows.                                             |
 | =quit=                                                            |           | Stop the window manager. River keeps running.                                                           |
 
 An expression or text with spaces reaches =wse= or =putsel= whole:

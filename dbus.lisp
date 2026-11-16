@@ -578,7 +578,9 @@ the socket-write result — callers match replies on this)."
       t)))
 
 (defun dbus-read-message (fd)
-  "Read one complete message from FD; NIL on EOF/error."
+  "Read one complete message from FD; NIL on EOF/error. A complete
+message whose contents do not parse returns :UNPARSEABLE, so one bad
+message from another client never ends the connection."
   (let ((fixed (sock-read-exact fd 16)))
     (unless fixed
       (return-from dbus-read-message nil))
@@ -612,7 +614,11 @@ the socket-write result — callers match replies on this)."
                                  :element-type '(unsigned-byte 8))))
             (replace all header)
             (replace all body :start1 header-size)
-            (parse-message all)))))))
+            (handler-case (parse-message all)
+              (error (e)
+                (format t "~&; Rhizome: dbus: dropped a message that ~
+does not parse: ~A~%" e)
+                :unparseable))))))))
 
 (defun dbus-connect (&key (path (dbus-bus-path)))
   "Connect and authenticate to the session bus. Returns a
@@ -662,6 +668,23 @@ DBUS-CONNECTION, or NIL on failure."
               (dbus-connection-unique-name conn))
       conn)))
 
+(defun dbus-disconnect (conn)
+  "Close CONN and return NIL. Shut the socket down, wait for the
+reader thread to exit, and close the descriptor; the bus releases
+every name CONN owns. Messages still queued are dropped."
+  (when conn
+    (setf (dbus-connection-running conn) nil)
+    (let ((fd (dbus-connection-fd conn))
+          (thread (dbus-connection-thread conn)))
+      ;; SHUT_RDWR: the reader's blocked read returns end of file
+      (cffi:foreign-funcall "shutdown" :int fd :int 2 :int)
+      (when (and thread
+                 (not (eq thread (bt:current-thread)))
+                 (bt:thread-alive-p thread))
+        (bt:join-thread thread))
+      (%sock-close fd)))
+  nil)
+
 (defun dbus-reader-loop (conn)
   "The reader thread: read messages, complete pending calls,
 enqueue everything else for the main-loop drain. Exits when the
@@ -676,6 +699,7 @@ socket closes, marking the connection down and waking the drain."
           (bt:condition-notify (dbus-connection-queue-cond conn))
           (return))
         (cond
+          ((eq msg :unparseable))
           ((and (member (dbus-message-type msg)
                         (list +dbus-msg-return+ +dbus-msg-error+))
                 (message-field msg 5))
