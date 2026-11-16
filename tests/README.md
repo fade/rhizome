@@ -203,3 +203,8 @@ stubbed river requests. Run with:
   has an output; the output's layout mirror follows only the
   showing workspace; a repeated match keeps the frames; an unknown
   layout changes nothing.
+- `window-rules-reload.lisp` - window rules across real reloads of a
+  throwaway config file and module: each reload leaves one copy of a
+  source's rules, a rule removed from the file is gone, a changed rule
+  is replaced, the config file's rules match first, and sources keep
+  the order in which they first set rules.
