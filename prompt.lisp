@@ -153,6 +153,19 @@ called."
 
 ;;; --- Rendering ---
 
+(defun prompt-visible-rows (height row-height)
+  "How many candidate rows fit below the input line of a prompt HEIGHT
+pixels tall with rows ROW-HEIGHT pixels tall, at least 1."
+  (max 1 (loop for rows from 0
+               while (< (+ row-height 8) (- height (* row-height rows)))
+               count t)))
+
+(defun prompt-scroll-offset (selection visible)
+  "The first candidate row to draw so that row SELECTION shows when
+VISIBLE rows fit: 0 until the selection passes the last visible row,
+then enough to keep it on the bottom row."
+  (max 0 (- selection (1- visible))))
+
 (defun prompt-redraw ()
   "Render the prompt into its shm buffer and commit."
   (let ((state *prompt-state*))
@@ -174,13 +187,22 @@ called."
                 (bar-draw-text ptr width height *prompt-query*
                                (+ 8 (bar-text-width *prompt-title*)) 2
                                fr fg fb)
-                ;; Candidate rows below the input line
-                (dolist (candidate (prompt-filtered))
+                ;; Candidate rows below the input line, scrolled so
+                ;; the selected row shows
+                (dolist (candidate (nthcdr (prompt-scroll-offset
+                                            *prompt-selection*
+                                            (prompt-visible-rows
+                                             height row-height))
+                                           (prompt-filtered)))
                   (when (>= (+ row-height 8) (- height (* row-height
                                                           row-count)))
                     (return))
                   (let ((row-y (* row-height row-count)))
-                    (when (= row-count *prompt-selection*)
+                    (when (= (+ row-count
+                                (prompt-scroll-offset
+                                 *prompt-selection*
+                                 (prompt-visible-rows height row-height)))
+                             *prompt-selection*)
                       ;; Highlight the selected row
                       (multiple-value-bind (ar ag ab)
                           (theme-rgb :prompt-selection)

@@ -85,6 +85,7 @@
    #:parse-frame-address
    #:resolve-frame-address
    #:all-frame-addresses
+   #:launch-into-prompt
    ;; Screenshot
    #:take-screenshot
    ;; Power

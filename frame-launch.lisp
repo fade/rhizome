@@ -334,3 +334,76 @@ workspace by its own rule."
                (let* ((ws (current-workspace out))
                       (frame (current-frame-for out ws)))
                  (start out ws frame (frame-address frame))))))))))
+
+(defun launch-into-candidates ()
+  "The address prompt's rows as a list of (LABEL ADDRESS FRAME): every
+frame from all-frame-addresses labelled \"W:S:F CONTEXT\", and after
+each tiled workspace's last frame a \"W:S:F new frame\" row naming the
+next frame number, which launch-into makes. FRAME is NIL on a new frame
+row."
+  (let ((rows '())
+        (previous nil))
+    (flet ((close-workspace ()
+             (when previous
+               (destructuring-bind (output workspace count) previous
+                 (unless (or (scroll-workspace-p output workspace)
+                             (floating-workspace-p output workspace))
+                   (let ((address (format nil "~D:~D:~D"
+                                          (workspace-to-display workspace)
+                                          (screen-number output)
+                                          (display-index count))))
+                     (push (list (format nil "~A new frame" address)
+                                 address nil)
+                           rows)))))))
+      (dolist (row (all-frame-addresses))
+        (destructuring-bind (address frame output workspace) row
+          (unless (and previous
+                       (eq (first previous) output)
+                       (eql (second previous) workspace))
+            (close-workspace)
+            (setf previous (list output workspace 0)))
+          (incf (third previous))
+          (push (list (format nil "~A ~A" address (frame-address-context frame))
+                      address frame)
+                rows)))
+      (close-workspace))
+    (nreverse rows)))
+
+(defun launch-into-prompt ()
+  "Ask where, then what, and launch it there: the first prompt lists
+every frame address with the frame's window or \"empty\", and a new
+frame per workspace, with the current frame selected; picking one opens
+a second prompt for the shell command, which runs as launch-into
+ADDRESS COMMAND. Escape at either prompt, or a blank command, starts
+nothing. Returns NIL."
+  (let* ((rows (launch-into-candidates))
+         (names (mapcar #'first rows))
+         (output (current-output))
+         (current (and output
+                       (current-frame-for output (current-workspace output)))))
+    (prompt-open "Launch into:"
+                 :candidates names
+                 :on-complete
+                 (lambda (choice)
+                   (let ((row (find choice rows :key #'first :test #'string=)))
+                     (when row
+                       (let ((address (second row)))
+                         (prompt-open (format nil "Launch into ~A:" address)
+                                      :on-complete
+                                      (lambda (command)
+                                        (let ((line (string-trim " " command)))
+                                          (when (plusp (length line))
+                                            (ipc-dispatch-line
+                                             (format nil "launch-into ~A ~A"
+                                                     address line)))))))))))
+    (let ((selected (position current rows :key #'third)))
+      (when (and selected current)
+        (setf *prompt-selection* selected)))
+    nil))
+
+(define-command :launch-into-prompt (output args)
+  "Open the launch prompt: launch into a frame picked from every frame
+address, then the command to run there. No key opens it by default.
+Usage: launch-into-prompt"
+  (declare (ignore output args))
+  (launch-into-prompt))
