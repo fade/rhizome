@@ -70,6 +70,20 @@ line as one string."
                                    token))
                              (cl-ppcre:split "\\s+" rest)))))))
 
+(defun eval-form-reply (text)
+  "Read one form from TEXT, evaluate it in the RHIZOME package, and
+return its values printed with FORMAT-REPLY, separated by spaces, and
+cut to *REPLY-MAX-LENGTH* characters plus ... when longer. A serious
+condition while reading or evaluating returns \"error: \" and the
+condition text, cut the same way."
+  (handler-case
+      (let ((*package* (find-package "RHIZOME")))
+        (format-reply "~{~A~^ ~}"
+                      (multiple-value-list
+                        (eval (read-from-string text)))))
+    (serious-condition (e)
+      (format-reply "error: ~A" e))))
+
 (defun ipc-dispatch-line (line)
   "Execute one command LINE and return the result as a string.
 A line starting with ( is evaluated as a Lisp form in the RHIZOME
@@ -83,14 +97,7 @@ command showed no message of its own."
     (cond
       ((zerop (length line)) "")
       ((char= (char line 0) #\()
-       (let ((result
-               (handler-case
-                   (let ((*package* (find-package "RHIZOME")))
-                     (format-reply "~{~A~^ ~}"
-                                   (multiple-value-list
-                                     (eval (read-from-string line)))))
-                 (serious-condition (e)
-                   (format-reply "error: ~A" e)))))
+       (let ((result (eval-form-reply line)))
          (show-message result 1)
          result))
       (t

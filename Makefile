@@ -42,7 +42,8 @@ SUITES    := animations decorations surface window-rules window-rules-reload flo
              ipc-reply-printing ipc-reply-frame-tree \
              ipc-reply-framing ipc-request-decoding ipc-slow-client \
              ipc-client-lifecycle \
-             frame-cycling frame-cycle-skip-empty stumpwm-aliases
+             frame-cycling frame-cycle-skip-empty stumpwm-aliases \
+             stumpwm-group-eval-exec
 
 .PHONY: all build test install docs clean help
 

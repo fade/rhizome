@@ -94,15 +94,45 @@ line. Usage: colon [text]"
   (command-palette (format nil "~{~A~^ ~}" args))
   nil)
 
+(defun run-shell-command-line (command)
+  "Start COMMAND with bash -c without waiting for it, show
+\"running: COMMAND\", and return that text. A blank COMMAND starts
+nothing and returns NIL."
+  (when (and command (plusp (length (string-trim " " command))))
+    (let ((reply (format nil "running: ~A" command)))
+      (message "~A" reply)
+      (uiop:launch-program (list "bash" "-c" command))
+      reply)))
+
 (defun run-shell-command-prompt ()
   "Prompt for a shell command and run it in the background
 (StumpWM's C-t ! equivalent)."
   (prompt-open "Shell:"
                :candidates nil
-               :on-complete
-               (lambda (command)
-                 (message "running: ~A" command)
-                 (uiop:launch-program (list "bash" "-c" command)))))
+               :on-complete #'run-shell-command-line))
+
+(define-command :exec (output args)
+  "Run the rest of the line as a shell command without waiting for it,
+and reply \"running: COMMAND\" (StumpWM's exec). With no argument, or
+only blanks, open the shell prompt. Usage: exec <command line>"
+  (declare (ignore output))
+  (let ((text (string-trim " " (format nil "~{~A~^ ~}" args))))
+    (if (zerop (length text))
+        (progn (run-shell-command-prompt) nil)
+        (run-shell-command-line text))))
+
+(define-command :eval (output args)
+  "Read one Lisp form from the rest of the line, evaluate it in the
+RHIZOME package, and show and reply with its printed values or the
+error text (StumpWM's eval). With no argument, open the eval prompt.
+Usage: eval <form>"
+  (declare (ignore output))
+  (let ((text (string-trim " " (format nil "~{~A~^ ~}" args))))
+    (if (zerop (length text))
+        (progn (show-eval-prompt) nil)
+        (let ((reply (eval-form-reply text)))
+          (message "~A" reply)
+          reply))))
 
 (defun select-from-menu (title items &key on-select)
   "Pop a type-to-filter selection menu and act on the choice —
