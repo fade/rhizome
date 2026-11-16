@@ -1,8 +1,8 @@
 ;;; ipc-reply-framing.lisp: a reply that spans several lines reaches
 ;;; the Lisp client and the rhizome-cmd shell client whole. On the
 ;;; wire every reply is one line: a newline inside the reply travels
-;;; as \n and a backslash as \\, so a single-line reply keeps the
-;;; octets it always had.
+;;; as \n and a backslash as \\, so a reply with neither a newline nor
+;;; a backslash keeps its exact octets.
 (ql:quickload :rhizome)
 
 (in-package #:rhizome)

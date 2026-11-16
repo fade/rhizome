@@ -8,6 +8,15 @@
 
 (in-package #:rhizome)
 
+;; Remove this run's socket when the run exits, whether it passes,
+;; fails a case, or crashes
+(push (lambda ()
+        (cffi:foreign-funcall
+         "unlink" :string (format nil "/tmp/rhizome-test-reply-printing-~D.sock"
+                                  (cffi:foreign-funcall "getpid" :int))
+         :int))
+      sb-ext:*exit-hooks*)
+
 ;; Never start the bar from a test run
 (configure '(:bar (:enabled nil)))
 

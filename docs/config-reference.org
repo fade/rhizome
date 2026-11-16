@@ -25,13 +25,14 @@ In the tables:
   default shown is the value the code uses in its place.
 - Applies :: when a change takes effect. /live/ means on the next
   redraw or window event. /restart/ means at the next start of the
-  window manager. Bar settings reach the running bar process live
+  window manager. /next connection/ means for each connection opened
+  after the change. Bar settings reach the running bar process live
   (see [[*The bar process][The bar process]]).
 
-Groups whose values include a keyword (=:windows=, =:workspaces=,
-=:frames=, =:animations=, =:output=, and the =(:tiling :placement)=
-list) are replaced whole by each =configure= call. Set every key of
-such a group in one call.
+A =configure= call merges each top-level group key by key, so setting
+one key keeps the group's other keys. Inside a group, a list of bare
+keywords, such as a module list, replaces the old list whole. See the
+manual's merge rules.
 
 * The bar process
 
@@ -388,9 +389,17 @@ names. To use another locker on idle, turn this one off and set
 
 * :ipc
 
-| Key        | Type    | Default | Applies | Effect                                                  |
-|------------+---------+---------+---------+---------------------------------------------------------|
-| =:enabled= | boolean | =t=     | restart | Listen for commands on =$XDG_RUNTIME_DIR/rhizome.sock=. |
+| Key                    | Type    | Default     | Applies         | Effect                                                                |
+|------------------------+---------+-------------+-----------------+-----------------------------------------------------------------------|
+| =:enabled=             | boolean | =t=         | restart         | Listen for commands on =$XDG_RUNTIME_DIR/rhizome.sock=.               |
+| =:client-idle-seconds= | seconds | =5= (unset) | next connection | Drop a client that neither sends nor reads its replies for this long. |
+
+The socket serves one client at a time, so a client that stops
+reading or sending keeps every other client waiting until it is
+dropped. Time a client spends waiting for its command to finish does
+not count. Each drop writes one line to the log, naming the reason
+and the bytes the client has not read. The setting takes effect for
+the next connection.
 
 * :slynk
 

@@ -210,7 +210,11 @@ Returns (values value found-p)."
                ;; (("HDMI-A-1" :position (0 0)) ("DVI-D-1" :position (1920 0)))
                ;; Per head, also :mode "1920x1200@60" and :scale 1.5.
                )
-    :ipc (:enabled t)
+    :ipc (:enabled t
+          ;; :client-idle-seconds drops a client that neither sends
+          ;; nor reads for that long; unset uses
+          ;; *ipc-client-idle-seconds* (5)
+          )
     ;; Slynk REPL server on 127.0.0.1 (M-x sly-connect). A :swank
     ;; group in user config is still read when :slynk is left at
     ;; these defaults; see REPL-SERVER-SETTINGS.
