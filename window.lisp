@@ -645,10 +645,19 @@ the successor or NIL. Call while WIN is still registered."
 (defun minimize-window (win)
   "Minimize WIN: every seat focused on it moves to its close-successor,
 or has its focus cleared when there is none (refocus-after-close).
-The next render pass sends river's hide."
+Runs the :window-minimized hook. The next render pass sends river's
+hide."
   (refocus-after-close win)
   (setf (window-minimized-p win) t)
-  (request-manage-dirty))
+  (request-manage-dirty)
+  (run-hook :window-minimized win))
+
+(defun restore-window (win)
+  "Restore the minimized WIN and run the :window-restored hook. The
+next render pass sends river's show."
+  (setf (window-minimized-p win) nil)
+  (request-manage-dirty)
+  (run-hook :window-restored win))
 
 (defun reassert-seat-focus ()
   "Queue each seat's live focused window again for the next manage

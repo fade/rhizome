@@ -218,6 +218,27 @@ has no window and is not visible."
                    (getf state :visible) nil)
              (setf (gethash name *scratchpads*) state)))
 
+(defun scratchpad-note-visibility (win visible)
+  "Set :visible to VISIBLE on the scratchpad whose window is WIN, if
+any, so the next toggle shows a minimized scratchpad and hides a
+restored one."
+  (loop for name being the hash-keys of *scratchpads*
+        for state = (gethash name *scratchpads*)
+        when (eq (getf state :window) win)
+          do (setf (getf state :visible) visible)
+             (setf (gethash name *scratchpads*) state)
+             (return)))
+
+(defun scratchpad-note-minimized (win)
+  "The :window-minimized handler: a scratchpad whose window WIN was
+minimized, by any path, is not visible."
+  (scratchpad-note-visibility win nil))
+
+(defun scratchpad-note-restored (win)
+  "The :window-restored handler: a scratchpad whose window WIN was
+restored is visible."
+  (scratchpad-note-visibility win t))
+
 (defun scratchpad-centre-on-size (win width height)
   "The :window-resized handler: a scratchpad whose window WIN was shown
 before its client committed a size is centred on that first size and
@@ -262,6 +283,10 @@ its decorated frame kept inside its output's usable area
 (add-hook :window-closed 'scratchpad-forget-window)
 
 (add-hook :window-resized 'scratchpad-centre-on-size)
+
+(add-hook :window-minimized 'scratchpad-note-minimized)
+
+(add-hook :window-restored 'scratchpad-note-restored)
 
 (define-prefix-key 59 (lambda () (toggle-scratchpad))
   "toggle the scratchpad")

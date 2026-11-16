@@ -12,6 +12,9 @@
 ;;;   :window-created      (win)
 ;;;   :window-closed       (win)
 ;;;   :window-resized      (win width height)  ; the client committed a size
+;;;   :window-minimized    (win)  ; minimize-window: a hide, a client's
+;;;                               ; request, or the menu's Minimize
+;;;   :window-restored     (win)  ; restore-window: the menu's Restore
 ;;;   :focus-changed       (win)
 ;;;   :layout-changed      (output layout-name)
 ;;;   :workspace-changed  (workspace output)  ; 1-based, as the Lisp API;

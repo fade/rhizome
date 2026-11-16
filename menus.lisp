@@ -59,8 +59,7 @@
                   (lambda (w)
                     ;; The next render pass sends river's hide or show
                     (if (window-minimized-p w)
-                        (progn (setf (window-minimized-p w) nil)
-                               (request-manage-dirty))
+                        (restore-window w)
                         (minimize-window w))))
             (cons (if (window-floating-p win) "Tile" "Float")
                   (lambda (w) (toggle-float w)))

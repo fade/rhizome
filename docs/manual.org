@@ -893,7 +893,8 @@ is larger than the usable area; only then does it shrink to fit, and
 the log records the new size. A shown scratchpad
 takes the focus, and hiding it gives the focus back to a window still
 visible on that workspace, so what you type goes to the window you
-see.
+see. A scratchpad minimized from its window menu or by its own
+program counts as hidden: the next =C-t ;= shows it.
 
 Configure scratchpads by name:
 

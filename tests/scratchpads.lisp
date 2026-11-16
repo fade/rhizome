@@ -187,9 +187,15 @@ sent, in order."
                   (asdf:system-source-directory :rhizome)))
         (closed (hook-count :window-closed))
         (created (hook-count :window-created))
-        (resized (hook-count :window-resized)))
+        (resized (hook-count :window-resized))
+        (minimized (hook-count :window-minimized))
+        (restored (hook-count :window-restored)))
     (load source)
     (load source)
+    (ok "reloading the module adds no :window-minimized handler"
+        (hook-count :window-minimized) minimized)
+    (ok "reloading the module adds no :window-restored handler"
+        (hook-count :window-restored) restored)
     (ok "reloading the module adds no :window-closed handler"
         (hook-count :window-closed) closed)
     (ok "reloading the module adds no :window-created handler"
@@ -481,6 +487,39 @@ focused border on every side, and a 25 pixel titlebar above."
                  (seat-focused-window seat) under)))
       (setf (symbol-function 'focus-window) stub))))
 
+(defun check-minimize-paths-hide-scratchpad ()
+  (flet ((menu (win label)
+           (funcall (cdr (assoc label (menu-item-list win)
+                                :test #'string=))
+                    win))
+         (visible () (getf (scratchpad-find "term") :visible)))
+    (fresh)
+    (let* ((out (mk-out :sp-out))
+           (win (scratchpad-on-screen "term" out :sp-menu-min)))
+      (menu win "Minimize")
+      (ok "menu Minimize leaves the scratchpad not visible" (visible) nil)
+      (toggle-scratchpad "term")
+      (ok "one toggle after menu Minimize shows the scratchpad"
+          (list (window-minimized-p win) (visible)) '(nil t)))
+    (fresh)
+    (let* ((out (mk-out :sp-out))
+           (win (scratchpad-on-screen "term" out :sp-req-min)))
+      (handle-window-event win :minimize-requested)
+      (ok "a minimize request leaves the scratchpad not visible"
+          (visible) nil)
+      (toggle-scratchpad "term")
+      (ok "one toggle after a minimize request shows the scratchpad"
+          (list (window-minimized-p win) (visible)) '(nil t)))
+    (fresh)
+    (let* ((out (mk-out :sp-out))
+           (win (scratchpad-on-screen "term" out :sp-restore)))
+      (menu win "Minimize")
+      (menu win "Restore")
+      (ok "menu Restore leaves the scratchpad visible" (visible) t)
+      (toggle-scratchpad "term")
+      (ok "one toggle after menu Restore hides the scratchpad"
+          (list (window-minimized-p win) (visible)) '(t nil)))))
+
 (dolist (check '(check-scratchpad-hide-and-show
                  check-minimize-request
                  check-menu-minimize-and-restore
@@ -490,7 +529,8 @@ focused border on every side, and a 25 pixel titlebar above."
                  check-centre-on-first-size
                  check-show-keeps-scratchpad-on-output
                  check-decorated-frame-fits
-                 check-hide-moves-focus))
+                 check-hide-moves-focus
+                 check-minimize-paths-hide-scratchpad))
   (handler-case (funcall check)
     (error (e)
       (ok (format nil "~(~A~) runs without error" check)

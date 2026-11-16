@@ -224,7 +224,9 @@ stubbed river requests. Run with:
   and one larger than the area shrinks to fit with one log line; hiding a
   scratchpad, a minimize request, and the menu's Minimize each move
   the focus to a visible window on the workspace, or clear it when
-  none is left, and showing a scratchpad focuses it.
+  none is left, and showing a scratchpad focuses it; after a minimize
+  request or the menu's Minimize one toggle shows the scratchpad, and
+  after the menu's Restore one toggle hides it.
 - `display-layout.lisp` - the `(:displays (:layout ...))` output
   layout: relative placement against heads of different sizes,
   normalization to a 0,0 origin, explicit positions, mode and scale
