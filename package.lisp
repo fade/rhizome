@@ -18,6 +18,8 @@
    ;; Window operations
    #:focus-window
    #:close-window
+   #:kill-client
+   #:window-unreliable-pid
    #:hide-window
    #:show-window
    #:propose-window-dimensions
