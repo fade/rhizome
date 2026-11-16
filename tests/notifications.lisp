@@ -811,6 +811,47 @@ deadline."
   (ok "the open notification under id 1 keeps its text"
       (getf (notification-find 1) :summary) "Still open"))
 
+(defun test-request-value-types ()
+  "Each notification-show key takes only its own value type."
+  (dolist (case '(("(:ID \"1\")" "a string :id")
+                  ("(:ID 0)" "an :id of 0")
+                  ("(:ID 4294967296)" "an :id past #xFFFFFFFF")
+                  ("(:ID 1 :APP 5)" "an integer :app")
+                  ("(:ID 1 :APP (\"a\"))" "a list :app")
+                  ("(:ID 1 :APP NIL)" "a NIL :app")
+                  ("(:ID 1 :SUMMARY 5)" "an integer :summary")
+                  ("(:ID 1 :SUMMARY (\"s\"))" "a list :summary")
+                  ("(:ID 1 :LINES 5)" "an integer :lines")
+                  ("(:ID 1 :LINES \"one\")" "a string :lines")
+                  ("(:ID 1 :SECONDS \"4\")" "a string :seconds")
+                  ("(:ID 1 :SECONDS (\"4\"))" "a list :seconds")))
+    (destructuring-bind (text name) case
+      (ok (format nil "~A is refused" name)
+          (notification-read-request text) nil)))
+  (ok "a request with every key well typed parses"
+      (notification-read-request
+        "(:ID 4294967295 :APP \"a\" :SUMMARY \"s\" :LINES (\"x\") :SECONDS 4)")
+      '(:id 4294967295 :app "a" :summary "s" :lines ("x") :seconds 4))
+  (ok "empty :lines and :seconds parse"
+      (notification-read-request "(:ID 1 :LINES NIL :SECONDS NIL)")
+      '(:id 1 :lines nil :seconds nil))
+  (let ((shown nil)
+        (real (symbol-function 'show-message)))
+    (setf (symbol-function 'show-message)
+          (lambda (text &optional seconds color)
+            (declare (ignore seconds color))
+            (push text shown)))
+    (unwind-protect
+         (ok "notification-show with an integer :lines answers usage"
+             (list (let ((reply (execute-command nil :notification-show
+                                                 '("(:ID 1 :LINES 5)"))))
+                     (and (stringp reply)
+                          (eql 0 (search "notification-show: expected"
+                                         reply))))
+                   shown)
+             '(t nil))
+      (setf (symbol-function 'show-message) real))))
+
 (defun test-run-all ()
   (test-ids-and-markup)
   (test-id-range)
@@ -821,6 +862,7 @@ deadline."
   (test-wire-framing)
   (test-arrival-order)
   (test-request-parsing)
+  (test-request-value-types)
   (test-wrap)
   (test-no-expiry)
   (test-wm-commands)

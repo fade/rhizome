@@ -475,15 +475,31 @@ request, every character escaped, stays under it.")
     ("LINES" . :lines) ("SECONDS" . :seconds))
   "Keyword names a notification-show plist may hold, with their keywords.")
 
+(defun notification-request-value-p (key value)
+  "True when VALUE is the type a notification-show request takes for
+KEY:
+  :ID       an integer from 1 to #xFFFFFFFF
+  :APP      a string
+  :SUMMARY  a string
+  :LINES    a list of strings, NIL for none
+  :SECONDS  an integer, or NIL for no expiry"
+  (case key
+    (:id (typep value '(integer 1 #xFFFFFFFF)))
+    ((:app :summary) (stringp value))
+    (:lines (and (listp value) (every #'stringp value)))
+    (:seconds (or (null value) (integerp value)))))
+
 (defun notification-read-request (text)
   "The plist a notification-show line carries, or NIL when TEXT is not
 one.
 TEXT is parsed without the Lisp reader, so nothing in it is interned or
 evaluated. It is a list of keyword and value pairs. Each keyword is one
-of :ID, :APP, :SUMMARY, :LINES, and :SECONDS. Each value is a string, an
-integer, NIL, or a list of strings.
-TEXT longer than *NOTIFICATION-REQUEST-MAX-LENGTH* characters, and a
-plist without an integer :ID, return NIL."
+of :ID, :APP, :SUMMARY, :LINES, and :SECONDS, and each value has the
+type NOTIFICATION-REQUEST-VALUE-P gives for its keyword.
+Return NIL for each of these:
+  TEXT longer than *NOTIFICATION-REQUEST-MAX-LENGTH* characters
+  a plist without :ID
+  a value of the wrong type for its keyword"
   (let ((pos 0)
         (end (length text)))
     (when (> end *notification-request-max-length*)
@@ -549,7 +565,9 @@ plist without an integer :ID, return NIL."
         (incf pos)
         (skip)
         (and (= pos end)
-             (integerp (getf plist :id))
+             (getf plist :id)
+             (loop for (key value) on plist by #'cddr
+                   always (notification-request-value-p key value))
              plist)))))
 
 (defun notification-text-width ()
