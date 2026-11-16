@@ -616,6 +616,45 @@ keymap:
                     :doc "launch into a frame")
 #+end_src
 
+** Moving a frame's windows
+
+=transpose-frame= moves the focused frame's whole window stack to
+another frame:
+
+#+begin_src sh
+rhizome-cmd transpose-frame 2:1:3            # swap with frame 3 of workspace 2
+rhizome-cmd transpose-frame --overlay 1:2:1  # stack onto frame 1 of screen 2
+rhizome-cmd transpose-frame                  # pick from the shown workspaces
+rhizome-cmd transpose-frame --all            # pick from every workspace
+#+end_src
+
+The target is a frame address, a =C-t f= label, or =.= for the
+focused frame.
+
+- By default the two frames swap stacks, and each stack keeps its
+  order. A swap from an empty frame brings the target's stack into
+  it, and focus stays there.
+- With =--overlay=, the focused frame's stack goes on top of the
+  target's, which stays underneath. The emptied frame then closes or
+  stays as =(:frames (:prune-empty ...))= says: under =:auto=, a frame
+  you split stays and a frame a new window split open closes. An
+  overlay from an empty frame is refused.
+- Focus follows the focused window to its new frame. When the target
+  is on a hidden workspace, its screen shows that workspace, and the
+  windows that moved the other way stay hidden on theirs.
+- The focused frame as its own target does nothing.
+- A frame number past the workspace's frame count makes the missing
+  frames, as =launch-into= does. An address without a frame part
+  names that workspace's current frame.
+- Both workspaces must be tiled.
+
+With no target, a popup lists the frames of the workspaces shown on
+every screen, with what each shows and one =new frame= row per
+workspace; =--all= lists every workspace instead. The last row,
+=[all workspaces]= or =[shown workspaces]=, switches between the two
+lists. The focused frame is not listed. No key runs =transpose-frame=
+by default.
+
 ** Gaps
 
 =(:gaps (:inner 6))= puts 6 pixels around each tiled window, so
@@ -1154,6 +1193,7 @@ The same commands run from the command palette.
 | =frame-addresses=                                                 |           | Reply with every frame's address and what it shows, one per line.                                       |
 | =launch-into=                                                     | [TARGET] COMMAND | Start COMMAND in a frame: an address, a =C-t f= label, =.=, or, with no target, the focused frame. |
 | =launch-into-prompt=                                              |           | Pick a frame address, then a command to start there.                                                    |
+| =transpose-frame=                                                 | [--overlay] [--all] [TARGET] | Swap the focused frame's windows with TARGET's, or with =--overlay= stack them on top; with no TARGET, pick from a popup. |
 | =focus-left=, =focus-right=, =focus-up=, =focus-down=             |           | Focus the frame in that direction.                                                                      |
 | =fnext=, =fprev=                                                  |           | Focus the next or previous frame in tree order, wrapping. Empty frames are included unless =:cycle-skips-empty= is set. |
 | =exchange-left=, =exchange-right=, =exchange-up=, =exchange-down= |           | Swap windows with the frame in that direction.                                                          |

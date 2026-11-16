@@ -59,6 +59,7 @@
                                           "heads" "commands"))
    (:file "frame-launch" :depends-on ("fselect" "placement" "tiling" "workspaces"
                                       "frame-addresses"))
+   (:file "frame-transpose" :depends-on ("frame-launch" "prompt" "message"))
    (:file "active-edge" :depends-on ("decorations" "bar" "output" "heads" "theme"))
    (:file "reply" :depends-on ("package"))
    (:file "eval-prompt" :depends-on ("keybindings" "bar" "theme" "reply"))
