@@ -685,6 +685,39 @@ and the window manager's parser interns nothing."
              (integerp (getf (test-show-request line) :id)))
         t)))
 
+(defun test-wrap ()
+  "Long lines wrap to the message window's text width."
+  (let* ((width (notification-text-width))
+         (words (format nil "~{~A~^ ~}"
+                        (loop for i from 0 below 40
+                              collect (format nil "word~D" i))))
+         (long-word (make-string 300 :initial-element #\x))
+         (wrapped (notification-wrap-line words width))
+         (broken (notification-wrap-line long-word width)))
+    (ok "a 200-character line of words wraps onto several lines"
+        (and (> (length words) 199) (> (length wrapped) 1)) t)
+    (ok "every wrapped line fits the message window"
+        (every (lambda (line) (<= (font-text-width line) width))
+               (append wrapped broken))
+        t)
+    (ok "a line wraps between words, losing nothing"
+        (format nil "~{~A~^ ~}" wrapped) words)
+    (ok "a word wider than the window breaks inside it, losing nothing"
+        (list (> (length broken) 1) (apply #'concatenate 'string broken))
+        (list t long-word))
+    (ok "a short line stays whole" (notification-wrap-line "hi" width)
+        '("hi"))
+    (ok "an empty line stays one empty line"
+        (notification-wrap-line "" width) '(""))
+    (ok "the message window text wraps every line"
+        (every (lambda (line) (<= (font-text-width line) width))
+               (cl-ppcre:split
+                 "\\n"
+                 (notification-display-text
+                   (list :id 1 :app "app" :summary words
+                         :lines (list words long-word)))))
+        t)))
+
 (defun test-run-all ()
   (test-ids-and-markup)
   (test-timeouts)
@@ -693,6 +726,7 @@ and the window manager's parser interns nothing."
   (test-dispatch)
   (test-wire-framing)
   (test-request-parsing)
+  (test-wrap)
   (test-wm-commands)
   (test-disabled)
   (test-bus))

@@ -539,19 +539,53 @@ plist without an integer :ID, return NIL."
              (integerp (getf plist :id))
              plist)))))
 
+(defun notification-text-width ()
+  "Pixels a line of text may take in the message window: its width less
+the 8-pixel margin on each side."
+  (- *message-width* 16))
+
+(defun notification-wrap-line (line width)
+  "LINE as a list of lines no wider than WIDTH pixels in the configured
+font. A line breaks at the last space that fits; a word wider than
+WIDTH breaks at the last character that fits. Spaces at a break are
+dropped. An empty LINE is one empty line."
+  (let ((pieces nil))
+    (loop
+      (when (<= (font-text-width line) width)
+        (push line pieces)
+        (return))
+      (let* ((fit (max 1 (loop with used = 0
+                               for i from 0 below (length line)
+                               do (incf used (font-text-width
+                                               (string (char line i))))
+                               when (> used width) return i
+                               finally (return (length line)))))
+             (space (position #\Space line :end fit :from-end t))
+             (cut (if (and space (plusp space)) space fit)))
+        (push (string-right-trim " " (subseq line 0 cut)) pieces)
+        (setf line (string-left-trim " " (subseq line cut)))
+        (when (zerop (length line))
+          (return))))
+    (nreverse pieces)))
+
 (defun notification-display-text (request)
   "The message window text for REQUEST: \"APP: SUMMARY\" (just the
-summary without an app name), then one line per body line."
+summary without an app name), then one line per body line, each
+wrapped to NOTIFICATION-TEXT-WIDTH."
+  (font-ensure-initialized)
   (flet ((text (key)
            (let ((value (getf request key)))
              (if (stringp value) value ""))))
-    (let ((app (text :app))
-          (summary (text :summary)))
-      (format nil "~A~{~%~A~}"
-              (cond ((zerop (length app)) summary)
-                    ((zerop (length summary)) app)
-                    (t (format nil "~A: ~A" app summary)))
-              (remove-if-not #'stringp (getf request :lines))))))
+    (let* ((app (text :app))
+           (summary (text :summary))
+           (lines (cons (cond ((zerop (length app)) summary)
+                              ((zerop (length summary)) app)
+                              (t (format nil "~A: ~A" app summary)))
+                        (remove-if-not #'stringp (getf request :lines))))
+           (width (notification-text-width)))
+      (format nil "~{~A~^~%~}"
+              (mapcan (lambda (line) (notification-wrap-line line width))
+                      lines)))))
 
 (defun notification-wm-connection ()
   "The window manager's bus connection, connecting when there is none

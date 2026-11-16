@@ -837,8 +837,10 @@ applications' notifications appear in the message window. The server
 is on by default and needs a D-Bus session bus.
 
 - The message window shows =APP: SUMMARY= and then the body, as plain
-  text. Markup tags are removed. The body shows at most 10 lines of
-  200 characters.
+  text. Markup tags are removed. The body shows at most 10 lines, and
+  the summary and each body line are cut at 200 characters. A line
+  wider than the message window wraps onto the next, breaking between
+  words where it can.
 - One notification shows at a time: the newest, counting a
   replacement (=replaces_id=) as new. When it closes, the next newest
   open notification shows for the rest of its own time.
