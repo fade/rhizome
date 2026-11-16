@@ -525,7 +525,7 @@ the first lookup.")
         do (setf start (1+ end))))
 
 (defun bar-read-meminfo (&optional (path *bar-meminfo-path*))
-  "Read MemTotal and MemAvailable, in kB, from the meminfo file at PATH.
+  "Read MemTotal and MemAvailable, in KiB, from the meminfo file at PATH.
 Return them as two values, or NIL when the file is missing, unreadable,
 or lacks either field. Never signals."
   (handler-case
@@ -547,7 +547,7 @@ or lacks either field. Never signals."
     (error () nil)))
 
 (defun bar-memory-percent (total available)
-  "Percentage of TOTAL kB in use, given AVAILABLE kB, rounded."
+  "Percentage of TOTAL KiB in use, given AVAILABLE KiB, rounded."
   (round (* 100 (- total available)) total))
 
 (defun bar-module-memory ()
@@ -611,9 +611,9 @@ seconds (default 2), so the figure covers that interval."
                       "CPU --")))))
 
 (defun bar-module-hostname ()
-  "The host name, from /proc/sys/kernel/hostname or MACHINE-INSTANCE,
-looked up once and memoized in *bar-hostname*. Empty when neither
-yields a name."
+  "The host name, from /proc/sys/kernel/hostname or MACHINE-INSTANCE.
+A name once found is memoized in *bar-hostname*. Empty when neither
+yields a name; a failed lookup is tried again on each update."
   (or *bar-hostname*
       (let ((name (find-if (lambda (s) (and (stringp s) (plusp (length s))))
                            (list (handler-case
