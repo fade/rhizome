@@ -38,7 +38,8 @@ SUITES    := animations decorations surface window-rules window-rules-reload flo
              xdg-paths workspace-numbering \
              fullscreen-toggle \
              network-menu bar-reserved-per-output \
-             colon-command bar-system-modules kill-client
+             colon-command bar-system-modules kill-client \
+             ipc-reply-printing
 
 .PHONY: all build test install docs clean help
 

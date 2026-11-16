@@ -69,19 +69,19 @@ Errors are caught and shown instead of killing the WM."
        (setf *eval-prompt-result* "incomplete expression"
              *eval-prompt-result-visible* t))
       ((typep expr 'error)
-       (setf *eval-prompt-result* (format nil "read error: ~A" expr)
+       (setf *eval-prompt-result* (format-reply "read error: ~A" expr)
              *eval-prompt-result-visible* t))
       (t
        (let ((results
                (handler-case
-                   (multiple-value-list
-                     (let ((*package* (find-package "RHIZOME")))
-                       (eval expr)))
-                 (error (e)
-                   (list (format nil "error: ~A" e))))))
+                   (mapcar (lambda (r) (format-reply "~A" r))
+                           (multiple-value-list
+                             (let ((*package* (find-package "RHIZOME")))
+                               (eval expr))))
+                 (serious-condition (e)
+                   (list (format-reply "error: ~A" e))))))
          (setf *eval-prompt-result*
-               (format nil "~{~A~^ ~}" (mapcar (lambda (r) (format nil "~A" r))
-                                               results))
+               (format-reply "~{~A~^ ~}" results)
                *eval-prompt-result-visible* t)
          (format t "~&; Rhizome: eval ~S => ~A~%"
                  text *eval-prompt-result*))))
