@@ -211,7 +211,10 @@ stubbed river requests. Run with:
 - `scratchpads.lisp` - the scratchpad module and the minimize paths:
   hiding a scratchpad, a client's minimize request, and the window
   menu's Minimize each send one river hide in the next render pass;
-  showing a scratchpad and the menu's Restore each send one show.
+  showing a scratchpad and the menu's Restore each send one show;
+  reloading the module adds no second hook handler, and launching a
+  scratchpad and claiming its window leave the `:window-created`
+  handlers as they were.
 - `display-layout.lisp` - the `(:displays (:layout ...))` output
   layout: relative placement against heads of different sizes,
   normalization to a 0,0 origin, explicit positions, mode and scale

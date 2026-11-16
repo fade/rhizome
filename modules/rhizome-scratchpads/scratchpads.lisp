@@ -23,7 +23,8 @@
 (in-package #:rhizome)
 
 (defvar *scratchpads* (make-hash-table :test #'equal)
-  "Name → plist (:window WIN :command CMD :visible T/NIL).")
+  "Name → plist (:window WIN :command CMD :visible T/NIL
+:launched-at UNIVERSAL-TIME).")
 
 (defun scratchpad-config ()
   "The configured scratchpads, as ((:name N :command C) ...)."
@@ -74,25 +75,30 @@ next render pass sends river's hide, as for any minimized window."
       (format t "~&; Rhizome: scratchpad ~A shown~%" name))))
 
 (defun scratchpad-create (name command)
-  "Launch the scratchpad's process; the :window-created hook
-registers the first window that appears within 10 seconds."
+  "Launch the scratchpad's process. SCRATCHPAD-CLAIM-WINDOW gives it
+the first window that appears within 10 seconds."
   (setf (gethash name *scratchpads*)
-        (list :window nil :command command :visible nil))
-  (uiop:launch-program (list "bash" "-c" command))
-  (let ((created-at (get-universal-time)))
-    (add-hook :window-created
-              (lambda (win)
-                (let ((state (gethash name *scratchpads*)))
-                  ;; claim this window if the scratchpad has none yet
-                  (when (and state
-                             (null (getf state :window))
-                             (gethash (window-proxy win) *windows*)
-                             (< (- (get-universal-time) created-at) 10))
-                    (setf (getf state :window) win)
-                    (setf (gethash name *scratchpads*) state)
-                    (format t "~&; Rhizome: scratchpad ~A claimed ~A~%"
-                            name (window-app-id win))
-                    (scratchpad-show name state)))))))
+        (list :window nil :command command :visible nil
+              :launched-at (get-universal-time)))
+  (uiop:launch-program (list "bash" "-c" command)))
+
+(defun scratchpad-claim-window (win)
+  "The :window-created handler: give WIN to the first scratchpad
+launched within the last 10 seconds that has no window yet, and show
+it. Each window goes to at most one scratchpad."
+  (when (gethash (window-proxy win) *windows*)
+    (loop for name being the hash-keys of *scratchpads*
+          for state = (gethash name *scratchpads*)
+          when (and (null (getf state :window))
+                    (getf state :launched-at)
+                    (< (- (get-universal-time) (getf state :launched-at))
+                       10))
+            do (setf (getf state :window) win)
+               (setf (gethash name *scratchpads*) state)
+               (format t "~&; Rhizome: scratchpad ~A claimed ~A~%"
+                       name (window-app-id win))
+               (scratchpad-show name state)
+               (return))))
 
 (defun toggle-scratchpad (&optional (name "term"))
   "Toggle the scratchpad NAME (default: the terminal). Creates it
@@ -133,14 +139,15 @@ on first use; hides it if visible; shows it if hidden or dead."
                       :alive (scratchpad-window-alive-p state)
                       :command (getf state :command))))
 
-;; Hook cleanup when a scratchpad window closes
-(add-hook :window-closed
-          (lambda (win)
-            (loop for name being the hash-keys of *scratchpads*
-                  for state = (gethash name *scratchpads*)
-                  when (eq (getf state :window) win)
-                    do (setf (getf state :window) nil
-                             (getf state :visible) nil))))
+(defun scratchpad-forget-window (win)
+  "The :window-closed handler: a scratchpad whose window WIN closed
+has no window and is not visible."
+  (loop for name being the hash-keys of *scratchpads*
+        for state = (gethash name *scratchpads*)
+        when (eq (getf state :window) win)
+          do (setf (getf state :window) nil
+                   (getf state :visible) nil)
+             (setf (gethash name *scratchpads*) state)))
 
 (defun scratchpad-debug ()
   "Debug the scratchpad state (IPC: rhizome-cmd scratchpad list)."
@@ -158,6 +165,12 @@ on first use; hides it if visible; shows it if hidden or dead."
                                    (window-floating-p (getf state :window))))))
 
 ;;; --- install: binding + command, at module load ---
+
+;; Handlers are registered by symbol: a reload of this file finds the
+;; same handler already on the hook and adds no second copy.
+(add-hook :window-created 'scratchpad-claim-window)
+
+(add-hook :window-closed 'scratchpad-forget-window)
 
 (define-prefix-key 59 (lambda () (toggle-scratchpad))
   "toggle the scratchpad")
