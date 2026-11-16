@@ -55,7 +55,10 @@
    (:file "frame-outline" :depends-on ("decorations" "frames" "scroll" "groups" "heads" "theme"))
    (:file "titlebar" :depends-on ("decorations" "font" "workspaces" "seat" "theme" "cues"))
    (:file "fselect" :depends-on ("frame-outline" "prefix" "commands" "font" "theme"))
-   (:file "frame-launch" :depends-on ("fselect" "placement" "tiling" "workspaces"))
+   (:file "frame-addresses" :depends-on ("screens" "frames" "workspaces"
+                                          "heads" "commands"))
+   (:file "frame-launch" :depends-on ("fselect" "placement" "tiling" "workspaces"
+                                      "frame-addresses"))
    (:file "active-edge" :depends-on ("decorations" "bar" "output" "heads" "theme"))
    (:file "reply" :depends-on ("package"))
    (:file "eval-prompt" :depends-on ("keybindings" "bar" "theme" "reply"))

@@ -268,6 +268,7 @@ reload-config. Returns the new count, or NIL without an output."
   (when output
     (let ((count (1+ (workspace-count output))))
       (setf (gethash output *workspace-count-overrides*) count)
+      (note-frame-trees-changed)
       (format t "~&; Rhizome: added workspace ~A to ~A (~D workspaces)~%"
               (workspace-label output count)
               (or (output-connector-name output) "output") count)
@@ -291,6 +292,7 @@ removed."
              nil)
             (t
              (setf (gethash output *workspace-count-overrides*) (1- count))
+             (note-frame-trees-changed)
              (let ((moved (fit-output-to-workspace-count output :quiet t)))
                (format t "~&; Rhizome: removed workspace ~A from ~A: ~D window~:P moved to workspace ~A~%"
                        label (or (output-connector-name output) "output")

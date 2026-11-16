@@ -250,13 +250,13 @@
                  (lambda () (list (eq (window-output dlg) right)
                                   (window-workspace dlg) (pos dlg)))
                  (list t 2 (list (+ 1280 640 220) (+ 36 332))))
-          (check "the notification names the dialog and group:screen:frame"
+          (check "the notification names the dialog and its frame address"
                  (lambda ()
                    (let ((text (first (first *notes*))))
                      (list (length *notes*)
                            (and (search "Open File" text) t)
                            (and (search "dlgapp" text) t)
-                           (and (search "2:2:1" text) t))))
+                           (and (search "2:2:2" text) t))))
                  (list 1 t t t))
           (check "the notification uses the :dialogs length and colour"
                  (lambda () (rest (first *notes*)))

@@ -321,6 +321,9 @@ user config would otherwise spawn bars — see *bar-process-mode*)."
           (format t "~&; Rhizome: display layout failed: ~A~%" e))))
     (when (fboundp 'reconcile-workspace-counts)
       (funcall (symbol-function 'reconcile-workspace-counts)))
+    ;; Screen order, primary, and workspace counts set frame addresses
+    (when (fboundp 'note-frame-trees-changed)
+      (funcall (symbol-function 'note-frame-trees-changed)))
     (when (fboundp 'theme-apply-config)
       (funcall (symbol-function 'theme-apply-config)))))
 

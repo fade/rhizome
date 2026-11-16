@@ -289,15 +289,18 @@ output."
           (values output workspace (current-frame-for output workspace))))))
 
 (defun frame-location (output workspace frame)
-  "FRAME's location as (VALUES STRING SCREEN INDEX). STRING is
-\"group:screen:frame\": the workspace's display number (see
-WORKSPACE-TO-DISPLAY), SCREEN (OUTPUT's 1-based position left to
-right), and INDEX (FRAME's 0-based position in layout order)."
-  (let ((screen (1+ (or (position output (all-outputs-sorted)) 0)))
-        (index (or (position frame
-                             (frame-leaves (frame-tree-for output workspace)))
-                   0)))
-    (values (format nil "~D:~D:~D" (workspace-to-display workspace) screen index) screen index)))
+  "FRAME's location as (VALUES STRING SCREEN INDEX). STRING is the
+frame address \"workspace:screen:frame\", SCREEN is OUTPUT's screen
+number, and INDEX is FRAME's position in layout order, all counted
+from the shared index base."
+  (let* ((base (index-base))
+         (screen (or (screen-number output) base))
+         (index (+ base
+                   (or (position frame
+                                 (frame-leaves (frame-tree-for output workspace)))
+                       0))))
+    (values (format nil "~D:~D:~D" (workspace-to-display workspace) screen index)
+            screen index)))
 
 (defvar *last-dialog-elsewhere* nil
   "The most recent dialog that opened on a workspace its output was not

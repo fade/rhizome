@@ -84,6 +84,7 @@ outputs this session: the first output made has the lowest serial."))
             (apply #'handle-output-event output event-name args))
           (wl:wl-proxy-hooks proxy))
     (run-hook :output-created output)
+    (note-frame-trees-changed)
     (format t "~&; Rhizome: new output registered~%")
     ;; Register with river_layer_shell_v1 if available
     (when *river-layer-shell*
@@ -109,7 +110,9 @@ outputs this session: the first output made has the lowest serial."))
        (setf (output-x output) x
              (output-y output) y
              (output-geometry-pending output)
-             (remove :position (output-geometry-pending output)))))
+             (remove :position (output-geometry-pending output)))
+       ;; Screen numbers follow output positions
+       (note-frame-trees-changed)))
 
     (:capture-sessions
      ;; v5: active screen captures (screencasts, portals) on this
@@ -144,7 +147,8 @@ outputs this session: the first output made has the lowest serial."))
      (remhash (output-proxy output) *outputs*)
      (when (output-wl-output-name output)
        (remhash (output-wl-output-name output) *output-wl-outputs*))
-     (bar-note-non-exclusive-area output nil))
+     (bar-note-non-exclusive-area output nil)
+     (note-frame-trees-changed))
 
     (t
      (format t "~&; Rhizome: unhandled output event ~A~%" event-name))))

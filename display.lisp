@@ -58,6 +58,9 @@ offers it (or after the manager says finished).")
        ;; counts from (:workspaces :screens) apply
        (when (fboundp 'reconcile-workspace-counts)
          (funcall 'reconcile-workspace-counts))
+       ;; Screen numbers follow connector names and positions
+       (when (fboundp 'note-frame-trees-changed)
+         (funcall 'note-frame-trees-changed))
        ;; The set of named, enabled heads may have changed
        (run-hook :outputs-changed)))
     (:finished

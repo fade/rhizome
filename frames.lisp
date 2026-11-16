@@ -38,12 +38,28 @@
   ;; T when an explicit split command divided this node; under the
   ;; :auto policy its empty child leaves survive the manage pass.
   (user-split nil :type boolean)
-  (windows nil :type list))
+  (windows nil :type list)
+  ;; A leaf's address as zero-based (WORKSPACE SCREEN FRAME) ordinals,
+  ;; NIL for a split node or a frame no address reaches. Read it
+  ;; through frame-address; refresh-frame-addresses keeps it current.
+  (ordinals nil :type list))
 
 (defvar *frame-trees* (make-hash-table :test 'equal)
   "Maps (OUTPUT . WORKSPACE) to the root frame of its tree.")
 (defvar *current-frames* (make-hash-table :test 'equal)
   "Maps (OUTPUT . WORKSPACE) to the frame commands act on.")
+
+(defvar *frame-addresses-refresh* 'refresh-frame-addresses
+  "Function of no arguments that recomputes every frame's address, or
+NIL to skip. note-frame-trees-changed calls it.")
+
+(defun note-frame-trees-changed ()
+  "Recompute every frame's address after a change to a frame tree, to
+the screens, or to a workspace count. Call it after every such
+change."
+  (let ((refresh *frame-addresses-refresh*))
+    (when (and refresh (or (functionp refresh) (fboundp refresh)))
+      (funcall refresh))))
 
 (defun frame-key (output workspace)
   (cons output workspace))
@@ -52,11 +68,13 @@
   "The workspace's frame tree, created on first use as a single
 full-screen frame (the StumpWM default — split from there)."
   (or (gethash (frame-key output workspace) *frame-trees*)
-      (setf (gethash (frame-key output workspace) *frame-trees*)
-            (make-frame
-              :width (output-width output)
-              :height (max 0 (- (output-height output)
-                                (bar-reserved-height output)))))))
+      (prog1
+          (setf (gethash (frame-key output workspace) *frame-trees*)
+                (make-frame
+                  :width (output-width output)
+                  :height (max 0 (- (output-height output)
+                                    (bar-reserved-height output)))))
+        (note-frame-trees-changed))))
 
 (defun frame-leaves (frame)
   "All leaf frames of the tree rooted at FRAME, in layout order."
@@ -147,6 +165,7 @@ stacked) at RATIO (0.0-1.0). Returns the new (second) child frame."
                (frame-width second) (frame-width frame)
                (frame-height second) (- (+ (frame-y frame) (frame-height frame))
                                         split-y)))))
+    (note-frame-trees-changed)
     second))
 
 (defun split-current-frame (output workspace direction &optional (ratio 1/2))
@@ -203,6 +222,7 @@ own. No-op at the root."
                      sibling))))
       (setf (frame-user-split parent) nil)
       (setf (gethash (frame-key output workspace) *current-frames*) sibling)
+      (note-frame-trees-changed)
       (message "split removed")
       (request-manage-dirty))))
 
@@ -521,6 +541,7 @@ only, C-t Q). The removed splits' user marks go with them."
                 (frame-user-split cur) nil)
           (setf (gethash (frame-key output workspace) *frame-trees*) cur
                 (gethash (frame-key output workspace) *current-frames*) cur)
+          (note-frame-trees-changed)
           (request-manage-dirty)))))
 
 (defun frame-balance (output workspace)
@@ -707,6 +728,7 @@ dump."
           (gethash (frame-key output workspace) *current-frames*)
           (or (find-if (lambda (l) (frame-windows l)) leaves)
               (first leaves)))
+    (note-frame-trees-changed)
     (request-manage-dirty)
     tree))
 
@@ -807,7 +829,8 @@ Falls back to a single frame when RECTS aren't a valid partition."
                (dolist (win tiled)
                  (frame-push-window win root))
                (setf (gethash key *frame-trees*) root
-                     (gethash key *current-frames*) root)))))))
+                     (gethash key *current-frames*) root))))
+      (note-frame-trees-changed))))
 
 (defun frame-set-rect (frame x y width height)
   "Rescale FRAME (and its whole subtree) to a new rectangle,
@@ -850,7 +873,9 @@ output dimensions change."
     (maphash (lambda (key root)
                (when (eq (car key) output)
                  (frame-set-rect root 0 0 width height)))
-             *frame-trees*)))
+             *frame-trees*)
+    ;; A new size moves the output's centre, and so its screen number
+    (note-frame-trees-changed)))
 
 ;;; --- Manage/render sequence integration ---
 
@@ -940,7 +965,8 @@ sibling takes over the parent's rectangle and slot, with internal
 nodes rescaled to keep their split ratios. The root frame always
 survives, so new windows always have a place to land."
   (let ((key (frame-key output workspace))
-        (policy (frame-prune-policy)))
+        (policy (frame-prune-policy))
+        (pruned nil))
     (when (eq policy :never)
       (return-from prune-empty-frames))
     (loop
@@ -954,7 +980,10 @@ survives, so new windows always have a place to land."
                                                 (frame-parent leaf))))))
                                (frame-leaves root)))))
         (unless empty
+          (when pruned
+            (note-frame-trees-changed))
           (return))
+        (setf pruned t)
         (let* ((parent (frame-parent empty))
                (sibling (if (eq (frame-first-child parent) empty)
                             (frame-second-child parent)

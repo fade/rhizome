@@ -79,6 +79,12 @@
    #:screen-order
    #:screen-number
    #:screen-by-number
+   ;; Frame addresses
+   #:frame-address
+   #:frame-address-parts
+   #:parse-frame-address
+   #:resolve-frame-address
+   #:all-frame-addresses
    ;; Screenshot
    #:take-screenshot
    ;; Power

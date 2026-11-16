@@ -27,7 +27,7 @@ stubbed river requests. Run with:
   arrives within two seconds of map; it goes to the active
   frame when the parent floats, is minimized, has no frame, or has a
   frame smaller than the dialog in either dimension; else to the
-  parent's frame, with a `group:screen:frame` notice (length and colour
+  parent's frame, with a `workspace:screen:frame` notice (length and colour
   from `:dialogs`) only when that workspace is hidden; a dialog that
   would overhang its output moves back onto the usable area;
   `goto-last-dialog` (command, export, C-t d) shows and focuses the

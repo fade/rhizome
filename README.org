@@ -1697,11 +1697,10 @@ be moved around freely. Rhizome handles these StumpWM-style as floats
   - The parent is tiled and its frame is at least the dialog's size in
     both dimensions: centred on the parent's frame, on the parent's
     output and workspace. When that workspace is not the one its
-    output shows, a notice names the dialog and its location as
-    =group:screen:frame= (workspace number, output counted from 1 left
-    to right, frame counted from 0 in layout order). =C-t d=, or
-    =rhizome-cmd goto-last-dialog=, shows that workspace and focuses
-    the dialog.
+    output shows, a notice names the dialog and its frame address,
+    =workspace:screen:frame= (see Frame addresses in
+    docs/manual.org). =C-t d=, or =rhizome-cmd goto-last-dialog=,
+    shows that workspace and focuses the dialog.
   - Otherwise (the parent floats, is minimized, sits in no frame, or
     its frame is smaller than the dialog in either dimension): centred
     on the current frame of the output in use, and focus goes with it.
