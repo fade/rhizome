@@ -104,6 +104,45 @@ dbus-daemon is not installed."
        (eql (dbus-message-type reply) +dbus-msg-error+)
        (message-field reply 4)))
 
+(defun test-socketpair ()
+  "A connected pair of AF_UNIX stream sockets, as two descriptors."
+  (cffi:with-foreign-object (fds :int 2)
+    (assert (zerop (cffi:foreign-funcall "socketpair" :int 1 :int 1 :int 0
+                                         :pointer fds :int)))
+    (values (cffi:mem-aref fds :int 0) (cffi:mem-aref fds :int 1))))
+
+(defun test-notify-bytes (summary &key (serial 1) (signature "susssasa{sv}i")
+                                       (values (list "app" 0 "" summary ""
+                                                     nil nil 0)))
+  "The bytes of a Notify call to the server as the bus delivers it,
+from sender :1.42. BUILD-OUTGOING writes no sender field, so the
+destination field (code 6) is relabelled as the sender (code 7)."
+  (let* ((bytes (coerce (build-outgoing
+                          (make-outgoing-message
+                            :type +dbus-msg-call+ :destination ":1.42"
+                            :path +notify-path+ :interface +notify-iface+
+                            :member "Notify" :signature signature
+                            :values values)
+                          serial)
+                        '(simple-array (unsigned-byte 8) (*))))
+         (field (search (vector 6 1 (char-code #\s) 0) bytes)))
+    (setf (aref bytes field) 7)
+    bytes))
+
+(defun test-fake-connection (fd)
+  "A DBUS-CONNECTION on descriptor FD with its reader thread running,
+as DBUS-CONNECT leaves one after Hello."
+  (let ((conn (make-dbus-connection
+                :fd fd :lock (bt:make-lock "test-dbus")
+                :pending (make-hash-table) :queue nil
+                :queue-lock (bt:make-lock "test-dbus-queue")
+                :queue-cond (bt:make-condition-variable)
+                :running t :unique-name ":1.1")))
+    (setf (dbus-connection-thread conn)
+          (bt:make-thread (lambda () (dbus-reader-loop conn))
+                          :name "test-dbus-reader"))
+    conn))
+
 (defun test-ids-and-markup ()
   (test-reset)
   (ok "the first notification gets id 1"
@@ -507,12 +546,98 @@ recording instead of sending."
             (ignore-errors (delete-file socket))
             (ignore-errors (delete-file config)))))))
 
+(defun test-wire-framing ()
+  "Malformed messages on a socket pair, read by a connection's reader
+thread: each is dropped, the thread keeps reading, and a valid Notify
+after them is answered."
+  (multiple-value-bind (ours theirs) (test-socketpair)
+    (let ((conn (test-fake-connection ours))
+          (limit *dbus-max-message-bytes*))
+      (unwind-protect
+           (progn
+             (test-reset)
+             (setf *dbus-max-message-bytes* 4096)
+             ;; a signature naming a type that does not exist
+             (let* ((bytes (test-notify-bytes "bad" :signature "s"
+                                                    :values '("bad")))
+                    (sig (search (vector 8 1 (char-code #\g) 0 1
+                                         (char-code #\s) 0)
+                                 bytes)))
+               (setf (aref bytes (+ sig 5)) (char-code #\z))
+               (sock-write-all theirs bytes))
+             ;; a body shorter than its signature needs
+             (let* ((full (test-notify-bytes "truncated" :serial 2))
+                    (body-len (+ (aref full 4) (ash (aref full 5) 8)))
+                    (cut (subseq full 0 (- (length full) (- body-len 4)))))
+               (setf (aref cut 4) 4 (aref cut 5) 0 (aref cut 6) 0
+                     (aref cut 7) 0)
+               (sock-write-all theirs cut))
+             ;; longer than *DBUS-MAX-MESSAGE-BYTES*
+             (sock-write-all theirs (test-notify-bytes
+                                      (make-string 8000 :initial-element #\x)
+                                      :serial 3))
+             ;; big-endian, which the parser does not read
+             (sock-write-all theirs
+                             (coerce (list (char-code #\B) 1 0 1 0 0 0 0
+                                           0 0 0 4 0 0 0 0)
+                                     '(vector (unsigned-byte 8))))
+             ;; then a valid Notify
+             (sock-write-all theirs (test-notify-bytes "valid" :serial 7))
+             (let ((queued (test-await
+                             (lambda ()
+                               (bt:with-lock-held
+                                   ((dbus-connection-queue-lock conn))
+                                 (copy-list (dbus-connection-queue conn))))
+                             2)))
+               (sleep 0.2)
+               (setf queued (bt:with-lock-held
+                                ((dbus-connection-queue-lock conn))
+                              (copy-list (dbus-connection-queue conn))))
+               (ok "malformed and oversized messages are dropped"
+                   (mapcar #'dbus-message-serial queued) '(7))
+               (ok "the reader thread keeps reading after them"
+                   (bt:thread-alive-p (dbus-connection-thread conn)) t))
+             (setf *notify-conn* conn)
+             (notifications-drain)
+             (setf *notify-conn* nil)
+             (let ((reply (dbus-read-message theirs)))
+               (ok "the valid Notify after them gets its id"
+                   (list (dbus-message-type reply) (message-field reply 5)
+                         (dbus-message-body reply))
+                   (list +dbus-msg-return+ 7 '(1)))))
+        (setf *dbus-max-message-bytes* limit
+              *notify-conn* nil)
+        (dbus-disconnect conn)
+        (%sock-close theirs))))
+  ;; a length past the protocol maximum cannot be framed
+  (multiple-value-bind (ours theirs) (test-socketpair)
+    (unwind-protect
+         (let* ((huge (+ +dbus-max-message-length+ 8))
+                (result :unread)
+                (log nil))
+           (sock-write-all theirs
+                           (coerce (list (char-code #\l) 1 0 1
+                                         (ldb (byte 8 0) huge)
+                                         (ldb (byte 8 8) huge)
+                                         (ldb (byte 8 16) huge)
+                                         (ldb (byte 8 24) huge)
+                                         1 0 0 0 0 0 0 0)
+                                   '(vector (unsigned-byte 8))))
+           (setf log (with-output-to-string (*standard-output*)
+                       (setf result (dbus-read-message ours))))
+           (ok "a length past the protocol maximum ends the read"
+               (list result (and (search "protocol maximum" log) t))
+               '(nil t)))
+      (%sock-close ours)
+      (%sock-close theirs))))
+
 (defun test-run-all ()
   (test-ids-and-markup)
   (test-timeouts)
   (test-expiry-and-lines)
   (test-capabilities)
   (test-dispatch)
+  (test-wire-framing)
   (test-wm-commands)
   (test-disabled)
   (test-bus))

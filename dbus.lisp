@@ -81,6 +81,16 @@
                   (cffi:mem-ref buf :unsigned-char i)))
           (incf got r))))))
 
+(defun sock-skip (fd length)
+  "Read and discard LENGTH bytes from FD, at most 64 KiB at a time.
+Return T, or NIL at end of file."
+  (loop while (plusp length)
+        do (let ((chunk (min length 65536)))
+             (unless (sock-read-exact fd chunk)
+               (return-from sock-skip nil))
+             (decf length chunk)))
+  t)
+
 ;;; --- Local UTF-8 and IEEE-754 (no babel, no ieee-floats) ---
 
 (defun string->utf8 (string)
@@ -577,45 +587,70 @@ the socket-write result — callers match replies on this)."
         fd (string->utf8 (format nil "BEGIN~C~C" #\Return #\Newline)))
       t)))
 
+(defconstant +dbus-max-message-length+ (expt 2 27)
+  "Protocol maximum length of a whole message, in bytes.")
+
+(defconstant +dbus-max-array-bytes+ (expt 2 26)
+  "Protocol maximum length of one array, the header fields included.")
+
+(defparameter *dbus-max-message-bytes* (expt 2 25)
+  "Longest message DBUS-READ-MESSAGE parses, in bytes. A longer one
+within the protocol maximum is read past and dropped.")
+
 (defun dbus-read-message (fd)
-  "Read one complete message from FD; NIL on EOF/error. A complete
-message whose contents do not parse returns :UNPARSEABLE, so one bad
-message from another client never ends the connection."
+  "Read one message from FD and return it as a DBUS-MESSAGE.
+Return :UNPARSEABLE for a message that is read whole and dropped:
+PARSE-MESSAGE rejects it, it is big-endian, or it is longer than
+*DBUS-MAX-MESSAGE-BYTES*. The bytes of a dropped message are consumed,
+so the next message on FD still reads.
+Return NIL at end of file, on a read error, and on a header that
+cannot frame a message: an unknown byte-order mark, or lengths past
+the protocol maximum."
   (let ((fixed (sock-read-exact fd 16)))
     (unless fixed
       (return-from dbus-read-message nil))
-    (let* ((body-len (+ (aref fixed 4) (ash (aref fixed 5) 8)
-                        (ash (aref fixed 6) 16) (ash (aref fixed 7) 24)))
-           (fields-len (+ (aref fixed 12) (ash (aref fixed 13) 8)
-                          (ash (aref fixed 14) 16)
-                          (ash (aref fixed 15) 24)))
-           ;; the fields array starts at offset 12; its u32 length is
-           ;; included in the 16 fixed bytes we already have
-           (header-size (* 8 (ceiling (+ 16 fields-len) 8))))
-      (let ((rest-header (if (> header-size 16)
-                             (sock-read-exact fd (- header-size 16))
-                             #())))
-        (when (and (> header-size 16) (null rest-header))
+    (flet ((u32 (offset)
+             (if (= (aref fixed 0) (char-code #\B))
+                 (+ (ash (aref fixed offset) 24)
+                    (ash (aref fixed (+ offset 1)) 16)
+                    (ash (aref fixed (+ offset 2)) 8)
+                    (aref fixed (+ offset 3)))
+                 (+ (aref fixed offset)
+                    (ash (aref fixed (+ offset 1)) 8)
+                    (ash (aref fixed (+ offset 2)) 16)
+                    (ash (aref fixed (+ offset 3)) 24)))))
+      (unless (member (aref fixed 0) (list (char-code #\l) (char-code #\B)))
+        (format t "~&; Rhizome: dbus: unknown byte order ~D; closing~%"
+                (aref fixed 0))
+        (return-from dbus-read-message nil))
+      (let* ((body-len (u32 4))
+             ;; the fields array starts at offset 12; its u32 length
+             ;; is part of the 16 fixed bytes already read
+             (fields-len (u32 12))
+             (header-size (* 8 (ceiling (+ 16 fields-len) 8)))
+             (total (+ header-size body-len)))
+        (when (or (> fields-len +dbus-max-array-bytes+)
+                  (> total +dbus-max-message-length+))
+          (format t "~&; Rhizome: dbus: message length ~D past the ~
+protocol maximum; closing~%" total)
           (return-from dbus-read-message nil))
-        (let* ((header (if (> header-size 16)
-                           (let ((all (make-array header-size
-                                                  :element-type
-                                                  '(unsigned-byte 8))))
-                             (replace all fixed)
-                             (replace all rest-header :start1 16)
-                             all)
-                           fixed))
-               (body (if (plusp body-len)
-                         (sock-read-exact fd body-len)
-                         #())))
-          (when (and (plusp body-len) (null body))
+        (when (or (= (aref fixed 0) (char-code #\B))
+                  (> total *dbus-max-message-bytes*))
+          (return-from dbus-read-message
+            (if (sock-skip fd (- total 16))
+                (progn
+                  (format t "~&; Rhizome: dbus: dropped a ~:[~;big-endian ~]~
+message of ~D bytes~%" (= (aref fixed 0) (char-code #\B)) total)
+                  :unparseable)
+                nil)))
+        (let ((rest (if (> total 16) (sock-read-exact fd (- total 16)) #())))
+          (unless rest
             (return-from dbus-read-message nil))
-          (let ((all (make-array (+ header-size (length body))
-                                 :element-type '(unsigned-byte 8))))
-            (replace all header)
-            (replace all body :start1 header-size)
+          (let ((all (make-array total :element-type '(unsigned-byte 8))))
+            (replace all fixed)
+            (replace all rest :start1 16)
             (handler-case (parse-message all)
-              (error (e)
+              (serious-condition (e)
                 (format t "~&; Rhizome: dbus: dropped a message that ~
 does not parse: ~A~%" e)
                 :unparseable))))))))
