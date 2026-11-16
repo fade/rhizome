@@ -622,7 +622,7 @@ server sends this; the argument is a printed plist."
                        (if (and (integerp seconds) (plusp seconds))
                            seconds
                            ;; no expiry: stays until hidden or dismissed
-                           86400))
+                           nil))
          (setf *notification-on-screen*
                (cons (getf request :id) *message-serial*))
          nil)))))

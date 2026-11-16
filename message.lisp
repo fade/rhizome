@@ -9,7 +9,8 @@
 (defparameter *message-state* nil
   "Surface state hash for the visible message.")
 (defparameter *message-expiry* 0
-  "Universal time when the current message hides.")
+  "Universal time when the current message hides, or NIL for a message
+that stays until it is hidden or replaced.")
 (defparameter *message-width* 700)
 (defparameter *message-height* 22)
 (defparameter *last-message* nil
@@ -37,7 +38,8 @@
 for the :message-text theme element.")
 
 (defun show-message (text &optional (seconds 3) color)
-  "Show TEXT on screen for SECONDS (default 3), on the current output,
+  "Show TEXT on screen for SECONDS (default 3; NIL keeps it until it is
+hidden or replaced), on the current output,
 drawn in COLOR (a \"#rrggbb\" string; NIL for the :message-text
 theme element).
 If a message is already showing there, replace it; one showing on
@@ -52,7 +54,7 @@ another output is hidden first. Newlines start new lines."
     (when (and *message-state*
                (not (eq (gethash :wl-output *message-state*) output)))
       (message-hide))
-    (setf *message-expiry* (+ (get-universal-time) seconds))
+    (setf *message-expiry* (and seconds (+ (get-universal-time) seconds)))
     (show-message-surface text output)))
 
 (defun show-message-surface (text output)
@@ -163,6 +165,7 @@ wl_output OUTPUT when none exists (NIL leaves the output to river)."
 (defun message-drain ()
   "Hide the message when its expiry passes. Called from the main loop."
   (when (and *message-state*
+             *message-expiry*
              (>= (get-universal-time) *message-expiry*))
     (message-hide)))
 

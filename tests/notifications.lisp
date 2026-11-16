@@ -718,6 +718,30 @@ and the window manager's parser interns nothing."
                          :lines (list words long-word)))))
         t)))
 
+(defun test-no-expiry ()
+  "A notification with no expiry stays in the message window with no
+deadline."
+  (let ((shown nil)
+        (real (symbol-function 'show-message)))
+    (setf (symbol-function 'show-message)
+          (lambda (text &optional (seconds 3) color)
+            (declare (ignore text color))
+            (push seconds shown)))
+    (unwind-protect
+         (progn
+           (execute-command nil :notification-show
+                            '("(:ID 5 :APP \"a\" :SUMMARY \"s\" :LINES NIL :SECONDS NIL)"))
+           (execute-command nil :notification-show
+                            '("(:ID 6 :APP \"a\" :SUMMARY \"s\" :LINES NIL :SECONDS 4)"))
+           (ok "a notification without seconds is shown with no deadline"
+               (reverse shown) '(nil 4)))
+      (setf (symbol-function 'show-message) real)))
+  (let ((*message-state* (make-hash-table))
+        (*message-expiry* nil))
+    (message-drain)
+    (ok "a message with no deadline survives the expiry check"
+        (and *message-state* t) t)))
+
 (defun test-run-all ()
   (test-ids-and-markup)
   (test-timeouts)
@@ -727,6 +751,7 @@ and the window manager's parser interns nothing."
   (test-wire-framing)
   (test-request-parsing)
   (test-wrap)
+  (test-no-expiry)
   (test-wm-commands)
   (test-disabled)
   (test-bus))

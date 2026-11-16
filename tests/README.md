@@ -315,7 +315,14 @@ stubbed river requests. Run with:
   never expires; NotificationClosed carries reason 1 on expiry, 2 on
   dismiss, and 3 on CloseNotification; the window manager gets one
   line per change carrying the summary and body lines, and its
-  notification commands return NIL or a string. The bus section runs
+  notification commands return NIL or a string. Method calls get an
+  error reply for a wrong path, interface, method, or signature, and
+  for a handler that fails. Malformed, big-endian, and oversized
+  messages on a socket pair are dropped while the reader keeps reading,
+  and a header past the protocol maximum ends the read. The window
+  manager's request parser interns nothing and refuses unknown keys
+  and over-long requests; long lines wrap to the message window; a
+  notification with no expiry has no deadline. The bus section runs
   on a private `dbus-daemon` with no activatable services, started for
   the run: a name another client owns leaves the server off with one log line, then Notify, GetCapabilities,
   GetServerInformation, Introspect, CloseNotification, Dismiss, and
