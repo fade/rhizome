@@ -8,10 +8,15 @@
 ;;;   rhizome-cmd current-workspace
 ;;;   rhizome-cmd "(+ 1 2)"            ; Lisp forms are evaluated
 ;;;
+;;; Each reply is one line: a newline inside it is sent as backslash n
+;;; and a backslash as two backslashes (see IPC-ESCAPE-REPLY).
+;;;
 ;;; Safety model: the socket thread only reads and writes bytes.
 ;;; Commands are enqueued and executed by the WM's main thread (see
 ;;; the poll loop in wm-protocol.lisp), so no Wayland request is ever
-;;; made from a foreign thread.
+;;; made from a foreign thread. The main thread never blocks on a
+;;; client: a reply the socket does not take at once is held for the
+;;; socket thread to send.
 
 (in-package #:rhizome)
 
@@ -156,32 +161,258 @@ signal. Return the number of octets written, or NIL when write fails."
                        (t (return nil))))
             finally (return total)))))
 
+;;; --- Reply framing ---
+;;;
+;;; Every reply is one line on the wire. A newline inside the reply is
+;;; sent as backslash n and a backslash as two backslashes, so a reply
+;;; without either keeps the octets it would have unescaped.
+
+(defun ipc-escape-reply (string)
+  "Return STRING with each backslash doubled and each newline written
+as backslash n."
+  (if (not (find-if (lambda (c) (or (char= c #\\) (char= c #\Newline)))
+                    string))
+      string
+      (with-output-to-string (out)
+        (loop for c across string
+              do (case c
+                   (#\\ (write-string "\\\\" out))
+                   (#\Newline (write-string "\\n" out))
+                   (t (write-char c out)))))))
+
+(defun ipc-unescape-reply (string)
+  "Return STRING with IPC-ESCAPE-REPLY undone: backslash n becomes a
+newline and two backslashes become one. A backslash before any other
+character, or at the end, is kept."
+  (if (not (find #\\ string))
+      string
+      (with-output-to-string (out)
+        (loop with end = (length string)
+              with i = 0
+              while (< i end)
+              do (let ((c (char string i)))
+                   (if (and (char= c #\\) (< (1+ i) end)
+                            (member (char string (1+ i)) '(#\n #\\)))
+                       (progn
+                         (write-char (if (char= (char string (1+ i)) #\n)
+                                         #\Newline
+                                         #\\)
+                                     out)
+                         (incf i 2))
+                       (progn (write-char c out)
+                              (incf i))))))))
+
+(defun ipc-reply-octets (reply)
+  "Return REPLY as one wire line: escaped with IPC-ESCAPE-REPLY,
+ended by a newline, and encoded as UTF-8."
+  (sb-ext:string-to-octets
+   (concatenate 'string (ipc-escape-reply reply) (string #\Newline))
+   :external-format :utf-8))
+
+;;; --- Connections ---
+;;;
+;;; The connection thread owns a client's fd: it alone closes it, and
+;;; it marks the client :CLOSED, with the client's lock held, before
+;;; it does. The main thread only appends replies and sends without
+;;; blocking, under the same lock, so a reply for a closed client is
+;;; dropped and never reaches an fd number the kernel has reused.
+
+(defconstant +ipc-pollin+ #x001)
+
+(defconstant +ipc-pollout+ #x004)
+
+(defconstant +ipc-pollerr+ #x008)
+
+(defconstant +ipc-pollhup+ #x010)
+
+(defconstant +ipc-pollnval+ #x020)
+
+(defconstant +ipc-send-flags+ (logior #x40 #x4000)
+  "MSG_DONTWAIT and MSG_NOSIGNAL: send never blocks, and a send to a
+gone peer returns EPIPE instead of raising SIGPIPE.")
+
+(defparameter *ipc-client-output-cap* (* 1024 1024)
+  "Most reply octets held for one client that is not reading. A reply
+that would take a client past it disconnects the client.")
+
+(defparameter *ipc-client-linger-seconds* 10
+  "Seconds a client that has shut its write side is kept open for the
+replies still queued for it.")
+
+(defstruct (ipc-client (:constructor make-ipc-client (fd)))
+  "One IPC connection. Every slot but FD and LOCK is read and written
+with LOCK held. STATE is :OPEN, :DROPPED (the connection thread is to
+close the client), or :CLOSED. PENDING counts requests queued and not
+yet answered. OUTPUT holds OUTPUT-LENGTH octets not yet sent."
+  (fd -1 :type fixnum)
+  (lock (bt:make-lock "rhizome-ipc-client"))
+  (state :open)
+  (pending 0 :type fixnum)
+  (output (make-array 0 :element-type '(unsigned-byte 8))
+   :type (simple-array (unsigned-byte 8) (*)))
+  (output-length 0 :type fixnum))
+
+(defun %ipc-take-lines (acc)
+  "Remove every newline-terminated line from ACC, an octet vector with
+a fill pointer, and return the lines decoded from UTF-8, in order.
+Octets after the last newline stay in ACC. An invalid UTF-8 sequence
+decodes as U+FFFD."
+  (let ((start 0)
+        (lines nil)
+        (format (list :utf-8 :replacement (code-char #xfffd))))
+    (loop for pos = (position 10 acc :start start)
+          while pos
+          do (push (sb-ext:octets-to-string acc :start start :end pos
+                                                :external-format format)
+                   lines)
+             (setf start (1+ pos)))
+    (when (plusp start)
+      (replace acc acc :start2 start)
+      (setf (fill-pointer acc) (- (fill-pointer acc) start)))
+    (nreverse lines)))
+
+(defun %ipc-client-append (client octets)
+  "Append OCTETS to CLIENT's held output. Call with its lock held."
+  (let* ((length (ipc-client-output-length client))
+         (needed (+ length (length octets)))
+         (buffer (ipc-client-output client)))
+    (when (> needed (length buffer))
+      (let ((grown (make-array (max needed (* 2 (length buffer)))
+                               :element-type '(unsigned-byte 8))))
+        (replace grown buffer :end2 length)
+        (setf buffer grown
+              (ipc-client-output client) grown)))
+    (replace buffer octets :start1 length)
+    (setf (ipc-client-output-length client) needed)))
+
+(defun %ipc-client-flush (client)
+  "Send as much of CLIENT's held output as its socket takes without
+blocking, and keep the rest. Return :GONE when a send fails for any
+reason but a full socket, otherwise T. Call with its lock held, and
+only while CLIENT is not :CLOSED."
+  (let ((length (ipc-client-output-length client))
+        (buffer (ipc-client-output client))
+        (sent 0)
+        (result t))
+    (when (plusp length)
+      (cffi:with-pointer-to-vector-data (ptr buffer)
+        (loop while (< sent length)
+              do (let ((n (cffi:foreign-funcall
+                           "send" :int (ipc-client-fd client)
+                                  :pointer (cffi:inc-pointer ptr sent)
+                                  :long (- length sent)
+                                  :int +ipc-send-flags+ :long)))
+                   (cond ((plusp n) (incf sent n))
+                         ((= (sb-alien:get-errno) sb-unix:eintr))
+                         ((= (sb-alien:get-errno) sb-unix:eagain)
+                          (return))
+                         (t (setf result :gone)
+                            (return))))))
+      (replace buffer buffer :start2 sent :end2 length)
+      (setf (ipc-client-output-length client) (- length sent)))
+    result))
+
+(defun ipc-client-deliver (client reply)
+  "Hand REPLY, a string or NIL, to CLIENT and count one of its queued
+requests as answered. Runs on the main thread and never blocks on the
+client: octets the socket does not take now are held for the
+connection thread. REPLY is dropped when CLIENT is no longer :OPEN. A
+reply that would take the held output past *IPC-CLIENT-OUTPUT-CAP*,
+or a failed send, marks CLIENT :DROPPED for the connection thread to
+close."
+  (let ((octets (and reply (ipc-reply-octets reply))))
+    (bt:with-lock-held ((ipc-client-lock client))
+      (decf (ipc-client-pending client))
+      (when (and octets (eq (ipc-client-state client) :open))
+        (cond ((> (+ (ipc-client-output-length client) (length octets))
+                  *ipc-client-output-cap*)
+               (setf (ipc-client-state client) :dropped
+                     (ipc-client-output-length client) 0))
+              (t
+               (%ipc-client-append client octets)
+               (when (eq (%ipc-client-flush client) :gone)
+                 (setf (ipc-client-state client) :dropped
+                       (ipc-client-output-length client) 0))))))))
+
+(defun ipc-client-queue-request (client line)
+  "Queue LINE for the main thread, which dispatches it and hands the
+reply to CLIENT with IPC-CLIENT-DELIVER."
+  (bt:with-lock-held ((ipc-client-lock client))
+    (incf (ipc-client-pending client)))
+  (ipc-enqueue
+   (lambda ()
+     (let ((reply nil))
+       (unwind-protect
+            (setf reply (ipc-dispatch-line line))
+         (ipc-client-deliver client reply))))))
+
 (defun ipc-handle-connection (client-fd)
-  "Read newline-terminated commands from CLIENT-FD until EOF,
-queueing each for the main thread. Results are written back from the
-main thread by the queued thunk."
-  (cffi:with-foreign-object (buf :uint8 4096)
-    (let ((acc ""))
-      (loop
-        (let ((n (cffi:foreign-funcall "read" :int client-fd :pointer buf
-                                       :long 4096 :long)))
-          (cond
-            ((<= n 0) (return))
-            (t
-             (let ((chunk (cffi:foreign-string-to-lisp buf :count n)))
-               (setf acc (concatenate 'string acc chunk))
-               (let ((lines nil))
-                 ;; split complete lines off the accumulator
-                 (loop
-                  (let ((pos (position #\newline acc)))
-                    (unless pos (return))
-                    (push (subseq acc 0 pos) lines)
-                    (setf acc (subseq acc (1+ pos)))))
-                 (dolist (line (nreverse lines))
-                   (ipc-enqueue
-                     (lambda ()
-                       (%ipc-write-string client-fd (ipc-dispatch-line line))))))))))))
-    (cffi:foreign-funcall "close" :int client-fd :int)))
+  "Serve CLIENT-FD until the client goes, then close it.
+Each newline-terminated request is decoded once complete and queued
+for the main thread, whose reply IPC-CLIENT-DELIVER hands back. Held
+reply octets are sent as the socket takes them. After the client
+shuts its write side, queued replies are still sent, for up to
+*IPC-CLIENT-LINGER-SECONDS*. A client that closes, fails, or passes
+the output cap is closed at once and its queued replies are dropped."
+  (let ((client (make-ipc-client client-fd))
+        (acc (make-array 0 :element-type '(unsigned-byte 8)
+                           :adjustable t :fill-pointer 0))
+        (eof-at nil))
+    (unwind-protect
+         (cffi:with-foreign-objects ((buf :uint8 4096) (pfd :uint8 8))
+           (block serve
+             (loop
+               (let ((events (logior (if eof-at 0 +ipc-pollin+)
+                                     (if (bt:with-lock-held
+                                             ((ipc-client-lock client))
+                                           (plusp (ipc-client-output-length
+                                                   client)))
+                                         +ipc-pollout+
+                                         0))))
+                 (setf (cffi:mem-ref pfd :int 0) client-fd
+                       (cffi:mem-ref pfd :short 4) events
+                       (cffi:mem-ref pfd :short 6) 0)
+                 (cffi:foreign-funcall "poll" :pointer pfd :unsigned-long 1
+                                       :int 50 :int)
+                 (let ((revents (cffi:mem-ref pfd :short 6)))
+                   (when (logtest revents (logior +ipc-pollerr+ +ipc-pollnval+))
+                     (return-from serve))
+                   (when (and (not eof-at)
+                              (logtest revents (logior +ipc-pollin+
+                                                       +ipc-pollhup+)))
+                     (let ((n (cffi:foreign-funcall "read" :int client-fd
+                                                    :pointer buf
+                                                    :long 4096 :long)))
+                       (cond
+                         ((plusp n)
+                          (dotimes (i n)
+                            (vector-push-extend (cffi:mem-aref buf :uint8 i)
+                                                acc))
+                          (dolist (line (%ipc-take-lines acc))
+                            (ipc-client-queue-request client line)))
+                         ((zerop n)
+                          (setf eof-at (get-internal-real-time)))
+                         ((not (member (sb-alien:get-errno)
+                                       (list sb-unix:eintr sb-unix:eagain)))
+                          (return-from serve)))))
+                   (when (and eof-at (logtest revents +ipc-pollhup+))
+                     (return-from serve)))
+                 (bt:with-lock-held ((ipc-client-lock client))
+                   (when (or (eq (ipc-client-state client) :dropped)
+                             (eq (%ipc-client-flush client) :gone)
+                             (and eof-at
+                                  (zerop (ipc-client-pending client))
+                                  (zerop (ipc-client-output-length client))))
+                     (return-from serve)))
+                 (when (and eof-at
+                            (> (- (get-internal-real-time) eof-at)
+                               (* *ipc-client-linger-seconds*
+                                  internal-time-units-per-second)))
+                   (return-from serve))))))
+      (bt:with-lock-held ((ipc-client-lock client))
+        (setf (ipc-client-state client) :closed
+              (ipc-client-output-length client) 0)
+        (cffi:foreign-funcall "close" :int client-fd :int)))))
 
 (defun ipc-accept-loop (fd)
   "Accept connections until the socket closes."
@@ -229,7 +460,8 @@ given)."
 ;;; --- Client side (used by tests; rhizome-cmd uses the shell) ---
 
 (defun ipc-send-command (path line)
-  "Connect to the IPC socket at PATH, send LINE, return the reply."
+  "Connect to the IPC socket at PATH, send LINE, and return the reply
+with its newlines and backslashes restored (see IPC-ESCAPE-REPLY)."
   (let ((fd (%ipc-socket)))
     (when (< fd 0) (error "cannot create socket"))
     (unwind-protect
@@ -261,6 +493,7 @@ given)."
                (let ((reply (sb-ext:octets-to-string
                              (coerce acc '(simple-array (unsigned-byte 8) (*)))
                              :external-format :utf-8)))
-                 (string-trim " " (subseq reply 0 (or (position #\newline reply)
-                                                      (length reply))))))))
+                 (string-trim " " (ipc-unescape-reply
+                                   (subseq reply 0 (or (position #\newline reply)
+                                                       (length reply)))))))))
       (cffi:foreign-funcall "close" :int fd :int))))

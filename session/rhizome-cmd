@@ -33,7 +33,18 @@ try:
         if not chunk:
             break
         data += chunk
-    sys.stdout.write(data.decode(errors="replace").strip() + "\n")
+    # A reply is one line: a newline inside it arrives as \n and a
+    # backslash as \\.
+    reply = data.split(b"\n", 1)[0].decode(errors="replace")
+    out, i = [], 0
+    while i < len(reply):
+        if reply[i] == "\\" and reply[i + 1:i + 2] in ("n", "\\"):
+            out.append("\n" if reply[i + 1] == "n" else "\\")
+            i += 2
+        else:
+            out.append(reply[i])
+            i += 1
+    sys.stdout.write("".join(out).strip() + "\n")
 except (ConnectionRefusedError, FileNotFoundError):
     print("rhizome-cmd: cannot connect to rhizome", file=sys.stderr)
     sys.exit(1)
