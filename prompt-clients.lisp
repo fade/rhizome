@@ -62,8 +62,9 @@ a name, typed or picked, switches."
 (defun command-palette (&optional (initial ""))
   "Read a command line and run it through ipc-dispatch-line, as
 StumpWM's colon does. INITIAL is the starting text of the line.
-Candidates complete the command name. Enter runs the typed line when
-it has arguments or names a command exactly, runs the selected command
+Candidates complete the command name; aliases run but are not
+candidates. Enter runs the typed line when it has arguments or names
+a command or an alias exactly, runs the selected command
 for a partial name, and runs nothing for a blank line."
   (let ((commands
           (mapcar #'string-downcase (command-names))))
@@ -80,7 +81,11 @@ for a partial name, and runs nothing for a blank line."
                      (show-command-reply
                       (let ((*command-reply-seconds* 3))
                         (ipc-dispatch-line choice))
-                      serial))))))
+                      serial))))
+    ;; Set after prompt-open, which clears it for every other prompt
+    (setf *prompt-exact-names*
+          (mapcar #'string-downcase (command-alias-names)))
+    nil))
 
 (define-command :colon (output args)
   "Open the command palette, with ARGS as the start of the command

@@ -34,9 +34,44 @@ docstring."
             `(remhash ,name *command-docs*))
        ,name)))
 
+(defvar *command-aliases* (make-hash-table)
+  "Maps alias keywords to the command keywords they run.")
+
+(defun command-alias-target (name)
+  "Return the command keyword the alias NAME (a keyword) runs, or NIL."
+  (values (gethash name *command-aliases*)))
+
 (defun find-command (name)
-  "Return the handler registered under NAME (a keyword), or NIL."
-  (values (gethash name *command-table*)))
+  "Return the handler registered under NAME (a keyword), else the
+handler of the command the alias NAME runs, else NIL. A command name
+takes precedence over an alias of the same name."
+  (values (or (gethash name *command-table*)
+              (let ((target (command-alias-target name)))
+                (and target (gethash target *command-table*))))))
+
+(defun define-command-alias (alias command)
+  "Make ALIAS (a keyword) run COMMAND (a keyword) at execute-command,
+the IPC dispatcher, and the command palette. Return ALIAS. Redefining
+ALIAS replaces its command. Signal an error when ALIAS names a
+registered command, which always runs itself."
+  (check-type alias keyword)
+  (check-type command keyword)
+  (when (gethash alias *command-table*)
+    (error "alias ~(~A~) names a registered command" alias))
+  (setf (gethash alias *command-aliases*) command)
+  alias)
+
+(defun command-alias-names ()
+  "Return the alias names (keywords), sorted by name."
+  (sort (loop for k being the hash-keys of *command-aliases* collect k)
+        #'string<))
+
+(defun canonical-command-name (name)
+  "Return the command keyword NAME runs: NAME when it is a registered
+command or no alias, else the command the alias NAME runs."
+  (if (gethash name *command-table*)
+      name
+      (or (command-alias-target name) name)))
 
 (defun command-names ()
   "Return the registered command names (keywords), sorted by name."
@@ -87,17 +122,20 @@ Lisp callers of execute-command may pass strings."
 (define-command :split-horizontal (output args)
   "Split the current frame horizontally."
   (declare (ignore args))
-  (split-horizontal output))
+  (split-horizontal output)
+  nil)
 
 (define-command :split-vertical (output args)
   "Split the current frame vertically."
   (declare (ignore args))
-  (split-vertical output))
+  (split-vertical output)
+  nil)
 
 (define-command :remove-split (output args)
   "Remove the current frame split."
   (declare (ignore args))
-  (remove-split output))
+  (remove-split output)
+  nil)
 
 (define-command :resize-split (output args)
   "Move the current split's dividing line by ARG pixels (default +30)."
@@ -140,12 +178,14 @@ Lisp callers of execute-command may pass strings."
 (define-command :focus-next (output args)
   "Cycle to the next window in the current frame."
   (declare (ignore args))
-  (focus-next output))
+  (focus-next output)
+  nil)
 
 (define-command :focus-previous (output args)
   "Cycle to the previous window in the current frame."
   (declare (ignore args))
-  (focus-previous output))
+  (focus-previous output)
+  nil)
 
 (define-command :fnext (output args)
   "Focus the next frame in tree order, wrapping, empty frames included."
@@ -194,7 +234,8 @@ included."
   "Focus the window with number N. Usage: select-window <n>"
   (when args
     (select-window-by-number (or (command-integer-argument (first args))
-                                 -1))))
+                                 -1))
+    nil))
 
 (define-command :pull (output args)
   "Pull the window with number N into the current frame.
@@ -203,19 +244,22 @@ Usage: pull <n>"
     (pull-window-by-number (or (command-integer-argument (first args))
                                -1)
                            output
-                           (current-workspace output))))
+                           (current-workspace output))
+    nil))
 
 (define-command :pull-next (output args)
   "Pull the next hidden window into the current frame
 (StumpWM: pull-hidden-next)."
   (declare (ignore args))
-  (pull-hidden-next output (current-workspace output) 1))
+  (pull-hidden-next output (current-workspace output) 1)
+  nil)
 
 (define-command :pull-prev (output args)
   "Pull the previous hidden window into the current frame
 (StumpWM: pull-hidden-previous)."
   (declare (ignore args))
-  (pull-hidden-next output (current-workspace output) -1))
+  (pull-hidden-next output (current-workspace output) -1)
+  nil)
 
 (define-command :renumber (output args)
   "Renumber the workspace's windows from 1 (StumpWM: renumber)."
@@ -235,7 +279,8 @@ Usage: pull <n>"
   (let ((win (find-if #'window-focused-p (all-windows))))
     (if win
         (toggle-fullscreen win)
-        (message "no focused window"))))
+        (message "no focused window"))
+    nil))
 
 (define-command :delete (output args)
   "Ask the focused window to close (StumpWM: delete)."
@@ -677,3 +722,27 @@ With :region t, select the area with slurp first."
     (format t "~&; Rhizome: screenshot ~A-> ~A~%"
             (if region "region " "") path-str)))
 
+(defparameter *stumpwm-command-aliases*
+  '((:gselect . :switch-workspace)
+    (:hsplit . :split-horizontal)
+    (:vsplit . :split-vertical)
+    (:remove . :remove-split)
+    (:fullscreen . :toggle-fullscreen)
+    (:pull-hidden-next . :pull-next)
+    (:pull-hidden-previous . :pull-prev)
+    (:pull-window-by-number . :pull)
+    (:select-window-by-number . :select-window)
+    (:next-in-frame . :focus-next)
+    (:prev-in-frame . :focus-previous)
+    (:snext . :focus-next-output)
+    (:sprev . :focus-previous-output)
+    (:mode-line . :toggle-bar)
+    (:balance-frames . :balance)
+    (:delete-window . :delete)
+    (:kill-window . :kill))
+  "StumpWM command names and the rhizome commands that do the same
+thing. Names StumpWM shares with rhizome are commands, not aliases.
+balance runs only once the rhizome-display module is loaded.")
+
+(loop for (alias . command) in *stumpwm-command-aliases*
+      do (define-command-alias alias command))

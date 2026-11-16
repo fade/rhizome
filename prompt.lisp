@@ -25,6 +25,10 @@
 first word of the query, and Enter may complete with the typed line
 (see prompt-choice).")
 
+(defparameter *prompt-exact-names* nil
+  "Names that a complete-line prompt treats as exact matches, as it
+does its candidates, without listing them as candidates.")
+
 (defparameter *prompt-state* nil
   "Surface state hash: surface, layer-surface, shm-*, wl-buffer,
 width, height.")
@@ -78,7 +82,8 @@ A candidates prompt yields the selected candidate, unless it was
 opened with COMPLETE-LINE. A complete-line prompt yields:
 - NIL for a blank query;
 - the trimmed query when it has arguments after its first word, or
-  when its first word names a candidate exactly, ignoring case;
+  when its first word names a candidate or one of
+  *prompt-exact-names* exactly, ignoring case;
 - otherwise the selected candidate."
   (cond
     ((null *prompt-candidates*)
@@ -89,7 +94,8 @@ opened with COMPLETE-LINE. A complete-line prompt yields:
      (multiple-value-bind (name arguments) (prompt-query-words)
        (cond ((zerop (length name)) nil)
              ((or arguments
-                  (member name *prompt-candidates* :test #'string-equal))
+                  (member name *prompt-candidates* :test #'string-equal)
+                  (member name *prompt-exact-names* :test #'string-equal))
               (string-trim " " *prompt-query*))
              (t (prompt-selected)))))))
 
@@ -213,7 +219,7 @@ ON-COMPLETE with the selected candidate. Without candidates, the prompt
 takes free text and Enter calls ON-COMPLETE with the non-empty query.
 COMPLETE-LINE makes a candidates prompt a complete-line prompt:
 candidates match the first word, and Enter may complete with the whole typed
-line (see prompt-choice)."
+line (see prompt-choice). Clear *prompt-exact-names*."
   (when *prompt-active*
     (prompt-close))
   (unless (and *compositor* *shm* *layer-shell*)
@@ -227,6 +233,7 @@ line (see prompt-choice)."
         *prompt-query* initial
         *prompt-candidates* candidates
         *prompt-complete-line* complete-line
+        *prompt-exact-names* nil
         *prompt-selection* 0
         *prompt-on-complete* on-complete
         *prompt-state* (make-hash-table)

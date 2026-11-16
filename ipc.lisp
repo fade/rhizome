@@ -50,13 +50,16 @@ show-command-reply).")
   "Split a NAME ARGS... command LINE. Return the command keyword and
 its argument list. Arguments are split on whitespace and each one
 that reads as an integer becomes that integer; a command listed in
-*rest-of-line-commands* gets the rest of the line as one string."
+*rest-of-line-commands*, or an alias of one, gets the rest of the
+line as one string."
   (let* ((name-and-rest (cl-ppcre:split "\\s+" line :limit 2))
          (command (intern (string-upcase (first name-and-rest)) :keyword))
          (rest (second name-and-rest)))
     (values command
             (cond ((or (null rest) (zerop (length rest))) nil)
-                  ((member command *rest-of-line-commands*) (list rest))
+                  ((member (canonical-command-name command)
+                           *rest-of-line-commands*)
+                   (list rest))
                   (t (mapcar (lambda (token)
                                (or (ignore-errors (parse-integer token))
                                    token))

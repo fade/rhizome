@@ -971,6 +971,71 @@ StumpWM:
   "kill focused window")
 #+end_src
 
+** StumpWM command names
+
+StumpWM command names run the matching rhizome command, so StumpWM
+key bindings and command lines carry over. A StumpWM name works
+wherever a command name does: the command palette, =rhizome-cmd=, and
+=execute-command=. Arguments pass through unchanged; the notes say
+where a command ignores one. The palette completes rhizome names only, but a StumpWM
+name typed in full runs, with or without arguments.
+
+| StumpWM name              | Rhizome command         | Notes                                                                                                                                                  |
+|---------------------------+-------------------------+--------------------------------------------------------------------------------------------------------------------------------------------------------|
+| =gselect=                 | =switch-workspace=      | Takes a workspace number or name. With no argument it does nothing, where StumpWM prompts for a group. A second word names an output, not part of the name. |
+| =hsplit=                  | =split-horizontal=      | Side by side. The ratio argument is not supported; the split is even.                                                                                  |
+| =vsplit=                  | =split-vertical=        | Top and bottom. The ratio argument is not supported; the split is even.                                                                                |
+| =remove=                  | =remove-split=          |                                                                                                                                                        |
+| =fullscreen=              | =toggle-fullscreen=     |                                                                                                                                                        |
+| =pull-hidden-next=        | =pull-next=             |                                                                                                                                                        |
+| =pull-hidden-previous=    | =pull-prev=             |                                                                                                                                                        |
+| =pull-window-by-number=   | =pull=                  |                                                                                                                                                        |
+| =select-window-by-number= | =select-window=         |                                                                                                                                                        |
+| =next-in-frame=           | =focus-next=            |                                                                                                                                                        |
+| =prev-in-frame=           | =focus-previous=        |                                                                                                                                                        |
+| =snext=                   | =focus-next-output=     | Moves between outputs.                                                                                                                                 |
+| =sprev=                   | =focus-previous-output= | Moves between outputs.                                                                                                                                 |
+| =mode-line=               | =toggle-bar=            | Hides or shows the bar on every output, not only the current one.                                                                                      |
+| =balance-frames=          | =balance=               | Needs the =rhizome-display= module.                                                                                                                    |
+| =delete-window=           | =delete=                |                                                                                                                                                        |
+| =kill-window=             | =kill=                  | Ends the window's process; see =kill= above.                                                                                                           |
+
+These StumpWM names are rhizome commands under the same name:
+=clear-window-marks=, =colon=, =command-mode=, =copy-last-message=,
+=delete=, =fclear=, =fnext=, =fprev=, =fselect=, =getsel=,
+=hibernate=, =kill=, =lastmsg=, =mark=, =only=, =pull=, =putsel=,
+=quit=, =remove-split=, =renumber=, =repack-window-numbers=,
+=select-window=, =set-prefix-key=, =suspend=, and =time=. Two of them
+differ from StumpWM: =renumber= renumbers every window of the
+workspace from 1 and takes no number, and =select-window= takes a
+window number, not a name.
+
+These StumpWM commands have no rhizome equivalent and answer
+=unknown command=:
+
+- group commands: =gnext=, =gprev=, =gnext-with-window=,
+  =gprev-with-window=, =gnew=, =gnewbg=, =gkill=, =gmove=, =gother=,
+  =grename=, =gmerge=, =groups=, and =grouplist=. Switch workspaces
+  with =switch-workspace= and the workspace keys;
+- window commands: =other= (=other-window=), =next=, =prev=,
+  =other-in-frame=, =windowlist=, =windows=, =select= (by name),
+  =title=, =info=, and =number=;
+- frame commands that take a direction: =move-focus=, =move-window=,
+  and =exchange-direction=. Use =focus-left= and the other direction
+  commands, and =exchange-left= and its siblings;
+- =float-this= and =unfloat-this=. =toggle-float= toggles, so on a
+  window that is already floating it tiles the window, where
+  =float-this= leaves it floating;
+- =eval=, =exec=, =echo=, =banish=, =gravity=, =resize=,
+  =hsplit-equally=, =vsplit-equally=, and =fother=.
+
+A configuration adds its own name with =define-command-alias=. A name
+that is already a command is refused:
+
+#+begin_src lisp
+(rhizome:define-command-alias :next-screen :focus-next-output)
+#+end_src
+
 * The REPL
 
 ** SLY
