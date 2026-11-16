@@ -47,6 +47,10 @@ re-sends the presentation mode (apply-presentation-mode diffs it)."
   (when *wm-proxy*
     (request-manage-dirty)))
 
+(defvar *output-serial* 0
+  "Count of outputs made this session; each output takes the next value
+as its listing serial.")
+
 (defclass rhizome-output ()
   ((proxy    :initarg :proxy    :accessor output-proxy)
    (x        :initarg :x        :accessor output-x :initform 0)
@@ -62,7 +66,11 @@ and HEIGHT are defaults, not facts.")
    (current-layout :initarg :current-layout :accessor output-current-layout :initform :master-stack)
    (capture-sessions :initarg :capture-sessions
                      :accessor output-capture-sessions :initform 0)
-   (windows  :initarg :windows  :accessor output-windows :initform nil))
+   (windows  :initarg :windows  :accessor output-windows :initform nil)
+   (serial :initarg :serial :accessor output-serial
+           :initform (incf *output-serial*)
+           :documentation "Position in the order river listed its
+outputs this session: the first output made has the lowest serial."))
   (:documentation "Represents a logical output (monitor) managed by rhizome."))
 
 (defun register-output (proxy)

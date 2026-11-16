@@ -64,6 +64,7 @@
    #:move-focused-window-to-workspace
    #:window-workspace
    #:workspace-count
+   #:index-base
    #:workspace-index-base
    #:workspace-to-display
    #:workspace-from-display
@@ -73,6 +74,11 @@
    #:add-workspace
    #:remove-workspace
    #:output-connector-name
+   ;; Screens
+   #:primary-screen
+   #:screen-order
+   #:screen-number
+   #:screen-by-number
    ;; Screenshot
    #:take-screenshot
    ;; Power

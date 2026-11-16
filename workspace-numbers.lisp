@@ -19,8 +19,11 @@
 ;;;                                         :names ("mail" "web"))
 ;;;                              ("HDMI-A-1" :count 4)))))
 ;;;
-;;; :index-base is 0 or 1 (default 1). :count is the number of
-;;; workspaces on a screen without its own entry (default
+;;; :index-base is 0 or 1 (default 1), and is the one base for every
+;;; user-facing index: workspace, screen (screens.lisp), and frame
+;;; (frame addresses). Each function that reads or takes such an index
+;;; accepts an :index-base keyword defaulting to it. :count is the
+;;; number of workspaces on a screen without its own entry (default
 ;;; *workspace-count*). A :screens entry is keyed by connector name and
 ;;; may set that screen's :count and :names; a missing name shows the
 ;;; number. add-workspace and remove-workspace change a screen's count
@@ -34,24 +37,44 @@ Cleared by reload-config, so the configured count applies again.")
 
 ;;; --- The display base ---
 
-(defun workspace-index-base ()
-  "The number the first workspace shows as: 0 or 1, from
-(:workspaces :index-base). Any value other than 0 reads as 1."
+(defun index-base ()
+  "The number every first workspace, screen, and frame shows as: 0 or
+1, from (:workspaces :index-base). Any value other than 0 reads as 1.
+Functions that read or take a user-facing index accept an :index-base
+keyword that defaults to this value."
   (if (eql (config-getf '(:workspaces) :index-base :default 1) 0) 0 1))
 
-(defun workspace-to-display (workspace)
-  "The number WORKSPACE (1-based) shows as under the display base."
-  (+ workspace (workspace-index-base) -1))
+(defun workspace-index-base ()
+  "The number the first workspace shows as: the shared index-base."
+  (index-base))
 
-(defun workspace-from-display (number)
-  "The workspace (1-based) the user-facing NUMBER names, or NIL when
-NUMBER is not a number. NUMBER is an integer or a string holding one:
-IPC hands handlers either form. No range check."
+(defun display-index (ordinal &key (index-base (index-base)))
+  "The user-facing number of the zero-based ORDINAL under INDEX-BASE."
+  (+ ordinal index-base))
+
+(defun index-ordinal (number &key (index-base (index-base)))
+  "The zero-based ordinal the user-facing NUMBER names under
+INDEX-BASE, or NIL when NUMBER is not a number. NUMBER is an integer
+or a string of digits, blanks around it ignored. No range check."
   (let ((n (typecase number
              (integer number)
-             (string (handler-case (parse-integer number)
-                       (parse-error () nil))))))
-    (and n (- n (workspace-index-base) -1))))
+             (string (let ((text (string-trim " " number)))
+                       (and (plusp (length text))
+                            (every #'digit-char-p text)
+                            (parse-integer text)))))))
+    (and n (- n index-base))))
+
+(defun workspace-to-display (workspace &key (index-base (index-base)))
+  "The number WORKSPACE (1-based) shows as under INDEX-BASE."
+  (display-index (1- workspace) :index-base index-base))
+
+(defun workspace-from-display (number &key (index-base (index-base)))
+  "The workspace (1-based) the user-facing NUMBER names under
+INDEX-BASE, or NIL when NUMBER is not a number. NUMBER is an integer
+or a string holding one: IPC hands handlers either form. No range
+check."
+  (let ((ordinal (index-ordinal number :index-base index-base)))
+    (and ordinal (1+ ordinal))))
 
 ;;; --- Screens ---
 

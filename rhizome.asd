@@ -30,6 +30,7 @@
    (:file "frames" :depends-on ("window" "output" "seat" "animate" "theme" "cues"))
    (:file "workspaces" :depends-on ("window" "output" "seat" "floating" "frames" "animate"))
    (:file "workspace-numbers" :depends-on ("workspaces" "display"))
+   (:file "screens" :depends-on ("workspace-numbers" "display" "output"))
    (:file "placement" :depends-on ("window" "frames" "workspaces"))
    (:file "heads" :depends-on ("workspaces" "floating" "frames" "seat"))
    (:file "takeover" :depends-on ("workspaces" "floating" "frames"))

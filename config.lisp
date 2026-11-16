@@ -129,8 +129,9 @@ Returns (values value found-p)."
                  ;; the layout untouched workspaces use;
                  ;; switch-layout stores per-workspace
                  :index-base 1
-                 ;; the number the first workspace shows as (0 or
-                 ;; 1) wherever a workspace number is shown or typed.
+                 ;; the number the first workspace, screen, and
+                 ;; frame shows as (0 or 1) wherever one is shown or
+                 ;; typed, frame addresses included.
                  ;; Also :count N (workspaces on a screen without
                  ;; its own entry) and :screens (("HDMI-A-1" :count
                  ;; 6 :names ("mail" "web"))), keyed by connector
@@ -189,7 +190,16 @@ Returns (values value found-p)."
     ;; :active-edge-width is 1 to 5 px. The line takes the
     ;; :screen-active-edge theme element.
     :screens (:active-edge :top
-              :active-edge-width 3)
+              :active-edge-width 3
+              :primary nil
+              ;; The primary screen's connector name ("DVI-D-1"):
+              ;; screen number 1 (0 under :index-base 0). NIL takes
+              ;; the first output river lists.
+              :order nil
+              ;; A list of connector names numbering the screens in
+              ;; that order, over :primary; screens it does not name
+              ;; follow on the spiral (see screens.lisp)
+              )
     ;; :name selects themes/NAME.theme; :roles and :elements adjust
     ;; it (see theme.lisp)
     :theme (:name "tokyo-night"
