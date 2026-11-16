@@ -306,18 +306,60 @@ empty node elsewhere."
                         +notify-introspection+
                         "<node/>"))))
 
-(defun notification-register-handlers ()
-  "Install the server's method handlers in *DBUS-HANDLERS*."
-  (setf (dbus-handler +notify-iface+ "Notify")
-        #'notification-handle-notify
-        (dbus-handler +notify-iface+ "CloseNotification")
-        #'notification-handle-close
-        (dbus-handler +notify-iface+ "GetCapabilities")
-        #'notification-handle-capabilities
-        (dbus-handler +notify-iface+ "GetServerInformation")
-        #'notification-handle-server-information
-        (dbus-handler "org.freedesktop.DBus.Introspectable" "Introspect")
-        #'notification-handle-introspect))
+(defparameter +notify-methods+
+  '(("Notify" "susssasa{sv}i" notification-handle-notify)
+    ("CloseNotification" "u" notification-handle-close)
+    ("GetCapabilities" "" notification-handle-capabilities)
+    ("GetServerInformation" "" notification-handle-server-information))
+  "The server's methods as (MEMBER IN-SIGNATURE HANDLER). A HANDLER
+takes (MESSAGE CONN) and returns (values signature values).")
+
+(defun notification-dispatch (msg conn)
+  "Answer the method call MSG on the server connection CONN with a
+reply or a D-Bus error reply, and return NIL.
+Introspect answers on any path. The server's methods answer only on
++NOTIFY-PATH+, and only to their own argument signature. A handler
+that signals an error gets an org.freedesktop.DBus.Error.Failed reply.
+The handlers stay out of *DBUS-HANDLERS*: the tray's connection
+serves that table."
+  (let ((path (message-field msg 1))
+        (interface (message-field msg 2))
+        (member (message-field msg 3))
+        (signature (or (message-field msg 8) "")))
+    (flet ((fail (name format-control &rest args)
+             (dbus-error-reply conn msg
+                               (concatenate 'string
+                                            "org.freedesktop.DBus.Error."
+                                            name)
+                               (apply #'format nil format-control args))))
+      (cond
+        ((and (equal interface "org.freedesktop.DBus.Introspectable")
+              (equal member "Introspect"))
+         (multiple-value-bind (sig values)
+             (notification-handle-introspect msg conn)
+           (dbus-reply conn msg :signature sig :values values)))
+        ((not (equal path +notify-path+))
+         (fail "UnknownObject" "no object at ~A" path))
+        ((not (member interface (list nil +notify-iface+) :test #'equal))
+         (fail "UnknownInterface" "no interface ~A at ~A" interface path))
+        (t
+         (let ((method (assoc member +notify-methods+ :test #'equal)))
+           (cond
+             ((null method)
+              (fail "UnknownMethod" "no method ~A in ~A"
+                    member +notify-iface+))
+             ((not (equal signature (second method)))
+              (fail "InvalidArgs" "~A takes (~A), not (~A)"
+                    member (second method) signature))
+             (t
+              (multiple-value-bind (sig values error)
+                  (handler-case (funcall (third method) msg conn)
+                    (error (e) (values nil nil e)))
+                (if error
+                    (fail "Failed" "~A: ~A" member error)
+                    (dbus-reply conn msg :signature sig
+                                :values values)))))))))
+    nil))
 
 ;;; --- Lifecycle (bar process) ---
 
@@ -338,7 +380,6 @@ behind one."
       (format t "~&; Rhizome: notifications: no session bus; ~
 notification server off~%")
       (return-from notifications-start nil))
-    (notification-register-handlers)
     (dbus-add-match conn (format nil "type='signal',interface='~A',~
 member='Dismiss'" +notify-private-iface+))
     ;; flags 4: DO_NOT_QUEUE, without REPLACE_EXISTING
@@ -393,7 +434,7 @@ closed; notification server off~%")
           (handler-case
               (cond
                 ((eql (dbus-message-type msg) +dbus-msg-call+)
-                 (dispatch-method-call msg conn))
+                 (notification-dispatch msg conn))
                 ((eql (dbus-message-type msg) +dbus-msg-signal+)
                  (notification-signal msg)))
             (error (e)
