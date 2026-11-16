@@ -150,28 +150,22 @@ sets every common group.
 The configuration is a nested property list. =configure= merges the
 list you pass into the current configuration and applies the result:
 
-- When both the current value and the new value are property lists
-  whose values are not keywords, the two merge key by key.
-- Any other value replaces the old one whole. Lists such as a
-  module list or =:window-rules= are replaced, not appended to.
-- A group whose values include a keyword, such as
-  =(:frames (:prune-empty :auto))= or
-  =(:animations (:easing :ease-out-cubic))=, is replaced whole. Pass
-  every key of such a group that you want to keep in one call.
+- A top-level group, such as =:frames=, =:workspaces=, or =:bar=,
+  merges key by key. A call that sets one key of a group keeps the
+  group's other keys.
+- Inside a group, two property lists also merge key by key, unless
+  both hold only keywords. A list of bare keywords, such as the
+  module list =(:layout :windows)= or the preference list
+  =(:empty :focused)=, replaces the old list whole.
+- Any other value replaces the old one. Lists such as
+  =:window-rules= are replaced, not appended to.
 
-For example, this pair of calls leaves =:types= unset, because the
-second call replaces the whole =:workspaces= group:
+For example, after this pair of calls the =:workspaces= group holds
+both =:types= and =:default-layout=:
 
 #+begin_src lisp
 (rhizome:configure '(:workspaces (:types (2 :floating))))
 (rhizome:configure '(:workspaces (:default-layout :even)))
-#+end_src
-
-Write both keys in one call instead:
-
-#+begin_src lisp
-(rhizome:configure '(:workspaces (:types (2 :floating)
-                                  :default-layout :even)))
 #+end_src
 
 ** Changing the configuration live
@@ -456,6 +450,15 @@ close:
 
 The root frame never closes.
 
+The =(:frames (:cycle-skips-empty ...))= key controls whether =fnext=
+and =fprev= stop on empty frames:
+
+- =nil= :: the default. Every frame is a stop, as in StumpWM.
+- =t= :: =fnext= and =fprev= move to the next or previous frame that
+  holds a window that is not minimized, passing over empty frames and
+  wrapping at either end. When every other frame is empty, focus stays
+  where it is.
+
 Other frame commands, available from the command palette or
 =rhizome-cmd=:
 
@@ -466,7 +469,9 @@ Other frame commands, available from the command palette or
 - =fnext= and =fprev= :: focus the next or previous frame in tree
   order, wrapping at either end, as in StumpWM. An empty frame is a
   stop like any other: focusing it clears keyboard focus, so under the
-  default placement the next new window opens there. From Lisp, call =rhizome:focus-next-frame=
+  default placement the next new window opens there. With
+  =(:frames (:cycle-skips-empty t))=, both commands pass over empty
+  frames and stop only on frames holding a window. From Lisp, call =rhizome:focus-next-frame=
   and =rhizome:focus-previous-frame= with an output, or
   =rhizome:focus-frame= to focus a given frame.
 - =dump-frame NAME= and =restore-frame NAME= :: save the workspace's
@@ -891,7 +896,7 @@ The same commands run from the command palette.
 | =resize-split=                                                    | [PIXELS]  | Move the current split's dividing line by PIXELS (default 30); a negative value moves it the other way. |
 | =fclear=                                                          |           | Move the current frame's windows to the other frames.                                                   |
 | =focus-left=, =focus-right=, =focus-up=, =focus-down=             |           | Focus the frame in that direction.                                                                      |
-| =fnext=, =fprev=                                                  |           | Focus the next or previous frame in tree order, wrapping. Empty frames are included.                    |
+| =fnext=, =fprev=                                                  |           | Focus the next or previous frame in tree order, wrapping. Empty frames are included unless =:cycle-skips-empty= is set. |
 | =exchange-left=, =exchange-right=, =exchange-up=, =exchange-down= |           | Swap windows with the frame in that direction.                                                          |
 | =focus-next=, =focus-previous=                                    |           | Cycle the windows of the current frame.                                                                 |
 | =pull-next=, =pull-prev=                                          |           | Show the next or previous hidden window in the current frame.                                           |
@@ -1009,7 +1014,9 @@ These StumpWM names are rhizome commands under the same name:
 =select-window=, =set-prefix-key=, =suspend=, and =time=. Two of them
 differ from StumpWM: =renumber= renumbers every window of the
 workspace from 1 and takes no number, and =select-window= takes a
-window number, not a name.
+window number, not a name. =fnext= and =fprev= match StumpWM by
+default; with =(:frames (:cycle-skips-empty t))= they pass over empty
+frames.
 
 These StumpWM commands have no rhizome equivalent and answer
 =unknown command=:

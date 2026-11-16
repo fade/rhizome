@@ -151,6 +151,10 @@ Returns (values value found-p)."
              ;; empty frame: keyboard focus clears and the next new
              ;; window opens there. NIL skips empty frames in C-t f
              ;; and leaves keyboard focus where it is.
+             :cycle-skips-empty nil
+             ;; T makes fnext and fprev pass over empty frames and
+             ;; stop only on frames holding a window. NIL stops on
+             ;; every frame, as StumpWM does.
              )
     :fselect (:timeout 20
               ;; Seconds C-t f waits for a frame label before the
