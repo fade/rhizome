@@ -41,7 +41,7 @@ SUITES    := animations decorations surface window-rules window-rules-reload flo
              colon-command bar-system-modules kill-client \
              ipc-reply-printing ipc-reply-frame-tree \
              ipc-reply-framing ipc-request-decoding ipc-slow-client \
-             ipc-client-lifecycle \
+             ipc-client-lifecycle ipc-client-idle \
              frame-cycling frame-cycle-skip-empty stumpwm-aliases \
              stumpwm-group-eval-exec
 

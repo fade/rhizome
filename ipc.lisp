@@ -218,9 +218,9 @@ ended by a newline, and encoded as UTF-8."
 
 ;;; --- Connections ---
 ;;;
-;;; The connection thread owns a client's fd: it alone closes it, and
-;;; it marks the client :CLOSED, with the client's lock held, before
-;;; it does. The main thread only appends replies and sends without
+;;; The socket thread owns a client's fd: it alone closes it, and it
+;;; marks the client :CLOSED, with the client's lock held, before it
+;;; does. The main thread only appends replies and sends without
 ;;; blocking, under the same lock, so a reply for a closed client is
 ;;; dropped and never reaches an fd number the kernel has reused.
 
@@ -246,18 +246,57 @@ that would take a client past it disconnects the client.")
   "Seconds a client that has shut its write side is kept open for the
 replies still queued for it.")
 
+(defparameter *ipc-client-idle-seconds* 5
+  "Seconds a client may go without sending an octet or reading a reply
+octet before it is dropped; (:ipc :client-idle-seconds) overrides it.
+A read counts once it finishes one send of up to +IPC-SEND-CHUNK+
+octets.
+The socket thread serves one client at a time, so this bounds how long
+a stalled client keeps the others waiting. Time spent waiting for the
+main thread to answer does not count. Five seconds is far longer than
+rhizome-cmd needs to send and read, and short enough that a
+rhizome-cmd queued behind a stalled client is served within its own
+10 s timeout.")
+
+(defun ipc-client-idle-seconds ()
+  "Return the idle deadline in seconds: (:ipc :client-idle-seconds)
+when configured, otherwise *IPC-CLIENT-IDLE-SECONDS*."
+  (config-getf '(:ipc) :client-idle-seconds
+               :default *ipc-client-idle-seconds*))
+
+(defun %ipc-unread-octets (fd)
+  "Return the octets sent on socket FD that its peer has not read yet,
+as the kernel counts them (SIOCOUTQ, which includes buffer overhead),
+or 0 when the kernel does not report it."
+  (cffi:with-foreign-object (count :int)
+    (if (zerop (cffi:foreign-funcall "ioctl" :int fd :unsigned-long #x5411
+                                     :pointer count :int))
+        (max 0 (cffi:mem-ref count :int))
+        0)))
+
+(defun %ipc-log-drop (fd reason unread held)
+  "Log one line recording that the client on FD was dropped for
+REASON, a string. UNREAD is the kernel's count for the socket (see
+%IPC-UNREAD-OCTETS); HELD is the reply octets the WM held and had not
+yet sent."
+  (format t "~&; Rhizome: ipc: dropped client on fd ~D (~A), kernel unread ~D bytes, WM queue ~D bytes~%"
+          fd reason unread held))
+
 (defstruct (ipc-client (:constructor make-ipc-client (fd)))
   "One IPC connection. Every slot but FD and LOCK is read and written
-with LOCK held. STATE is :OPEN, :DROPPED (the connection thread is to
+with LOCK held. STATE is :OPEN, :DROPPED (the socket thread is to
 close the client), or :CLOSED. PENDING counts requests queued and not
-yet answered. OUTPUT holds OUTPUT-LENGTH octets not yet sent."
+yet answered. OUTPUT holds OUTPUT-LENGTH octets not yet sent.
+PROGRESS-AT is the internal real time the client last sent an octet,
+read a reply octet, or was waiting on the main thread."
   (fd -1 :type fixnum)
   (lock (bt:make-lock "rhizome-ipc-client"))
   (state :open)
   (pending 0 :type fixnum)
   (output (make-array 0 :element-type '(unsigned-byte 8))
    :type (simple-array (unsigned-byte 8) (*)))
-  (output-length 0 :type fixnum))
+  (output-length 0 :type fixnum)
+  (progress-at (get-internal-real-time)))
 
 (defun %ipc-take-lines (acc)
   "Remove every newline-terminated line from ACC, an octet vector with
@@ -292,11 +331,19 @@ decodes as U+FFFD."
     (replace buffer octets :start1 length)
     (setf (ipc-client-output-length client) needed)))
 
+(defconstant +ipc-send-chunk+ 8192
+  "Most octets passed to one send call. The kernel's unread count for a
+Unix stream socket falls only once the peer has read all of one send,
+so a reader taking 16 KB at a time shows progress on every read only
+when each send is smaller than that.")
+
 (defun %ipc-client-flush (client)
   "Send as much of CLIENT's held output as its socket takes without
-blocking, and keep the rest. Return :GONE when a send fails for any
-reason but a full socket, otherwise T. Call with its lock held, and
-only while CLIENT is not :CLOSED."
+blocking, in sends of at most +IPC-SEND-CHUNK+ octets, and keep the
+rest. Sending any octet sets PROGRESS-AT.
+Return :GONE when a send fails for any reason but a full socket,
+otherwise T. Call with its lock held, and only while CLIENT is not
+:CLOSED."
   (let ((length (ipc-client-output-length client))
         (buffer (ipc-client-output client))
         (sent 0)
@@ -307,7 +354,8 @@ only while CLIENT is not :CLOSED."
               do (let ((n (cffi:foreign-funcall
                            "send" :int (ipc-client-fd client)
                                   :pointer (cffi:inc-pointer ptr sent)
-                                  :long (- length sent)
+                                  :long (min +ipc-send-chunk+
+                                             (- length sent))
                                   :int +ipc-send-flags+ :long)))
                    (cond ((plusp n) (incf sent n))
                          ((= (sb-alien:get-errno) sb-unix:eintr))
@@ -315,6 +363,8 @@ only while CLIENT is not :CLOSED."
                           (return))
                          (t (setf result :gone)
                             (return))))))
+      (when (plusp sent)
+        (setf (ipc-client-progress-at client) (get-internal-real-time)))
       (replace buffer buffer :start2 sent :end2 length)
       (setf (ipc-client-output-length client) (- length sent)))
     result))
@@ -322,24 +372,31 @@ only while CLIENT is not :CLOSED."
 (defun ipc-client-deliver (client reply)
   "Hand REPLY, a string or NIL, to CLIENT and count one of its queued
 requests as answered. Runs on the main thread and never blocks on the
-client: octets the socket does not take now are held for the
-connection thread. REPLY is dropped when CLIENT is no longer :OPEN. A
-reply that would take the held output past *IPC-CLIENT-OUTPUT-CAP*,
-or a failed send, marks CLIENT :DROPPED for the connection thread to
-close."
-  (let ((octets (and reply (ipc-reply-octets reply))))
+client: octets the socket does not take now are held for the socket
+thread. REPLY is dropped when CLIENT is no longer :OPEN. A reply that
+would take the held output past *IPC-CLIENT-OUTPUT-CAP* marks CLIENT
+:DROPPED and logs the drop; a failed send marks it :DROPPED. The
+socket thread closes a :DROPPED client."
+  (let ((octets (and reply (ipc-reply-octets reply)))
+        (over-cap nil))
     (bt:with-lock-held ((ipc-client-lock client))
       (decf (ipc-client-pending client))
       (when (and octets (eq (ipc-client-state client) :open))
         (cond ((> (+ (ipc-client-output-length client) (length octets))
                   *ipc-client-output-cap*)
-               (setf (ipc-client-state client) :dropped
+               (setf over-cap (list (%ipc-unread-octets
+                                     (ipc-client-fd client))
+                                    (+ (ipc-client-output-length client)
+                                       (length octets)))
+                     (ipc-client-state client) :dropped
                      (ipc-client-output-length client) 0))
               (t
                (%ipc-client-append client octets)
                (when (eq (%ipc-client-flush client) :gone)
                  (setf (ipc-client-state client) :dropped
-                       (ipc-client-output-length client) 0))))))))
+                       (ipc-client-output-length client) 0))))))
+    (when over-cap
+      (apply #'%ipc-log-drop (ipc-client-fd client) "output cap" over-cap))))
 
 (defun ipc-client-queue-request (client line)
   "Queue LINE for the main thread, which dispatches it and hands the
@@ -357,14 +414,26 @@ reply to CLIENT with IPC-CLIENT-DELIVER."
   "Serve CLIENT-FD until the client goes, then close it.
 Each newline-terminated request is decoded once complete and queued
 for the main thread, whose reply IPC-CLIENT-DELIVER hands back. Held
-reply octets are sent as the socket takes them. After the client
-shuts its write side, queued replies are still sent, for up to
-*IPC-CLIENT-LINGER-SECONDS*. A client that closes, fails, or passes
-the output cap is closed at once and its queued replies are dropped."
+reply octets are sent as the socket takes them.
+
+A client that neither sends an octet nor reads a reply octet for the
+seconds IPC-CLIENT-IDLE-SECONDS returns is dropped, while time spent waiting for the
+main thread to answer does not count. After the client shuts its
+write side, queued replies are still sent for up to
+*IPC-CLIENT-LINGER-SECONDS*, as long as the client keeps reading
+them. A client that closes, fails, passes the output cap, or misses
+either deadline is closed at once and its queued replies are dropped.
+Every drop for a deadline logs one line naming the reason, the
+kernel's unread count, and the octets the WM still holds."
   (let ((client (make-ipc-client client-fd))
         (acc (make-array 0 :element-type '(unsigned-byte 8)
                            :adjustable t :fill-pointer 0))
-        (eof-at nil))
+        (idle-limit (round (* (ipc-client-idle-seconds)
+                              internal-time-units-per-second)))
+        (eof-at nil)
+        (unread 0)
+        (drop-reason nil)
+        (drop-counts nil))
     (unwind-protect
          (cffi:with-foreign-objects ((buf :uint8 4096) (pfd :uint8 8))
            (block serve
@@ -392,6 +461,9 @@ the output cap is closed at once and its queued replies are dropped."
                                                     :long 4096 :long)))
                        (cond
                          ((plusp n)
+                          (bt:with-lock-held ((ipc-client-lock client))
+                            (setf (ipc-client-progress-at client)
+                                  (get-internal-real-time)))
                           (dotimes (i n)
                             (vector-push-extend (cffi:mem-aref buf :uint8 i)
                                                 acc))
@@ -404,25 +476,44 @@ the output cap is closed at once and its queued replies are dropped."
                           (return-from serve)))))
                    (when (and eof-at (logtest revents +ipc-pollhup+))
                      (return-from serve)))
-                 (bt:with-lock-held ((ipc-client-lock client))
-                   (when (or (eq (ipc-client-state client) :dropped)
-                             (eq (%ipc-client-flush client) :gone)
-                             (and eof-at
-                                  (zerop (ipc-client-pending client))
-                                  (zerop (ipc-client-output-length client))))
-                     (return-from serve)))
-                 (when (and eof-at
-                            (> (- (get-internal-real-time) eof-at)
-                               (* *ipc-client-linger-seconds*
-                                  internal-time-units-per-second)))
-                   (return-from serve))))))
+                 (let ((now (get-internal-real-time))
+                       (queued (%ipc-unread-octets client-fd)))
+                   (bt:with-lock-held ((ipc-client-lock client))
+                     (when (< queued unread)
+                       (setf (ipc-client-progress-at client) now))
+                     (setf unread queued)
+                     (when (or (eq (ipc-client-state client) :dropped)
+                               (eq (%ipc-client-flush client) :gone)
+                               (and eof-at
+                                    (zerop (ipc-client-pending client))
+                                    (zerop (ipc-client-output-length client))))
+                       (return-from serve))
+                     (when (and (plusp (ipc-client-pending client))
+                                (zerop (ipc-client-output-length client)))
+                       (setf (ipc-client-progress-at client) now))
+                     (setf drop-counts
+                           (list (%ipc-unread-octets client-fd)
+                                 (ipc-client-output-length client))
+                           drop-reason
+                           (cond ((> (- now (ipc-client-progress-at client))
+                                     idle-limit)
+                                  "idle deadline")
+                                 ((and eof-at
+                                       (> (- now eof-at)
+                                          (* *ipc-client-linger-seconds*
+                                             internal-time-units-per-second)))
+                                  "linger deadline"))))
+                   (when drop-reason
+                     (apply #'%ipc-log-drop client-fd drop-reason drop-counts)
+                     (return-from serve)))))))
       (bt:with-lock-held ((ipc-client-lock client))
         (setf (ipc-client-state client) :closed
               (ipc-client-output-length client) 0)
         (cffi:foreign-funcall "close" :int client-fd :int)))))
 
 (defun ipc-accept-loop (fd)
-  "Accept connections until the socket closes."
+  "Accept connections on FD until the socket closes, and serve each one
+in turn with IPC-HANDLE-CONNECTION. Runs on the socket thread."
   (handler-case
       (loop
         (let ((client (cffi:foreign-funcall "accept" :int fd
