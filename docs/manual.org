@@ -848,8 +848,9 @@ and =rhizome-cmd scratchpad list= lists them.
 
 The window manager listens on the Unix socket
 =$XDG_RUNTIME_DIR/rhizome.sock=. It reads one command per line and
-writes one line of reply. =rhizome-cmd= sends its arguments as one
-line and prints the reply:
+writes one line of reply. A newline inside a reply is sent as =\n=
+and a backslash as =\\=. =rhizome-cmd= sends its arguments as one
+line and prints the reply with both restored:
 
 #+begin_src sh
 rhizome-cmd current-workspace

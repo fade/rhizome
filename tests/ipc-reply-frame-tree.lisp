@@ -50,7 +50,7 @@ child points back at its parent."
 
 (defun reply-length-cap ()
   "Return the longest reply the dispatch may send: *REPLY-MAX-LENGTH*
-plus the 3-character ellipsis, or 4099 in a tree without it."
+plus the 3-character ellipsis, or 4099 in code without it."
   (+ 3 (if (boundp '*reply-max-length*)
            (symbol-value '*reply-max-length*)
            4096)))
