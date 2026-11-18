@@ -1122,8 +1122,9 @@ bolt when CHARGING."
 (defun bar-occupied-dot-origin (x y tw)
   "Top-left (VALUES DX DY) of the occupied dot under text of width TW
 drawn at (X Y): centred under the text, its top row two rows below
-the baseline so it clears the foot of every digit, and inside the
-line box."
+the baseline, clear of the foot of every digit. When the line box
+ends less than *bar-dot-size* rows below that, the line box wins
+and the dot moves up to sit inside it."
   (values (- (+ x (floor tw 2)) (floor *bar-dot-size* 2))
           (min (+ y (font-ascent) 2)
                (- (+ y (font-line-height)) *bar-dot-size*))))
@@ -1265,8 +1266,8 @@ inactive."
 
 (defun bar-glow-alpha (d radius peak)
   "Glow alpha (0.0 to 255.0) D px outside the bar body for a glow of
-RADIUS px peaking at PEAK: a Gaussian falloff with sigma RADIUS/3,
-PEAK at the edge and under one level at RADIUS, 0.0 beyond."
+RADIUS px peaking at PEAK: PEAK at the edge, falling off as a
+Gaussian with sigma RADIUS/3, and cut to 0.0 at RADIUS and beyond."
   (declare (type single-float d radius peak))
   (if (>= d radius)
       0.0
@@ -1311,12 +1312,14 @@ three meet without a seam. Premultiplied."
                                     (t (rounded-surface-pixel
                                         fi si br bg bb orr og ob alpha)))))
                   (when (and glow (< fi 255))
-                    (let ((ga (round (* (bar-glow-alpha d grad peak)
-                                        (- 1.0 f)))))
+                    (let ((ga (min (- 255 (ldb (byte 8 24) pixel))
+                                   (round (* (bar-glow-alpha d grad peak)
+                                             (- 1.0 f))))))
                       (when (plusp ga)
-                        ;; Packed add: body alpha A*f plus glow alpha
-                        ;; at most 255*(1-f) leaves every channel
-                        ;; under 256, so no carry crosses channels.
+                        ;; Packed add: the glow alpha is capped at 255
+                        ;; less the body alpha, and no premultiplied
+                        ;; channel exceeds its alpha, so no channel
+                        ;; carries into the next.
                         (destructuring-bind (gr gg gb) glow
                           (setf pixel (+ pixel
                                          (make-argb gr gg gb :alpha ga)))))))

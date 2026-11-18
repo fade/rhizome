@@ -274,7 +274,7 @@ through the modules it covers. Clipped to the buffer; premultiplied."
                                 (border-b 255) (border-width 1))
   "Paint the whole surface as a rect with corner RADIUS, filled in
 R G B under a BORDER-WIDTH px border in BORDER-R BORDER-G BORDER-B,
-both at ALPHA. It paints the background of the bar and the launcher,
+both at ALPHA. It paints the background of the launcher,
 and of each menu, message window, and prompt. Every pixel is written; a pixel outside the shape becomes
 transparent and an edge pixel takes its coverage. Premultiplied."
   (multiple-value-bind (fill ring)
