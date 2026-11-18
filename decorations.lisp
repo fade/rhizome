@@ -1,25 +1,27 @@
-;;; Decoration surfaces — pseudo-shadows and focus glow for floats
+;;; Decoration surfaces: shadows for floats, a glow for the focused
+;;; tiled window
 ;;;
 ;;; River gives the WM a surface per window via
 ;;; river_window_v1.get_decoration_below/above: the WM sizes it,
 ;;; draws it, and positions it with river_decoration_v1.set_offset
-;;; (relative to the window's top-left — negative offsets reach
+;;; (relative to the window's top-left; negative offsets reach
 ;;; outside the window rect, which is how a shadow band works).
 ;;;
-;;; Rhizome draws a soft alpha-gradient pseudo-shadow around every
-;;; floating window (decoration_below), tinted toward the accent
-;;; color when the window is focused — so focused floats glow.
-;;; Tiled windows stay with river's crisp set_borders: the shadow
-;;; belongs to floats.
+;;; Rhizome draws a soft neutral shadow under every floating window
+;;; (decoration_below): the rect of the size the client committed,
+;;; with its border and titlebar, blurred and shifted a few px down,
+;;; and cut out where the window covers it. The focused tiled window
+;;; takes a narrow glow in the gap, tinted toward the focus colour.
+;;; Tiled windows otherwise keep river's crisp set_borders.
 ;;;
-;;; Protocol discipline (the whole point of today's lessons):
-;;;   get_decoration_below   — anytime, but the surface must be
-;;;                            role-less and buffer-less (fresh)
-;;;   set_offset             — RENDER sequence only
-;;;   sync_next_commit       — RENDER sequence only, and the
-;;;                            surface must commit before the
-;;;                            render_finish that ends the pass
-;;;   destroy                — anytime
+;;; Protocol discipline:
+;;;   get_decoration_below   anytime, but the surface must be
+;;;                          role-less and buffer-less (fresh)
+;;;   set_offset             RENDER sequence only
+;;;   sync_next_commit       RENDER sequence only, and the
+;;;                          surface must commit before the
+;;;                          render_finish that ends the pass
+;;;   destroy                anytime
 ;;; Everything decoration-related therefore happens inside
 ;;; decorations-render-pass, called from on-render-sequence.
 
@@ -32,9 +34,10 @@
 (:proxy ... :surface ... :ptr ... :fd ... :size ... :pool ...
  :buffer ... :w ... :h ... :focused ... :offset-sent ...)")
 
-(defun decoration-config (&key (enabled t) (radius 12) (alpha 0.4)
-                          (focused-alpha 0.6))
-  "(:decorations ...) settings with defaults."
+(defun decoration-config (&key (enabled t) (radius 16) (alpha 0.3)
+                          (focused-alpha 0.4))
+  "(:decorations ...) settings with defaults. ALPHA and FOCUSED-ALPHA
+are the shadow's peak opacity under an unfocused and a focused float."
   (list :enabled (config-getf '(:decorations) :enabled :default enabled)
         :radius (config-getf '(:decorations) :radius :default radius)
         :alpha (config-getf '(:decorations) :alpha :default alpha)
@@ -51,9 +54,29 @@
         0)))
 
 (defun decoration-window-size (win)
-  "The window's rendered size as (VALUES W H)."
-  (values (or (window-float-width win) (window-width win) 100)
-          (or (window-float-height win) (window-height win) 100)))
+  "The size WIN's client committed, as (VALUES W H): the dimensions of
+its last river dimensions event, else the requested float size until
+the first one arrives. A client may commit less than was requested
+(a terminal snaps to its cell grid)."
+  (values (if (plusp (window-width win))
+              (window-width win)
+              (or (window-float-width win) 100))
+          (if (plusp (window-height win))
+              (window-height win)
+              (or (window-float-height win) 100))))
+
+(defun decoration-target-rect (win)
+  "The rect a decoration surrounds, relative to WIN's top-left, as
+(VALUES X Y W H): the committed size (see decoration-window-size)
+widened by the border on every side and raised by the titlebar when
+WIN carries one."
+  (multiple-value-bind (w h) (decoration-window-size win)
+    (let ((bw (or (border-width (window-focused-p win)) 0))
+          (th (if (window-titlebar-p win) (titlebar-height) 0)))
+      (values (- bw) (- (+ bw th)) (+ w (* 2 bw)) (+ h (* 2 bw) th)))))
+
+(defparameter *shadow-offset-y* 4
+  "Px a float's shadow sits below the rect it surrounds.")
 
 ;;; --- Lifecycle ---
 
@@ -145,173 +168,177 @@ buffer. get_decoration_below is anytime-legal."
                         (getf state :buffer) buffer)
                   state)))))))
 
-(defun decoration-band-pixel (dx dy radius alpha-0 cr cg cb)
-  "Premultiplied ARGB u32 of the shadow DX, DY pixels outside the
-window rect: transparent at RADIUS and beyond, otherwise ALPHA-0
-eased quadratically toward the rim, with the straight colour
-CR CG CB scaled by the alpha."
-  (let ((dist (sqrt (+ (* dx dx) (* dy dy)))))
-    (if (>= dist radius)
-        0
-        (let* ((fall (if (zerop radius)
-                         0.0
-                         (- 1.0 (/ dist radius))))
-               (k (* fall fall))
-               (a (round (* alpha-0 k)))
-               (sr (min 255 (round (* cr a) 255)))
-               (sg (min 255 (round (* cg a) 255)))
-               (sb (min 255 (round (* cb a) 255))))
-          (logior (ash a 24) (ash sr 16) (ash sg 8) sb)))))
+(defun decoration-falloff (count band lo hi)
+  "COUNT samples, one per pixel centre, of a box from LO to HI blurred
+by a Gaussian of sigma BAND/3, as a vector of single-floats from 0.0
+to 1.0. 0.5 at each box edge, under 0.002 BAND px outside it."
+  (let ((v (make-array count :element-type 'single-float))
+        (k (/ 1.0 (* (/ (max 1 band) 3.0) (sqrt 2.0)))))
+    (dotimes (i count v)
+      (let ((c (+ i 0.5)))
+        (setf (aref v i)
+              (* 0.5 (- (erf-approx (float (* k (- hi c)) 1.0))
+                        (erf-approx (float (* k (- lo c)) 1.0)))))))))
 
-(defun decoration-fill (ptr width height radius alpha-0 cr cg cb)
-  "Fill the WIDTH x HEIGHT shadow buffer at PTR: a band of RADIUS
-around the window rect, see DECORATION-BAND-PIXEL. Every row
-across the window's height is the same, so one is computed and
-copied to the others; the cost grows with the perimeter, not the
-area, which keeps a redraw inside a render sequence short."
-  (let* ((left radius) (right (- width radius))
-         (top radius) (bottom (- height radius))
-         (row-bytes (* width 4))
-         (middle nil))
-    (dotimes (py height)
-      (let ((dy (max 0 (cond ((< py top) (- top py))
-                             ((> py bottom) (- py bottom))
-                             (t 0)))))
-        (if (and (zerop dy) middle)
-            (cffi:foreign-funcall "memcpy"
-                                  :pointer (cffi:inc-pointer ptr (* py row-bytes))
-                                  :pointer (cffi:inc-pointer ptr (* middle row-bytes))
-                                  :unsigned-long row-bytes
-                                  :pointer)
-            (progn
-              (dotimes (px width)
-                (let ((dx (max 0 (cond ((< px left) (- left px))
-                                       ((> px right) (- px right))
-                                       (t 0)))))
-                  (put-pixel-argb ptr width height px py
-                                  (decoration-band-pixel dx dy radius alpha-0
-                                                         cr cg cb))))
-              (when (zerop dy)
-                (setf middle py))))))))
+(defun decoration-paint (ptr width height band hole-x hole-y hole-w hole-h
+                         peak r g b)
+  "Paint a soft shadow into the WIDTH x HEIGHT buffer at PTR: the rect
+inset BAND px from every buffer edge, blurred over BAND px (see
+decoration-falloff), in R G B at PEAK alpha (0-255), and transparent
+inside the HOLE-W x HOLE-H rect at (HOLE-X HOLE-Y), the part a window
+covers. Every pixel is written. A row equal to the one above it is
+copied, so the per-pixel computation grows with the perimeter, not
+the area, which keeps a redraw inside a render sequence short. Premultiplied."
+  (let ((fx (decoration-falloff width band band (- width band)))
+        (fy (decoration-falloff height band band (- height band)))
+        (ramp (make-array 256 :element-type '(unsigned-byte 32)))
+        (row-bytes (* width 4)))
+    (dotimes (a 256)
+      (setf (aref ramp a) (make-argb r g b :alpha a)))
+    (flet ((hole-row-p (y) (and (<= hole-y y) (< y (+ hole-y hole-h)))))
+      (dotimes (y height)
+        (if (and (plusp y)
+                 (= (aref fy y) (aref fy (1- y)))
+                 (eq (hole-row-p y) (hole-row-p (1- y))))
+            (cffi:foreign-funcall
+             "memcpy"
+             :pointer (cffi:inc-pointer ptr (* 4 (surface-index width height 0 y)))
+             :pointer (cffi:inc-pointer ptr (* 4 (surface-index width height
+                                                                0 (1- y))))
+             :unsigned-long row-bytes
+             :pointer)
+            (let ((ky (* peak (aref fy y)))
+                  (in-hole-row (hole-row-p y)))
+              (dotimes (x width)
+                (put-pixel-argb
+                 ptr width height x y
+                 (if (and in-hole-row (<= hole-x x) (< x (+ hole-x hole-w)))
+                     0
+                     (aref ramp (min 255 (max 0 (round (* ky (aref fx x))))))))))))))
+  ptr)
 
-(defun decoration-draw (state width height radius base-alpha
-                                 focus-alpha r g b)
-  "The pseudo-shadow: a soft alpha-gradient band of width RADIUS
-around the window rect, darkest at the window edge, fully
-transparent at the band's outer rim (rounded corners). Focused
-windows tint toward (r g b). Premultiplied ARGB: channels are
-scaled by the alpha, so c* ≤ a always holds."
+(defun decoration-draw (state width height band peak-alpha
+                        hole-x hole-y hole-w hole-h r g b)
+  "Paint the decoration in STATE's WIDTH x HEIGHT buffer: a shadow of
+BAND px in R G B at PEAK-ALPHA (0.0 to 1.0) with the HOLE rect cut
+out, see decoration-paint."
   (let ((ptr (getf state :ptr)))
     (unless (cffi:null-pointer-p ptr)
-      (let* ((alpha-0 (* 255 (if (getf state :focused)
-                                 focus-alpha base-alpha)))
-             ;; Straight shadow colour: the shadow base, tinted
-             ;; halfway toward (r g b)
-             (cr 0) (cg 0) (cb 0))
-        (multiple-value-bind (sr sg sb) (theme-rgb :decoration-shadow)
-          (setf cr (+ sr (* (- r sr) 0.5))
-                cg (+ sg (* (- g sg) 0.5))
-                cb (+ sb (* (- b sb) 0.5))))
-        (decoration-fill ptr width height radius alpha-0 cr cg cb)))))
+      (decoration-paint ptr width height band hole-x hole-y hole-w hole-h
+                        (* 255 peak-alpha) r g b))))
 
 ;;; --- Render pass (render-sequence only) ---
 
-(defun decoration-redraw (state dw dh radius cfg ar ag ab)
-  "Redraw WIN's shadow buffer and commit it. Called only inside a
-render sequence: sync_next_commit is render-only and the surface
-commit must land before the render_finish that ends this pass."
+(defun decoration-redraw (state dw dh paint)
+  "Redraw the DW x DH decoration buffer in STATE as PAINT, the list
+(BAND PEAK-ALPHA HOLE-X HOLE-Y HOLE-W HOLE-H R G B) decoration-draw
+takes, and commit it. Called only inside a render sequence:
+sync_next_commit is render-only and the surface commit must land
+before the render_finish that ends this pass."
   (let ((buffered (decoration-shm state dw dh)))
     (when buffered
       (setf state buffered)
-      (decoration-draw state dw dh radius
-                       (getf cfg :alpha) (getf cfg :focused-alpha)
-                       ar ag ab)
+      (apply #'decoration-draw state dw dh paint)
       (rwm:river-decoration-v1.sync-next-commit (getf state :proxy))
       (wl:wl-surface.attach (getf state :surface) (getf state :buffer) 0 0)
       (wl:wl-surface.damage (getf state :surface) 0 0 dw dh)
       (wl:wl-surface.commit (getf state :surface))))
-    ;; the updated plist — threaded back to the caller, which
-    ;; writes it into *decorations* (setf/getf rebinds, not mutates)
+    ;; the updated plist: threaded back to the caller, which writes it
+    ;; into *decorations* (setf/getf rebinds, not mutates)
     state)
 
-(defun decoration-needs-redraw-p (state dw dh focused colour)
+(defun decoration-needs-redraw-p (state dw dh focused colour
+                                  &optional geometry)
   "True when the decoration in STATE no longer matches the size DW x DH,
-the focus FOCUSED, or COLOUR, a list of the tint's r g b and the
-shadow's colour."
+the focus FOCUSED, COLOUR (a list of the shadow's r g b and its theme
+colour), or GEOMETRY (the band, the cut-out rect, and the offset)."
   (or (/= (getf state :w) dw)
       (/= (getf state :h) dh)
       (not (eql (getf state :focused) focused))
-      (not (equal (getf state :colour) colour))))
+      (not (equal (getf state :colour) colour))
+      (not (equal (getf state :geometry) geometry))))
 
-(defun decoration-update-for-window (win radius cfg ar ag ab)
-  "Keep WIN's decoration current (render pass only). The state is
-a plist: setf/getf REBINDS rather than mutates, so the updated
-list is threaded and written back to the hash. Redraws when the
-window's size or focus, the tint, or the shadow colour changed."
+(defun decoration-update-for-window (win band peak-alpha offset-y r g b)
+  "Keep WIN's decoration current (render pass only): a shadow of BAND
+px in R G B at PEAK-ALPHA around WIN's target rect (see
+decoration-target-rect), shifted OFFSET-Y px down, with the rect
+itself cut out. The state is a plist: setf/getf REBINDS rather than
+mutates, so the updated list is threaded and written back to the
+hash. Redraws when the size or the cut-out changed, and when the
+focus or the colour changed. Moves the surface when its offset
+changed."
   (ensure-window-decoration win)
   (let ((state (gethash win *decorations*)))
     (when state
-      (multiple-value-bind (w h) (decoration-window-size win)
-        (let ((dw (+ w (* 2 radius)))
-              (dh (+ h (* 2 radius)))
-              (colour (list ar ag ab (theme-color :decoration-shadow))))
-          (when (decoration-needs-redraw-p state dw dh
-                                           (window-focused-p win) colour)
+      (multiple-value-bind (rx ry rw rh) (decoration-target-rect win)
+        (let* ((dw (+ rw (* 2 band)))
+               (dh (+ rh (* 2 band)))
+               (offset (list (- rx band) (- (+ ry offset-y) band)))
+               (hole (list band (- band offset-y) rw rh))
+               (geometry (list band offset hole))
+               (focused (window-focused-p win))
+               (colour (list r g b (theme-color :decoration-shadow))))
+          (when (decoration-needs-redraw-p state dw dh focused colour geometry)
             (setf (getf state :w) dw
                   (getf state :h) dh
-                  (getf state :focused) (window-focused-p win)
-                  (getf state :colour) colour)
-            (setf state (decoration-redraw state dw dh radius cfg ar ag ab)))
-          (unless (getf state :offset-sent)
+                  (getf state :focused) focused
+                  (getf state :colour) colour
+                  (getf state :geometry) geometry)
+            (setf state (decoration-redraw
+                         state dw dh
+                         (list* band peak-alpha (append hole (list r g b))))))
+          (unless (equal (getf state :offset-sent) offset)
             (rwm:river-decoration-v1.set-offset
-              (getf state :proxy) (- radius) (- radius))
-            (setf (getf state :offset-sent) t))
+             (getf state :proxy) (first offset) (second offset))
+            (setf (getf state :offset-sent) offset))
           ;; write the (possibly rethreaded) plist back
           (setf (gethash win *decorations*) state)))))
   nil)
 
 (declaim (ftype (function () null) decorations-render-pass))
+
 (defun decorations-render-pass ()
-  "Called from on-render-sequence: keep every floating window's
-pseudo-shadow current. All river_decoration_v1 requests here are
-render-sequence legal: set_offset and sync_next_commit are
-render-only, and the commit lands before this render sequence's
-render_finish. Returns NIL."
+  "Called from on-render-sequence: keep every floating window's shadow
+and the focused tiled window's glow current. A float's shadow is the
+neutral :decoration-shadow colour, shifted *shadow-offset-y* px down;
+the glow is that colour tinted halfway toward :decoration-tint. All
+river_decoration_v1 requests here are render-sequence legal:
+set_offset and sync_next_commit are render-only, and the commit lands
+before this render sequence's render_finish. Returns NIL."
   (let ((radius (decoration-radius)))
     (when (plusp radius)
       (let ((cfg (decoration-config)))
-        (multiple-value-bind (r g b) (theme-rgb :decoration-tint)
-          (loop for win being the hash-values of *windows*
-                ;; A fullscreen window covers its decoration and river
-                ;; clips it to the output: keep it as it is, undrawn,
-                ;; until the window leaves fullscreen
-                if (window-fullscreen-p win)
-                  do (progn)
-                else
-                if (and (window-floating-p win)
-                        (not (window-minimized-p win))
-                        (gethash (window-proxy win) *windows*))
-                  do (decoration-update-for-window win radius cfg r g b)
-                else
-                ;; Focused TILED window: a subtle accent glow ring
-                ;; in the gap (the shadow treatment, small radius,
-                ;; low alpha, accent-tinted)
-                if (and (gethash (window-proxy win) *windows*)
-                        (not (window-minimized-p win))
-                        (not (window-floating-p win))
-                        (window-focused-p win))
-                  do (decoration-update-for-window win
-                       (config-getf '(:decorations) :glow-radius
-                                    :default 6)
-                       (list :alpha (config-getf '(:decorations)
-                                                 :glow-alpha
-                                                 :default 0.3)
-                             :focused-alpha (config-getf '(:decorations)
-                                                         :glow-alpha
-                                                         :default 0.3))
-                       r g b)
-                else
-                  do (cleanup-window-decoration win)))))
+        (multiple-value-bind (sr sg sb) (theme-rgb :decoration-shadow)
+          (multiple-value-bind (tr tg tb) (theme-rgb :decoration-tint)
+            (loop for win being the hash-values of *windows*
+                  ;; A fullscreen window covers its decoration and river
+                  ;; clips it to the output: keep it as it is, undrawn,
+                  ;; until the window leaves fullscreen
+                  if (window-fullscreen-p win)
+                    do (progn)
+                  else
+                  if (and (window-floating-p win)
+                          (not (window-minimized-p win))
+                          (gethash (window-proxy win) *windows*))
+                    do (decoration-update-for-window
+                        win radius
+                        (getf cfg (if (window-focused-p win)
+                                      :focused-alpha :alpha))
+                        *shadow-offset-y* sr sg sb)
+                  else
+                  if (and (gethash (window-proxy win) *windows*)
+                          (not (window-minimized-p win))
+                          (not (window-floating-p win))
+                          (window-focused-p win))
+                    do (decoration-update-for-window
+                        win
+                        (config-getf '(:decorations) :glow-radius :default 6)
+                        (config-getf '(:decorations) :glow-alpha :default 0.3)
+                        0
+                        (round (+ sr tr) 2) (round (+ sg tg) 2)
+                        (round (+ sb tb) 2))
+                  else
+                    do (cleanup-window-decoration win))))))
     nil))
 
 ;;; Cleanup on window close

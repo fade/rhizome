@@ -1016,9 +1016,18 @@ see the optional package list above. The user config file is
 
 With more than one output and =(:bar (:active-screen t))=, the
 current output's bar takes the active background and every other bar
-the inactive one, so the pair differs in lightness as well as hue. A
-focus change between outputs redraws both bars. Without it, every bar
-takes the inactive background.
+the inactive one, so the pair differs in lightness as well as hue. The
+current output's bar also takes a 2 px outline in the
+=:bar-outline-active= colour, where every other rounded bar keeps its
+1 px =:bar-border= hairline, so the pair differs in shape too. An
+inactive bar with =:corner-radius 0= takes no outline. A focus change
+between outputs redraws both bars. Without it, every bar takes the
+inactive background, and a rounded bar the hairline.
+
+=(:bar (:active-glow t))= adds a soft glow in the outline colour
+around the current output's bar, reaching =(:bar
+:active-glow-radius)= px past it (8 by default, 4 to 12). The bar
+stays where it is; its surface grows to hold the glow.
 
 #+begin_src lisp
 (rhizome:configure '(:bar (:active-screen t)))
@@ -1110,7 +1119,8 @@ their own.
 derives from. Among them: =:titlebar-focused= and =:titlebar-unfocused=
 follow the window borders; =:frame-outline= follows =:border-focused=,
 and =:fselect-label= follows =:frame-outline=; =:frame-outline-empty=
-follows =:warning=; =:screen-active-edge= follows =:border-focused=;
+follows =:warning=; =:screen-active-edge= follows =:border-focused=,
+and =:bar-outline-active= follows =:screen-active-edge=;
 =:bar-background-active= follows =:selection= and
 =:bar-background-inactive= follows =:bar-background=; =:dialog-notice=
 follows =:notice=.
@@ -1490,19 +1500,22 @@ Any value other than =:sloppy= reads as =:click=.
 
 ** Pseudo-shadows on floats (decorations)
 
-river_decoration_v1, used as intended: every floating window gets
-a decoration_below surface — a soft alpha-gradient shadow band
-(12px default, eased falloff, rounded corners), accent-tinted when
-the window is focused. The shadow follows resizes; un-floating or
-closing the window destroys it. Tiled windows keep river's crisp
-borders — the shadow belongs to floats.
+river_decoration_v1, used as intended: every floating window gets a
+decoration_below surface holding a soft shadow. The shadow surrounds
+the size the client committed, with its border and title bar, falls
+off over 16 px by default, sits 4 px low, and is cut out under the
+window. It takes the =:decoration-shadow= colour, which follows the
+=:shadow= role, at =:alpha= under an unfocused float and
+=:focused-alpha= under the focused one. It follows resizes;
+un-floating or closing the window destroys it. Tiled windows keep
+river's crisp borders, and the focused one a narrow glow in the gap.
 
 #+begin_src lisp
 (rhizome:configure
   '(:decorations (:enabled t     ; default on
-                 :radius 12
-                 :alpha 0.4
-                 :focused-alpha 0.6)))
+                 :radius 16
+                 :alpha 0.3
+                 :focused-alpha 0.4)))
 #+end_src
 
 * Frame trees (the StumpWM layout model)

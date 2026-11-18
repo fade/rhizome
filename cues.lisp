@@ -46,6 +46,10 @@
      :against :bar-unhovered
      :elements (:bar-hover :bar-background)
      :cues ((:shape :pill :none)))
+    (:bar-active
+     :against :bar-inactive
+     :elements (:bar-outline-active :bar-border)
+     :cues ((:width 2 1)))
     (:recording
      :against :not-recording
      :elements (:bar-recording :bar-background)

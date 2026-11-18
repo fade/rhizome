@@ -10,30 +10,23 @@
 ;; Never start the bar from a test run
 (configure '(:bar (:enabled nil)))
 
-(defun reference-shadow-fill (ptr width height radius alpha-0 cr cg cb)
-  "Shadow fill computed independently for every pixel: the
-expected buffer for DECORATION-FILL."
-  (let* ((left radius) (right (- width radius))
-         (top radius) (bottom (- height radius)))
+(defun reference-shadow-fill (ptr width height band hole-x hole-y hole-w hole-h
+                              peak cr cg cb)
+  "Shadow computed independently for every pixel, with no row copied:
+the expected buffer for DECORATION-PAINT."
+  (let ((fx (decoration-falloff width band band (- width band)))
+        (fy (decoration-falloff height band band (- height band))))
     (dotimes (py height)
       (dotimes (px width)
-        (let* ((dx (max 0 (cond ((< px left) (- left px))
-                                ((> px right) (- px right))
-                                (t 0))))
-               (dy (max 0 (cond ((< py top) (- top py))
-                                ((> py bottom) (- py bottom))
-                                (t 0))))
-               (dist (sqrt (+ (* dx dx) (* dy dy))))
-               (value
-                 (if (>= dist radius)
-                     0
-                     (let* ((fall (if (zerop radius) 0.0 (- 1.0 (/ dist radius))))
-                            (a (round (* alpha-0 (* fall fall))))
-                            (sr (min 255 (round (* cr a) 255)))
-                            (sg (min 255 (round (* cg a) 255)))
-                            (sb (min 255 (round (* cb a) 255))))
-                       (logior (ash a 24) (ash sr 16) (ash sg 8) sb)))))
-          (setf (cffi:mem-aref ptr :unsigned-int (+ (* width py) px)) value))))))
+        (setf (cffi:mem-aref ptr :unsigned-int (+ (* width py) px))
+              (if (and (<= hole-x px) (< px (+ hole-x hole-w))
+                       (<= hole-y py) (< py (+ hole-y hole-h)))
+                  0
+                  (make-argb cr cg cb
+                             :alpha (min 255
+                                         (max 0
+                                              (round (* (* peak (aref fy py))
+                                                        (aref fx px))))))))))))
 
 (let ((pass 0) (fail 0) (sent '()) (draws 0))
   (flet ((ok (name actual expected)
@@ -222,9 +215,13 @@ expected buffer for DECORATION-FILL."
                                                :count (* width height))))
                  (unwind-protect
                       (progn
-                        (decoration-fill got width height radius 153 76 81 123)
-                        (reference-shadow-fill want width height radius
-                                               153 76 81 123)
+                        (let ((hole (list radius (max 0 (- radius 4))
+                                          (- width (* 2 radius))
+                                          (- height (* 2 radius)))))
+                          (apply #'decoration-paint got width height radius
+                                 (append hole (list 153 76 81 123)))
+                          (apply #'reference-shadow-fill want width height
+                                 radius (append hole (list 153 76 81 123))))
                         (loop for i below (* width height)
                               always (= (cffi:mem-aref got :unsigned-int i)
                                         (cffi:mem-aref want :unsigned-int i))))
@@ -245,7 +242,8 @@ expected buffer for DECORATION-FILL."
         (unwind-protect
              (dotimes (i 3)
                (let ((t0 (get-internal-real-time)))
-                 (decoration-draw state width height 6 0.3 0.3 122 162 247)
+                 (decoration-draw state width height 6 0.3
+                                  6 6 1920 1080 122 162 247)
                  (let ((ms (/ (- (get-internal-real-time) t0)
                               (/ internal-time-units-per-second 1000))))
                    (setf best (if best (min best ms) ms)))))

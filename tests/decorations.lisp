@@ -73,17 +73,27 @@
         (ok "floating window gets a decoration" (and state t) t)
         (ok "decoration proxy recorded"
             (getf state :proxy) :fake-deco)
-        ;; surface 200x100 + 2*10 band each side
-        (ok "surface sized window + 2*radius"
-            (list (getf state :w) (getf state :h)) '(220 120))
-        (ok "offset sent once, (-r -r)"
-            offset-calls '((-10 -10)))
-        ;; sync_next_commit precedes the commit (protocol order)
-        (ok "sync_next_commit called" (plusp sync-calls) t)
-        (ok "surface committed" (plusp commit-calls) t)
-        (ok "offset sent only once after a second pass"
-            (progn (decorations-render-pass) offset-calls)
-            '((-10 -10)))
+        ;; surface: the 200x100 window with its border and titlebar,
+        ;; plus a 10 px band each side, shifted down by the offset
+        (multiple-value-bind (rx ry rw rh) (decoration-target-rect win)
+          (ok "the target rect holds the border and the titlebar"
+              (list rw rh)
+              (list (+ 200 (* 2 (- rx)))
+                    (+ 100 (* 2 (- rx)) (if (window-titlebar-p win)
+                                            (titlebar-height)
+                                            0))))
+          (ok "surface sized target rect + 2*radius"
+              (list (getf state :w) (getf state :h))
+              (list (+ rw 20) (+ rh 20)))
+          (ok "offset sent once: the rect less the band, shifted down"
+              offset-calls
+              (list (list (- rx 10) (+ ry *shadow-offset-y* -10))))
+          ;; sync_next_commit precedes the commit (protocol order)
+          (ok "sync_next_commit called" (plusp sync-calls) t)
+          (ok "surface committed" (plusp commit-calls) t)
+          (ok "offset sent only once after a second pass"
+              (progn (decorations-render-pass) offset-calls)
+              (list (list (- rx 10) (+ ry *shadow-offset-y* -10)))))
         ;; resize redraws
         (setf (window-float-width win) 300)
         (let ((before commit-calls))
@@ -101,16 +111,18 @@
     (configure '(:decorations (:enabled t :radius 8 :alpha 0.5
                                :focused-alpha 0.8)))
     (let ((state (list :ptr nil :focused nil)))
-      ;; 30x20 window + 8px band → 46x36 surface
+      ;; 30x20 window + 8 px band: 46x36 surface, the window 4 px
+      ;; above the shadow's rect
       (setf (getf state :ptr)
             (cffi:foreign-alloc :unsigned-int :count (* 46 36)))
-      (decoration-draw state 46 36 8 0.5 0.8 122 162 247)
+      (decoration-draw state 46 36 8 0.5 8 4 30 20 122 162 247)
       (flet ((px (x y)
                (cffi:mem-aref (getf state :ptr) :unsigned-int (+ (* 46 y) x))))
         ;; outside the band: fully transparent
         (ok "outer rim transparent" (px 0 0) 0)
-        ;; inside the band near the window edge: visible alpha
-        (let ((edge (px 9 15)))
+        (ok "transparent under the window" (px 20 15) 0)
+        ;; below the window, inside the shadow's rect: visible alpha
+        (let ((edge (px 20 25)))
           (ok "band pixel has alpha"
               (> (ash edge -24) 20) t))
         ;; premultiplied: every channel ≤ its alpha

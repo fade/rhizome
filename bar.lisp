@@ -525,7 +525,7 @@ the first lookup.")
         do (setf start (1+ end))))
 
 (defun bar-read-meminfo (&optional (path *bar-meminfo-path*))
-  "Read MemTotal and MemAvailable, in kB, from the meminfo file at PATH.
+  "Read MemTotal and MemAvailable, in KiB, from the meminfo file at PATH.
 Return them as two values, or NIL when the file is missing, unreadable,
 or lacks either field. Never signals."
   (handler-case
@@ -547,7 +547,7 @@ or lacks either field. Never signals."
     (error () nil)))
 
 (defun bar-memory-percent (total available)
-  "Percentage of TOTAL kB in use, given AVAILABLE kB, rounded."
+  "Percentage of TOTAL KiB in use, given AVAILABLE KiB, rounded."
   (round (* 100 (- total available)) total))
 
 (defun bar-module-memory ()
@@ -611,9 +611,9 @@ seconds (default 2), so the figure covers that interval."
                       "CPU --")))))
 
 (defun bar-module-hostname ()
-  "The host name, from /proc/sys/kernel/hostname or MACHINE-INSTANCE,
-looked up once and memoized in *bar-hostname*. Empty when neither
-yields a name."
+  "The host name, from /proc/sys/kernel/hostname or MACHINE-INSTANCE.
+A name once found is memoized in *bar-hostname*. Empty when neither
+yields a name; a failed lookup is tried again on each update."
   (or *bar-hostname*
       (let ((name (find-if (lambda (s) (and (stringp s) (plusp (length s))))
                            (list (handler-case
@@ -1116,6 +1116,28 @@ bolt when CHARGING."
       (:display (bar-draw-display-icon ptr width height x iy r g b))
       (:ethernet (bar-draw-ethernet-icon ptr width height x iy r g b)))))
 
+(defparameter *bar-dot-size* 3
+  "Diameter in px of the occupied-workspace dot.")
+
+(defun bar-occupied-dot-origin (x y tw)
+  "Top-left (VALUES DX DY) of the occupied dot under text of width TW
+drawn at (X Y): centred under the text, its top row two rows below
+the baseline, clear of the foot of every digit. When the line box
+ends less than *bar-dot-size* rows below that, the line box wins
+and the dot moves up to sit inside it."
+  (values (- (+ x (floor tw 2)) (floor *bar-dot-size* 2))
+          (min (+ y (font-ascent) 2)
+               (- (+ y (font-line-height)) *bar-dot-size*))))
+
+(defun bar-draw-occupied-dot (ptr width height x y tw r g b)
+  "Draw the occupied-workspace dot under text of width TW at (X Y): an
+antialiased disc *bar-dot-size* px across in R G B, at the surface
+alpha (see bar-occupied-dot-origin)."
+  (multiple-value-bind (dx dy) (bar-occupied-dot-origin x y tw)
+    (blend-rounded-rect ptr width height dx dy *bar-dot-size* *bar-dot-size*
+                        r g b :alpha (bar-surface-alpha)
+                        :radius (/ *bar-dot-size* 2))))
+
 (defun bar-draw-module (ptr width height x y parts base-r base-g base-b module)
   "Draw one module's PARTS starting at X, using the base color for
 parts without an explicit color. Parts may carry :gap, :pill,
@@ -1137,16 +1159,8 @@ for MODULE. Returns the x after the module plus gap."
         (bar-draw-text ptr width height text x y r g b
                        :bold (getf flags :bold))
         (let ((tw (bar-text-width text :bold (getf flags :bold))))
-          ;; The occupied-workspace dot: 2x2, centred horizontally,
-          ;; one pixel below the baseline, kept inside the line box.
           (when (getf flags :dot)
-            (let ((dx0 (+ x (floor tw 2) -1))
-                  (dy0 (min (+ y (font-ascent) 1)
-                            (+ y (font-line-height) -2))))
-              (dotimes (dy 2)
-                (dotimes (dx 2)
-                  (bar-set-pixel ptr width height (+ dx0 dx) (+ dy0 dy)
-                                 r g b)))))
+            (bar-draw-occupied-dot ptr width height x y tw r g b))
           ;; A workspace cell's click region: its drawn text plus
           ;; half the gap on either side
           (when (getf flags :cell)
@@ -1159,35 +1173,9 @@ for MODULE. Returns the x after the module plus gap."
           ;; The active-workspace marker: a rounded accent PILL
           ;; blended behind the text (radius 4, inset).
           (when (getf flags :pill)
-            (let* ((px0 (- x 5))
-                   (py0 (+ y 2))
-                   (pw (+ tw 10))
-                   (ph (- (font-line-height) 4))
-                   (radius 4))
-              (loop for dy below ph
-                    for py = (+ py0 dy)
-                    while (< py height) do
-                (loop for dx below pw
-                      for pxx = (+ px0 dx)
-                      while (< pxx width) do
-                  ;; rounded-rect containment test (radius on the
-                  ;; vertical ends; full height in the middle)
-                  (let* ((cx (cond ((< dx radius) radius)
-                                   ((> dx (- pw radius 1)) (- pw radius 1))
-                                   (t dx)))
-                         (cy (cond ((< dy radius) radius)
-                                   ((> dy (- ph radius 1)) (- ph radius 1))
-                                   (t dy)))
-                         (in-corner (or (and (< dx radius) (< dy radius))
-                                       (and (< dx radius) (> dy (- ph radius 1)))
-                                       (and (> dx (- pw radius 1)) (< dy radius))
-                                       (and (> dx (- pw radius 1))
-                                            (> dy (- ph radius 1)))))
-                         (d (sqrt (+ (expt (- cx dx) 2) (expt (- cy dy) 2)))))
-                    (when (and (or (not in-corner) (<= d radius))
-                               (>= px0 0))
-                      (blend-pixel ptr width height pxx py
-                                   r g b :alpha 70)))))))
+            (blend-rounded-rect ptr width height (- x 5) (+ y 2)
+                                (+ tw 10) (- (font-line-height) 4)
+                                r g b :alpha 70 :radius 4))
           (incf x (+ tw (or (getf flags :gap 0) 0))))))
     (let ((end x))
       (when (and module (> end start))
@@ -1206,75 +1194,275 @@ after it."
                          (bar-module-parts module)
                          fr fg fb module))))
 
+;;; --- Static layers ---
+;;;
+;;; The bar's background, outline, and active-screen glow change only
+;;; when one of these changes:
+;;;   - the bar's size
+;;;   - the theme
+;;;   - the settings
+;;;   - the active screen
+;;; They are painted once into a cached buffer per ostate; a redraw
+;;; copies that buffer and draws the modules over it, so the distance
+;;; field behind the rounded shapes is not recomputed on a module
+;;; change.
+
+(defun bar-glow-radius ()
+  "The active-screen glow width in px: (:bar :active-glow-radius),
+clamped to 4-12 (8 when unset or not a number), or 0 when (:bar
+:active-glow) is off."
+  (if (config-getf '(:bar) :active-glow :default nil)
+      (let ((radius (config-getf '(:bar) :active-glow-radius :default 8)))
+        (if (realp radius)
+            (max 4 (min 12 (round radius)))
+            8))
+      0))
+
+(defun bar-glow-pad ()
+  "Px the bar surface is padded by on every side: one more than the
+glow radius, so the glow has faded to nothing before the surface
+edge, or 0 with the glow off."
+  (let ((radius (bar-glow-radius)))
+    (if (plusp radius) (1+ radius) 0)))
+
+(defun bar-surface-geometry (height margin pad)
+  "The layer-surface requests for a bar body HEIGHT px tall, MARGIN px
+from the output's edges, on a surface padded by PAD, as (VALUES
+SIDE-MARGIN SURFACE-HEIGHT EXCLUSIVE-ZONE). The margins shrink and
+the exclusive zone, counted from the top margin, grows by PAD, so the
+body and the reserved area stay where they are without padding."
+  (values (- margin pad)
+          (+ height (* 2 pad))
+          (+ (* 2 margin) height pad)))
+
+(defparameter *bar-glow-strength* 0.4
+  "Alpha of the active-screen glow at the bar's edge, 0.0 to 1.0.")
+
+(defvar *bar-static-cache-enabled* t
+  "When NIL, every bar render repaints the static layers instead of
+copying the cached ones. For measurement and tests.")
+
+(defun bar-static-spec (width height pad active-p)
+  "Everything the static layers of a WIDTH x HEIGHT bar surface depend
+on, as a plist, with the body inset by PAD on every side. ACTIVE-P
+selects the active-screen outline, its width from *state-cues*
+(:bar-active against :bar-inactive), and the glow, drawn only when
+PAD is non-zero. A bar with no corner radius takes no outline while
+inactive."
+  (let ((radius (config-getf '(:bar) :corner-radius :default 10)))
+    (list :width width :height height :pad pad :radius radius
+          :alpha (bar-surface-alpha)
+          :background (multiple-value-list
+                       (parse-hex-color (bar-background-color active-p)))
+          :outline (multiple-value-list
+                    (theme-rgb (if active-p :bar-outline-active :bar-border)))
+          :outline-width (if (or active-p (plusp radius))
+                             (state-cue (if active-p :bar-active :bar-inactive)
+                                        :width)
+                             0)
+          :glow (and active-p (plusp pad)
+                     (multiple-value-list (theme-rgb :bar-outline-active)))
+          :glow-radius (max 0 (1- pad)))))
+
+(defun bar-glow-alpha (d radius peak)
+  "Glow alpha (0.0 to 255.0) D px outside the bar body for a glow of
+RADIUS px peaking at PEAK: PEAK at the edge, falling off as a
+Gaussian with sigma RADIUS/3, and cut to 0.0 at RADIUS and beyond."
+  (declare (type single-float d radius peak))
+  (if (>= d radius)
+      0.0
+      (let ((sigma (/ radius 3.0))
+            (x (max d 0.0)))
+        (* peak (exp (- (/ (* x x) (* 2.0 sigma sigma))))))))
+
+(defun bar-paint-static (ptr spec)
+  "Paint the static layers SPEC describes (see bar-static-spec) into
+the buffer at PTR, writing every pixel: the body, inset by :pad, in
+:background under an :outline-width px :outline, both at :alpha, and
+outside the body the :glow colour falling off over :glow-radius px.
+One distance field gives the body, outline, and glow coverage, so all
+three meet without a seam. Premultiplied."
+  (destructuring-bind (&key width height pad radius alpha background outline
+                         outline-width glow glow-radius &allow-other-keys)
+      spec
+    (destructuring-bind (br bg bb) background
+      (destructuring-bind (orr og ob) outline
+        (let ((bw (float (- width (* 2 pad)) 1.0))
+              (bh (float (- height (* 2 pad)) 1.0))
+              (rad (float radius 1.0))
+              (ow (float outline-width 1.0))
+              (fpad (float pad 1.0))
+              (grad (float glow-radius 1.0))
+              (peak (* 255.0 *bar-glow-strength*))
+              (body (rounded-surface-pixel 255 0 br bg bb orr og ob alpha))
+              (edge (rounded-surface-pixel 255 255 br bg bb orr og ob alpha)))
+          (dotimes (y height)
+            (let ((cy (- (+ (float y 1.0) 0.5) fpad)))
+              (dotimes (x width)
+                (let* ((d (rounded-rect-distance
+                           (- (+ (float x 1.0) 0.5) fpad) cy bw bh rad))
+                       (f (edge-coverage d))
+                       (fi (round (* 255 f)))
+                       (si (if (plusp ow)
+                               (round (* 255 (- f (edge-coverage (+ d ow)))))
+                               0))
+                       (pixel (cond ((zerop fi) 0)
+                                    ((and (= fi 255) (zerop si)) body)
+                                    ((and (= fi 255) (= si 255)) edge)
+                                    (t (rounded-surface-pixel
+                                        fi si br bg bb orr og ob alpha)))))
+                  (when (and glow (< fi 255))
+                    (let ((ga (min (- 255 (ldb (byte 8 24) pixel))
+                                   (round (* (bar-glow-alpha d grad peak)
+                                             (- 1.0 f))))))
+                      (when (plusp ga)
+                        ;; Packed add: the glow alpha is capped at 255
+                        ;; less the body alpha, and no premultiplied
+                        ;; channel exceeds its alpha, so no channel
+                        ;; carries into the next.
+                        (destructuring-bind (gr gg gb) glow
+                          (setf pixel (+ pixel
+                                         (make-argb gr gg gb :alpha ga)))))))
+                  (put-pixel-argb ptr width height x y pixel))))))))))
+
+(defun bar-free-static (state)
+  "Release STATE's cached static layers and module scratch buffer."
+  (dolist (key '(:static-ptr :body-ptr))
+    (let ((ptr (gethash key state)))
+      (when (and ptr (not (cffi:null-pointer-p ptr)))
+        (cffi:foreign-free ptr))
+      (remhash key state)))
+  (dolist (key '(:static-spec :static-size :body-size))
+    (remhash key state)))
+
+(defun bar-static-layer (state spec)
+  "The buffer holding STATE's static layers as SPEC describes them,
+repainted only when SPEC differs from the one it was painted for, or
+on every call while *bar-static-cache-enabled* is NIL."
+  (let ((ptr (gethash :static-ptr state))
+        (size (* (getf spec :width) (getf spec :height))))
+    (unless (and ptr
+                 *bar-static-cache-enabled*
+                 (equal spec (gethash :static-spec state)))
+      (unless (and ptr (eql size (gethash :static-size state)))
+        (bar-free-static state)
+        (setf ptr (cffi:foreign-alloc :uint32 :count (max 1 size))
+              (gethash :static-ptr state) ptr
+              (gethash :static-size state) size))
+      (bar-paint-static ptr spec)
+      (setf (gethash :static-spec state) spec))
+    ptr))
+
+(defun bar-body-buffer (state width height)
+  "STATE's WIDTH x HEIGHT scratch buffer for drawing the modules of a
+padded bar, allocated on first use and when the size changes."
+  (let ((ptr (gethash :body-ptr state))
+        (size (* width height)))
+    (unless (and ptr (eql size (gethash :body-size state)))
+      (when ptr (cffi:foreign-free ptr))
+      (setf ptr (cffi:foreign-alloc :uint32 :count (max 1 size))
+            (gethash :body-ptr state) ptr
+            (gethash :body-size state) size))
+    ptr))
+
+(defun bar-copy-rows (dst dst-width dst-height src src-width src-height
+                      rows width &key (dst-x 0) (dst-y 0) (src-x 0) (src-y 0))
+  "Copy ROWS rows of WIDTH pixels from (SRC-X SRC-Y) of the SRC-WIDTH x
+SRC-HEIGHT buffer SRC to (DST-X DST-Y) of the DST-WIDTH x DST-HEIGHT
+buffer DST. Signals an error when a row starts outside either buffer
+or runs past its right edge."
+  (assert (and (<= (+ dst-x width) dst-width) (<= (+ src-x width) src-width)))
+  (dotimes (row rows)
+    (let ((to (surface-index dst-width dst-height dst-x (+ dst-y row)))
+          (from (surface-index src-width src-height src-x (+ src-y row))))
+      (assert (and to from))
+      (cffi:foreign-funcall "memcpy"
+                            :pointer (cffi:inc-pointer dst (* 4 to))
+                            :pointer (cffi:inc-pointer src (* 4 from))
+                            :unsigned-long (* 4 width)
+                            :pointer))))
+
 (defun %bar-render (state)
-  "Render the bar content into the shm buffer and commit the surface."
+  "Render the bar into the shm buffer and commit the surface. The
+static layers come from the cache (see bar-static-layer); the modules
+and the hover veil are drawn over them, into the body of a padded
+surface. Hitboxes are in body coordinates."
   (let* ((ptr (gethash :shm-ptr state))
-         (width (gethash :width state))
-         (height (gethash :height state))
+         (surface-width (gethash :width state))
+         (surface-height (gethash :height state))
+         (pad (gethash :pad state 0))
+         (width (- surface-width (* 2 pad)))
+         (height (- surface-height (* 2 pad)))
          (padding (max (config-getf '(:bar) :padding :default 6)
                        (+ (config-getf '(:bar) :corner-radius :default 10)
                           (config-getf '(:bar) :padding :default 6)))))
-    (when (or (null ptr) (cffi:null-pointer-p ptr))
+    (when (or (null ptr) (cffi:null-pointer-p ptr)
+              (not (plusp width)) (not (plusp height)))
       (return-from %bar-render))
-    (multiple-value-bind (br bg bb) (parse-hex-color
-                                       (bar-background-color
-                                        (bar-ostate-active-p)))
-      (multiple-value-bind (fr fg fb) (theme-rgb :bar-foreground)
-        (let ((margin (config-getf '(:bar) :margin :default 8)))
-          (if (plusp (config-getf '(:bar) :corner-radius :default 10))
-              (multiple-value-bind (rdr rdg rdb) (theme-rgb :bar-border)
-                (paint-rounded-surface ptr width height br bg bb
-                                        :alpha (bar-surface-alpha)
-                                        :radius (config-getf '(:bar)
-                                                  :corner-radius :default 10)
-                                        :border-r rdr :border-g rdg
-                                        :border-b rdb))
-              ;; margin 0: the classic full-strip bar
-              (bar-clear ptr width height br bg bb)))
-        (let ((y (floor (- height (font-line-height)) 2))
-              (*bar-hitboxes* nil))
-          ;; Left segment
-          (let ((x padding))
-            (dolist (module (bar-ostate-segment-modules :left))
-              (setf x (bar-draw-segment-item ptr width height x y module
-                                            fr fg fb br bg bb))))
-          ;; Center segment
-          (let* ((modules (bar-ostate-segment-modules :center))
-                 (total (bar-segment-width modules))
-                 (x (floor (- width total) 2)))
-            (dolist (module modules)
-              (setf x (bar-draw-segment-item ptr width height x y module
-                                            fr fg fb br bg bb))))
-          ;; Right segment
-          (let* ((modules (bar-ostate-segment-modules :right))
-                 (total (bar-segment-width modules))
-                 (x (- width padding total)))
-            (dolist (module modules)
-              (setf x (bar-draw-segment-item ptr width height x y module
-                                            fr fg fb br bg bb))))
-          ;; Hover: a subtle rounded accent fill under the pointer
-          (when (and *bar-pointer-x*
-                     (or (null *bar-pointer-ostate*)
-                         (eq state *bar-pointer-ostate*))
-                     (>= *bar-pointer-x* 0) (< *bar-pointer-x* width))
-            (multiple-value-bind (ar ag ab) (theme-rgb :bar-hover)
-              (dolist (hb *bar-hitboxes*)
-                ;; workspace cells sit inside their module's box
-                (when (and (not (and (consp (first hb))
-                                     (eq (first (first hb)) :workspace-cell)))
-                           (<= (second hb) *bar-pointer-x*)
-                           (< *bar-pointer-x* (third hb)))
-                  (blend-rounded-rect ptr width height
-                                      (second hb) 2
-                                      (- (third hb) (second hb)) (- height 4)
-                                      ar ag ab :alpha 35 :radius 4)))))
-          (setf (gethash :hitboxes state) *bar-hitboxes*))))
-    ;; stamp the hovered module even when no veil was drawn, so the
-    ;; tick loop re-renders when the pointer leaves the bar
-    (setf *bar-hover-rendered* (bar-hover-key))
-    (wl:wl-surface.attach (gethash :surface state) (gethash :wl-buffer state) 0 0)
-    (wl:wl-surface.damage (gethash :surface state) 0 0 width height)
-    (wl:wl-surface.commit (gethash :surface state))))
+    (let* ((active (bar-ostate-active-p))
+           (static (bar-static-layer
+                    state (bar-static-spec surface-width surface-height
+                                           pad active)))
+           (body (if (zerop pad)
+                     ptr
+                     (bar-body-buffer state width height))))
+      (cffi:foreign-funcall "memcpy" :pointer ptr :pointer static
+                            :unsigned-long (* 4 surface-width surface-height)
+                            :pointer)
+      (unless (zerop pad)
+        (bar-copy-rows body width height static surface-width surface-height
+                       height width :src-x pad :src-y pad))
+      (multiple-value-bind (br bg bb) (parse-hex-color
+                                       (bar-background-color active))
+        (multiple-value-bind (fr fg fb) (theme-rgb :bar-foreground)
+          (let ((y (floor (- height (font-line-height)) 2))
+                (*bar-hitboxes* nil))
+            ;; Left segment
+            (let ((x padding))
+              (dolist (module (bar-ostate-segment-modules :left))
+                (setf x (bar-draw-segment-item body width height x y module
+                                              fr fg fb br bg bb))))
+            ;; Center segment
+            (let* ((modules (bar-ostate-segment-modules :center))
+                   (total (bar-segment-width modules))
+                   (x (floor (- width total) 2)))
+              (dolist (module modules)
+                (setf x (bar-draw-segment-item body width height x y module
+                                              fr fg fb br bg bb))))
+            ;; Right segment
+            (let* ((modules (bar-ostate-segment-modules :right))
+                   (total (bar-segment-width modules))
+                   (x (- width padding total)))
+              (dolist (module modules)
+                (setf x (bar-draw-segment-item body width height x y module
+                                              fr fg fb br bg bb))))
+            ;; Hover: a subtle rounded accent fill under the pointer
+            (when (and *bar-pointer-x*
+                       (or (null *bar-pointer-ostate*)
+                           (eq state *bar-pointer-ostate*))
+                       (>= *bar-pointer-x* 0) (< *bar-pointer-x* width))
+              (multiple-value-bind (ar ag ab) (theme-rgb :bar-hover)
+                (dolist (hb *bar-hitboxes*)
+                  ;; workspace cells sit inside their module's box
+                  (when (and (not (and (consp (first hb))
+                                       (eq (first (first hb)) :workspace-cell)))
+                             (<= (second hb) *bar-pointer-x*)
+                             (< *bar-pointer-x* (third hb)))
+                    (blend-rounded-rect body width height
+                                        (second hb) 2
+                                        (- (third hb) (second hb)) (- height 4)
+                                        ar ag ab :alpha 35 :radius 4)))))
+            (setf (gethash :hitboxes state) *bar-hitboxes*))))
+      (unless (zerop pad)
+        (bar-copy-rows ptr surface-width surface-height body width height
+                       height width :dst-x pad :dst-y pad))))
+  ;; stamp the hovered module even when no veil was drawn, so the
+  ;; tick loop re-renders when the pointer leaves the bar
+  (setf *bar-hover-rendered* (bar-hover-key))
+  (wl:wl-surface.attach (gethash :surface state) (gethash :wl-buffer state) 0 0)
+  (wl:wl-surface.damage (gethash :surface state) 0 0
+                        (gethash :width state) (gethash :height state))
+  (wl:wl-surface.commit (gethash :surface state)))
 
 (defvar *bar-render-lock* (bt:make-lock "bar-render")
   "Serializes bar rendering. Two threads call bar-render: the main
@@ -1306,7 +1494,9 @@ own hitboxes."
 ;;; --- Shm buffer management ---
 
 (defun bar-destroy-shm (state)
-  "Release the bar's shared memory resources."
+  "Release the bar's shared memory resources and its cached static
+layers."
+  (bar-free-static state)
   (when (gethash :wl-buffer state)
     (wl:wl-buffer.destroy (gethash :wl-buffer state)))
   (when (gethash :wl-pool state)
@@ -1412,7 +1602,8 @@ Return T, or NIL when the shm file or mapping cannot be created."
     (:configure
      (destructuring-bind (serial width height) args
        (let ((w (if (plusp width) width 0))
-             (h (config-getf '(:bar) :height :default 28)))
+             (h (+ (config-getf '(:bar) :height :default 28)
+                   (* 2 (gethash :pad state 0)))))
          (setf (gethash :width state) w
                (gethash :height state) h)
          (rwm:zwlr-layer-surface-v1.ack-configure layer-surface serial)
@@ -1579,6 +1770,11 @@ here, the prompt surfaces live there)."
       (command
        (bar-run-command command)))))
 
+(defun bar-body-x (ostate x)
+  "Surface x X on OSTATE's bar as a body x, the coordinate the
+hitboxes use: rounded, less the surface padding."
+  (- (round x) (if ostate (gethash :pad ostate 0) 0)))
+
 (defun bar-pointer-event (event-name args)
   "Handle wl_pointer events on the bar surface."
   (handler-case
@@ -1592,14 +1788,14 @@ here, the prompt surfaces live there)."
                 (x (second a)))
            (setf *bar-pointer-ostate*
                  (values (gethash surface *bar-surface-states*))
-                 *bar-pointer-x* (and x (round x)))))
+                 *bar-pointer-x* (and x (bar-body-x *bar-pointer-ostate* x)))))
         (:leave
          (setf *bar-pointer-ostate* nil
                *bar-pointer-x* nil))
         (:motion
          (destructuring-bind (time x y) args
            (declare (ignore time y))
-           (setf *bar-pointer-x* (round x))))
+           (setf *bar-pointer-x* (bar-body-x *bar-pointer-ostate* x))))
         (:button
          (destructuring-bind (serial time button state) args
            (declare (ignore serial time))
@@ -1657,11 +1853,13 @@ gets its own ostate (surface, shm buffer, hitboxes), registered in
              (gethash :layer-shell state) surface
              output :top "rhizome-bar"))
          (margin (config-getf '(:bar) :margin :default 8))
-         (height (config-getf '(:bar) :height :default 28)))
+         (height (config-getf '(:bar) :height :default 28))
+         (pad (bar-glow-pad)))
     (setf (gethash :output ostate) output
           (gethash :global-name ostate) (bar-output-global-name state output)
           (gethash :shm ostate) (gethash :shm state)
-          (gethash :height ostate) height
+          (gethash :pad ostate) pad
+          (gethash :height ostate) (+ height (* 2 pad))
           (gethash :surface ostate) surface
           (gethash :layer-surface ostate) layer-surface)
     (setf (gethash output *bar-output-states*) ostate
@@ -1671,11 +1869,12 @@ gets its own ostate (surface, shm buffer, hitboxes), registered in
                                        event-name args))
           (wl:wl-proxy-hooks layer-surface))
     (rwm:zwlr-layer-surface-v1.set-anchor layer-surface '(:top :left :right))
-    (rwm:zwlr-layer-surface-v1.set-margin layer-surface margin margin 0 margin)
-    (rwm:zwlr-layer-surface-v1.set-exclusive-zone layer-surface
-                                                  (+ (* 2 margin) height))
-    (rwm:zwlr-layer-surface-v1.set-keyboard-interactivity layer-surface :none)
-    (rwm:zwlr-layer-surface-v1.set-size layer-surface 0 height)
+    (multiple-value-bind (side surface-height zone)
+        (bar-surface-geometry height margin pad)
+      (rwm:zwlr-layer-surface-v1.set-margin layer-surface side side 0 side)
+      (rwm:zwlr-layer-surface-v1.set-exclusive-zone layer-surface zone)
+      (rwm:zwlr-layer-surface-v1.set-keyboard-interactivity layer-surface :none)
+      (rwm:zwlr-layer-surface-v1.set-size layer-surface 0 surface-height))
     (wl:wl-surface.commit surface)
     ostate))
 
@@ -1714,9 +1913,11 @@ or none while the bar is hidden."
   "The :settings snapshot entry the bar process last applied.")
 
 (defun bar-geometry ()
-  "The :bar settings that size the layer surface: (HEIGHT MARGIN)."
+  "The :bar settings that size the layer surface: (HEIGHT MARGIN PAD),
+PAD from bar-glow-pad."
   (list (config-getf '(:bar) :height :default 28)
-        (config-getf '(:bar) :margin :default 8)))
+        (config-getf '(:bar) :margin :default 8)
+        (bar-glow-pad)))
 
 (defun bar-adopt-settings (state settings)
   "Apply SETTINGS, the :settings entry of the WM snapshot (see

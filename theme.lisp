@@ -101,6 +101,7 @@
     (:bar-background-active :selection (:bar :background-active))
     (:bar-background-inactive :bar-background (:bar :background-inactive))
     (:screen-active-edge :border-focused (:screens :active-edge-color))
+    (:bar-outline-active :screen-active-edge nil)
     (:frame-outline :border-focused (:theme :frame-outline))
     (:frame-outline-empty :warning (:theme :frame-outline-empty))
     (:titlebar-focused :border-focused nil)
