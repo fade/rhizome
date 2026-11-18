@@ -187,8 +187,8 @@ inset BAND px from every buffer edge, blurred over BAND px (see
 decoration-falloff), in R G B at PEAK alpha (0-255), and transparent
 inside the HOLE-W x HOLE-H rect at (HOLE-X HOLE-Y), the part a window
 covers. Every pixel is written. A row equal to the one above it is
-copied, so the cost grows with the perimeter, not the area, which
-keeps a redraw inside a render sequence short. Premultiplied."
+copied, so the per-pixel computation grows with the perimeter, not
+the area, which keeps a redraw inside a render sequence short. Premultiplied."
   (let ((fx (decoration-falloff width band band (- width band)))
         (fy (decoration-falloff height band band (- height band)))
         (ramp (make-array 256 :element-type '(unsigned-byte 32)))

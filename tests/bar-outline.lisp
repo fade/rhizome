@@ -158,7 +158,7 @@ zeroed buffer."
   (bo-config)
   (bo-ok "the glow is off by default, so no padding" (bar-glow-radius) 0)
   (bo-config '(:bar (:active-glow t)))
-  (bo-ok "on, it pads by 8 px" (bar-glow-radius) 8)
+  (bo-ok "on, the glow reaches 8 px" (bar-glow-radius) 8)
   (bo-config '(:bar (:active-glow t :active-glow-radius 30)))
   (bo-ok "the radius is clamped to 12" (bar-glow-radius) 12)
   (bo-config '(:bar (:active-glow t :active-glow-radius 1)))
@@ -203,6 +203,28 @@ zeroed buffer."
                   0)
            (bo-ok "the glow reaches round the corner"
                   (plusp (bo-alpha ptr w (- pad 2) (- pad 2))) t))
+      (cffi:foreign-free ptr))))
+
+(bo-case "glow at full strength"
+  (bo-config '(:bar (:height 34 :corner-radius 10)))
+  ;; A half-pixel pad puts the body edge on pixel centres: coverage
+  ;; 0.5, so an opaque body and a full-strength glow each round to 128.
+  (let* ((w 60) (h 52)
+         (spec (list* :pad 19/2 :alpha 255 :glow-radius 8
+                      (bar-static-spec w h 9 t)))
+         (ptr (cffi:foreign-alloc :uint32 :count (* w h) :initial-element 0)))
+    (unwind-protect
+         (let ((*bar-glow-strength* 1.0))
+           (bar-paint-static ptr spec)
+           (bo-ok "at strength 1.0 an edge pixel is opaque, not carried into"
+                  (bo-alpha ptr w 30 9) 255)
+           (bo-ok "at strength 1.0 no channel exceeds its pixel's alpha"
+                  (loop for i below (* w h)
+                        for p = (cffi:mem-aref ptr :uint32 i)
+                        count (> (max (ldb (byte 8 16) p) (ldb (byte 8 8) p)
+                                      (ldb (byte 8 0) p))
+                                 (ldb (byte 8 24) p)))
+                  0))
       (cffi:foreign-free ptr))))
 
 ;;; --- Surface padding keeps the body in place ---

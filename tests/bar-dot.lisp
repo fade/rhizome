@@ -96,10 +96,22 @@ LABEL, one row below the baseline."
     (bd-ok "every dot stays inside the line box" outside nil)))
 
 (bd-case "dot shape"
-  (let* ((glyph (bd-lit "4" nil))
-         (dot (set-difference (bd-lit "4" t) glyph :test #'equal)))
-    (bd-ok (format nil "the dot is a 3 px disc (~D pixels)" (length dot))
-           (<= 5 (length dot) 9) t)))
+  (let ((ptr (cffi:foreign-alloc :uint32 :count (* *bd-width* *bd-height*)
+                                         :initial-element 0))
+        (full (bar-surface-alpha)))
+    (unwind-protect
+         (multiple-value-bind (dx dy) (bar-occupied-dot-origin *bd-x* *bd-y* 10)
+           (bar-draw-occupied-dot ptr *bd-width* *bd-height* *bd-x* *bd-y* 10
+                                  255 255 255)
+           (flet ((alpha (i j)
+                    (ldb (byte 8 24)
+                         (cffi:mem-aref ptr :uint32
+                                        (+ dx i (* (+ dy j) *bd-width*))))))
+             (let ((corners (list (alpha 0 0) (alpha 2 0) (alpha 0 2) (alpha 2 2))))
+               (bd-ok (format nil "the dot's corners are partly covered (~S)" corners)
+                      (every (lambda (a) (< 0 a full)) corners) t)
+               (bd-ok "the dot's centre is fully covered" (alpha 1 1) full))))
+      (cffi:foreign-free ptr))))
 
 (bd-case "control"
   (bd-ok "control: the dot one row below the baseline comes within a pixel of a digit"
