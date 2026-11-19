@@ -437,7 +437,7 @@ build-default-top-map, which directs the writes to *default-top-map*."
   (define-key +xkb-key-Return+ *mod*
     (lambda ()
       (format t "~&; Rhizome: launching terminal~%")
-      (uiop:launch-program '("foot"))))
+      (launch-user-program '("foot"))))
 
   ;; MOD+, / MOD+. - scroll the ribbon viewport (niri-style)
   (define-key +xkb-key-Comma+ *mod*
@@ -501,7 +501,7 @@ build-default-top-map, which directs the writes to *default-top-map*."
   (define-key +xkb-key-E+ *mod*
     (lambda ()
       (format t "~&; Rhizome: launching emacs~%")
-      (uiop:launch-program '("emacs"))))
+      (launch-user-program '("emacs"))))
 
   ;; MOD+D - application launcher (native layer-shell popup)
   (define-key +xkb-key-D+ *mod*
@@ -636,7 +636,7 @@ Shows a curated list of Wayland-relevant applications."
     (with-open-file (f result-file :direction :output :if-exists :supersede)
       (format f ""))
     ;; Launch foot with fzf, writing the selection to result-file
-    (uiop:launch-program
+    (launch-user-program
       (list "foot"
             "-e"
             "bash" "-c"
@@ -663,7 +663,7 @@ Shows a curated list of Wayland-relevant applications."
                                :key #'car :test #'string=)))
               (when entry
                 (format t "~&; Rhizome: launching ~A~%" (cdr entry))
-                (uiop:launch-program
+                (launch-user-program
                   (list "bash" "-c" (cdr entry)))))))))))
 
 ;;; --- Integration with manage sequence ---

@@ -149,7 +149,7 @@ the first window that appears within 10 seconds."
   (setf (gethash name *scratchpads*)
         (list :window nil :command command :visible nil
               :launched-at (get-universal-time)))
-  (uiop:launch-program (list "bash" "-c" command)))
+  (launch-user-program (list "bash" "-c" command)))
 
 (defun scratchpad-claim-window (win)
   "The :window-created handler: give WIN to the first scratchpad

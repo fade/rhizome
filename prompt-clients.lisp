@@ -101,7 +101,7 @@ nothing and returns NIL."
   (when (and command (plusp (length (string-trim " " command))))
     (let ((reply (format nil "running: ~A" command)))
       (message "~A" reply)
-      (uiop:launch-program (list "bash" "-c" command))
+      (launch-user-program (list "bash" "-c" command))
       reply)))
 
 (defun run-shell-command-prompt ()
