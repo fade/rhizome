@@ -221,8 +221,9 @@ parts that talk to the session bus:
    =${XDG_CONFIG_HOME:-~/.config}/rhizome/session-env=. When the file
    is readable, rhizome-session sources it after the defaults above
    and before river starts, so a value set there wins. It is a shell
-   file of =export= lines, for example =export XCURSOR_SIZE=32=.
-   Without the file nothing changes.
+   file of =export= lines, for example =export XCURSOR_SIZE=32= to
+   replace the default cursor size of 24. Without the file nothing
+   changes.
 
 2. *Environment import* (~/.config/river/init, guarded on
    =XDG_CURRENT_DESKTOP=river=): =systemctl --user
@@ -1543,8 +1544,8 @@ frames holding windows, one visible at a time:
   dividing line by 30 pixels.
 - =rhizome-cmd grow-frame right= grows the current frame into the
   frame beside it (=left=, =right=, =up= or =down=). That frame must
-  share the current frame's whole edge; it closes, and its windows
-  queue behind the window the current frame shows.
+  share the current frame's whole edge. That frame closes, and its
+  windows queue behind the window the current frame shows.
   =rhizome-cmd grow-frame-to-edge right= grows the current frame to
   the screen edge, absorbing every frame in the way. When the edges
   do not line up (several frames meet the edge, the neighbour is

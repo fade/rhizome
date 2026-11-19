@@ -23,8 +23,8 @@ export OZONE_PLATFORM=wayland
 # Cursor size, matching the Hyprland session
 export XCURSOR_SIZE=24
 
-# Per-user additions and overrides, sourced after the defaults above
-# so a value set there wins.
+# Per-user additions and overrides from session-env, sourced after the
+# defaults above so a value set in session-env wins.
 SESSION_ENV="${XDG_CONFIG_HOME:-$HOME/.config}/rhizome/session-env"
 if [ -r "$SESSION_ENV" ]; then
   # shellcheck source=/dev/null

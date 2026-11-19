@@ -243,8 +243,8 @@ usable). No-op at the root."
 ;;; every frame between that edge and the screen edge. The absorbed
 ;;; frames' windows queue behind the shown window. Only the subtree
 ;;; under the lowest split holding every frame involved is rebuilt:
-;;; a split there with an unchanged rectangle and a still-valid
-;;; dividing line is kept, with its user mark.
+;;; a new split whose rectangle matches an old one takes its
+;;; dividing line and user mark when that line is still valid.
 
 (defun frame-direction-axes (direction)
   "For DIRECTION, return (values AXIS CROSS SIGN): the axis the frame
