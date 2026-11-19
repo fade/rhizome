@@ -44,7 +44,8 @@ SUITES    := animations decorations surface window-rules window-rules-reload flo
              ipc-client-lifecycle ipc-client-idle \
              frame-cycling frame-cycle-skip-empty stumpwm-aliases \
              stumpwm-group-eval-exec notifications scratchpads \
-             wallpaper coverage bar-outline bar-dot shadow
+             wallpaper coverage bar-outline bar-dot shadow \
+             grow-frame
 
 .PHONY: all build test install docs clean help
 
