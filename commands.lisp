@@ -156,7 +156,8 @@ Lisp callers of execute-command may pass strings."
   "Grow the current frame into the frame beside it. Usage: grow-frame
 left|right|up|down. The neighbour must share the frame's whole edge;
 its windows queue behind the shown window."
-  (let ((direction (command-direction-argument (first args))))
+  (let ((direction (command-direction-argument (first args)))
+        (output (or output (current-output))))
     (if direction
         (grow-current-frame output (current-workspace output) direction)
         (progn (message "grow-frame: direction must be left, right, up or down")
@@ -166,7 +167,8 @@ its windows queue behind the shown window."
   "Grow the current frame to the screen edge, absorbing every frame in
 the way. Usage: grow-frame-to-edge left|right|up|down. Their windows
 queue behind the shown window."
-  (let ((direction (command-direction-argument (first args))))
+  (let ((direction (command-direction-argument (first args)))
+        (output (or output (current-output))))
     (if direction
         (grow-current-frame-to-edge output (current-workspace output)
                                     direction)
