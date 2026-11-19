@@ -68,15 +68,25 @@ find "$CACHE_HOME/common-lisp" -name '*.fasl' -size 0 -delete 2>/dev/null
 # river can leave its socket file behind, so the socket alone is not
 # a liveness test. The sleep bounds the spin if the build is broken.
 #
-# sbcl runs from the cache directory, not $HOME: with SBCL_HOME
-# unset, the runtime loads ./sbcl.core in preference to its own core,
-# and a saved image in $HOME carries a stale ASDF source registry.
+# sbcl runs from $HOME, so every program the WM launches starts
+# there. With no core named, the runtime loads ./sbcl.core in
+# preference to its own, and a saved image in $HOME carries a stale
+# ASDF source registry; --core names the installed core so a stray
+# one is never picked up. The core is the one beside the sbcl binary
+# (<prefix>/lib/sbcl/sbcl.core); when none is there, sbcl chooses.
+SBCL_BIN=$(command -v sbcl)
+SBCL_CORE="${SBCL_BIN%/bin/sbcl}/lib/sbcl/sbcl.core"
+if [ -r "$SBCL_CORE" ]; then
+  set -- --core "$SBCL_CORE"
+else
+  set --
+fi
 river_pid=$PPID
 (
-  cd "$CACHE_HOME/rhizome" || exit 1
+  cd "$HOME" || exit 1
   while kill -0 "$river_pid" 2>/dev/null &&
         [ -S "$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY" ]; do
-    sbcl --non-interactive \
+    sbcl "$@" --non-interactive \
          --eval '(ql:quickload :rhizome)' --eval '(rhizome:run)' \
       >> "$CACHE_HOME/rhizome/rhizome.log" 2>&1
     sleep 1
