@@ -52,7 +52,7 @@ replaces. 0 stops the old painter at once, on the calling thread.")
 
 (defun wallpaper-launch-process (argv)
   "Start ARGV without waiting and return its process-info."
-  (uiop:launch-program argv :output nil :error-output nil))
+  (launch-user-program argv :output nil :error-output nil))
 
 (defun wallpaper-kill-process (process)
   "Terminate PROCESS and reap it. Errors are ignored: the process may

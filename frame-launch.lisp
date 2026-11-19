@@ -77,7 +77,7 @@ in FRAME of WORKSPACE on OUTPUT. WINDOW is that window once matched."
   "Start COMMAND, a shell command line, through bash -c with no
 connection to rhizome's streams. Returns its pid."
   (uiop:process-info-pid
-   (uiop:launch-program (list "bash" "-c" command)
+   (launch-user-program (list "bash" "-c" command)
                         :input nil :output nil :error-output nil)))
 
 (defun launch-into-frame (command output workspace frame &key switch)
