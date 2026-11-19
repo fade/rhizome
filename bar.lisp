@@ -2029,6 +2029,9 @@ moved onto another module."
                      (loop while (and *bar-running*
                                       (wl:wl-display-listen display))
                            do (safe-dispatch display))
+                     (when (display-connection-lost-p display)
+                       (format t "~&; Rhizome: bar: compositor connection lost~%")
+                       (return))
                      (sleep (config-getf '(:bar) :interval :default 0.15)))
             (dolist (ostate (bar-ostates))
               (bar-close-surface ostate))))
