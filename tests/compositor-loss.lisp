@@ -1,9 +1,6 @@
-;;; Compositor loss: when river exits, the WM and the bar must see
-;;; their connection close. WL-DISPLAY-LISTEN returns NIL for an idle
-;;; connection and for a closed one alike, so the event loops slept
-;;; forever on a dead socket. These tests connect a real wayflan
-;;; display to a Unix socket this file listens on, close the server
-;;; end, and check DISPLAY-CONNECTION-LOST-P against each state.
+;;; Compositor loss: check that DISPLAY-CONNECTION-LOST-P is false on an
+;;; open idle connection and true after the peer closes it. Each test
+;;; connects a wayflan display to a Unix socket this file listens on.
 (ql:quickload :rhizome)
 (require :sb-bsd-sockets)
 

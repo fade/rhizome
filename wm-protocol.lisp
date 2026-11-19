@@ -551,7 +551,8 @@ window management updates."
 (defun socket-fd-at-eof-p (fd)
   "Return true when a peek at socket FD, without blocking, reads
 end-of-file or fails with an error other than EAGAIN or EINTR.
-Consume no input."
+Consume no input. Call recv through sb-alien with the Linux values of
+MSG_PEEK and MSG_DONTWAIT."
   (sb-alien:with-alien ((octet (sb-alien:array (sb-alien:unsigned 8) 1)))
     (let ((n (sb-alien:alien-funcall
               (sb-alien:extern-alien
@@ -567,10 +568,11 @@ Consume no input."
                             (list sb-unix:eagain sb-unix:eintr))))))))
 
 (defun display-connection-lost-p (display)
-  "Return true when the compositor has closed DISPLAY's connection:
-DISPLAY is disconnected, or no input is buffered and its socket reads
-end-of-file or a socket error. WL-DISPLAY-LISTEN returns NIL for an
-idle connection and for a closed one alike."
+  "Return true when DISPLAY's connection is gone: DISPLAY is
+disconnected, or no input is buffered and its socket reads end-of-file
+or a socket error. Return NIL while input is buffered, so call it after
+dispatching pending events. Read the socket fd through wayflan
+internals (%WL-DISPLAY-SOCKET and the wire %FD)."
   (or (not (typep display 'wl:wl-display))
       (handler-case
           (and (not (wl:wl-display-listen display))

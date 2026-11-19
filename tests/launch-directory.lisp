@@ -10,7 +10,8 @@
 (configure '(:bar (:enabled nil)))
 
 (defun strip-trailing-slash (string)
-  "STRING without a trailing slash, unless STRING is \"/\"."
+  "STRING without a trailing slash (kept when STRING is \"/\") and
+without trailing newlines and spaces."
   (string-right-trim '(#\Newline #\Space)
                      (if (and (> (length string) 1)
                               (char= (char string (1- (length string))) #\/))
@@ -55,7 +56,7 @@ process, and return what it printed."
     (unwind-protect
          (uiop:with-current-directory (scratch)
            ;; Control: a bare launch inherits the WM's directory, so
-           ;; the helper check below can fail
+           ;; the checks below can tell the two apart
            (ok "bare uiop:launch-program inherits the caller's directory"
                (launched-pwd #'uiop:launch-program out)
                scratch-name)
