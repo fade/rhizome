@@ -45,7 +45,7 @@ SUITES    := animations decorations surface window-rules window-rules-reload flo
              frame-cycling frame-cycle-skip-empty stumpwm-aliases \
              stumpwm-group-eval-exec notifications scratchpads \
              wallpaper coverage bar-outline bar-dot shadow \
-             grow-frame launch-directory
+             grow-frame launch-directory bar-launch-core
 
 .PHONY: all build test install docs clean help
 
