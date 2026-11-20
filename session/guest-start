@@ -1,0 +1,77 @@
+#!/bin/sh
+# Start rhizome in a test guest whose river session runs this script
+# from the host's source share. The guest's river-session-init execs
+# ~/.config/river/init when the guest has one installed, and this
+# script otherwise, so an installed session always takes precedence.
+#
+# The script checks what the window manager needs, writes each gap to
+# the journal and to $CACHE_HOME/rhizome/guest-start.log, then hands
+# over to river-init beside it, which runs the WM under supervision;
+# the WM starts its own bar. With a gap it exits, and river keeps
+# running with no window manager until the gap is provisioned.
+
+case "${XDG_CACHE_HOME:-}" in
+  /*) CACHE_HOME="$XDG_CACHE_HOME" ;;
+  *)  CACHE_HOME="$HOME/.cache" ;;
+esac
+mkdir -p "$CACHE_HOME/rhizome"
+LOG="$CACHE_HOME/rhizome/guest-start.log"
+
+here=$(cd "$(dirname "$0")" && pwd)
+tree=$(dirname "$here")
+
+say() {
+  printf 'guest-start: %s\n' "$*" | tee -a "$LOG" >&2
+}
+
+say "$(date -u '+%F %T') start from $here"
+
+missing=0
+if ! command -v sbcl >/dev/null 2>&1; then
+  say "missing: sbcl on PATH (provisioning role sbcl; a --fast guest has none)"
+  missing=1
+fi
+if [ ! -r "$HOME/quicklisp/setup.lisp" ]; then
+  say "missing: $HOME/quicklisp/setup.lisp (provisioning role lisp_systems)"
+  missing=1
+fi
+if [ ! -r "$HOME/.sbclrc" ]; then
+  say "missing: $HOME/.sbclrc, which loads Quicklisp for the WM (dotfiles)"
+  missing=1
+fi
+
+if [ "$missing" = 0 ]; then
+  # Run from / so a stray sbcl.core in $HOME is never loaded.
+  src=$(cd / && timeout 120 sbcl --non-interactive --eval \
+    '(let ((s (asdf:find-system "rhizome" nil)))
+       (format t "~&RHIZOME-SOURCE ~A~%"
+               (if s (asdf:system-source-directory s) "none")))' \
+    2>>"$LOG" | sed -n 's/^RHIZOME-SOURCE //p')
+  case "$src" in
+    "")
+      say "missing: sbcl does not start with $HOME/.sbclrc (its error is in $LOG)"
+      missing=1 ;;
+    none)
+      say "missing: ASDF finds no rhizome system; the source registry needs" \
+          "(:tree \"$(dirname "$tree")/\") (dotfiles:" \
+          "$HOME/.config/common-lisp/source-registry.conf)"
+      missing=1 ;;
+    "$tree/")
+      say "rhizome source: $src" ;;
+    *)
+      say "note: ASDF resolves rhizome to $src, not $tree/; that tree runs" ;;
+  esac
+fi
+
+if [ "$missing" != 0 ]; then
+  say "river is running with no window manager until the gaps above are provisioned"
+  exit 1
+fi
+
+if [ ! -r "$HOME/.config/systemd/user/rhizome-session.target" ]; then
+  say "note: rhizome-session.target is not installed (session/install.sh" \
+      "installs it), so graphical-session services do not start"
+fi
+
+say "handing over to $here/river-init"
+exec "$here/river-init"

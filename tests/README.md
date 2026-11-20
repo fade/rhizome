@@ -362,3 +362,10 @@ stubbed river requests. Run with:
   GetServerInformation, Introspect, CloseNotification, Dismiss, and
   expiry over the bus. That section is skipped when `dbus-daemon` is
   not installed.
+- `guest-start.sh` - a shell test, run with `sh tests/guest-start.sh`
+  and not one of the Lisp suites: with a stub sbcl and a stub
+  river-init, session/guest-start names each thing a guest lacks
+  (Quicklisp, `~/.sbclrc`, a source registry entry for the share, an
+  sbcl that starts), exits without starting the window manager when
+  one is missing, and otherwise logs the rhizome source tree and hands
+  over to river-init.
