@@ -1,7 +1,9 @@
 ;;; Tests for grow-frame and grow-frame-to-edge: the current frame
 ;;; absorbs the frame beside it, or every frame between it and the
 ;;; screen edge, and refuses (changing nothing) when the edges do not
-;;; line up. River requests are stubbed.
+;;; line up. A frame spanning the whole screen on the growth axis
+;;; splits in half instead, its shown window moving to the half on the
+;;; growth side. River requests are stubbed.
 (ql:quickload :rhizome)
 
 (in-package #:rhizome)
@@ -310,7 +312,7 @@
                         "wider than this frame"))
             '(nil t t)))
 
-      ;; --- Refusal: no neighbour at the screen edge ---
+      ;; --- Refusal: at the screen edge without spanning the screen ---
 
       (let* ((out (mk-out :gf-screen-edge))
              (r (root out))
@@ -322,21 +324,188 @@
         (ok "grow toward the screen edge: refused, tree unchanged, why"
             (lambda () (refused-unchanged
                         out (lambda () (grow-current-frame out 1 :left))
-                        "cannot grow left: no frame there"))
-            '(nil t t))
+                        "cannot grow left: constrained by the screen edge"))
+            '(nil t t)))
+
+      (let* ((out (mk-out :gf-screen-edge-up))
+             (r (root out))
+             (b (split-frame r :vertical 1/2))
+             (a (frame-first-child r)))
+        (fill-frame a (mk-win :gf-seu-a1 out))
+        (fill-frame b (mk-win :gf-seu-b1 out))
+        (focus (first (frame-windows a)))
         (ok "grow up with no frame above: refused, tree unchanged, why"
             (lambda () (refused-unchanged
                         out (lambda () (grow-current-frame out 1 :up))
-                        "cannot grow up: no frame there"))
+                        "cannot grow up: constrained by the screen edge"))
             '(nil t t)))
 
-      (let ((out (mk-out :gf-single)))
-        (fill-frame (root out) (mk-win :gf-si-a1 out))
-        (focus (first (frame-windows (root out))))
-        (ok "a single frame has no neighbour: refused, tree unchanged, why"
+      ;; --- A frame over 3/4 of the axis grows straight to the edge ---
+
+      (flet ((tiled (proxy rects)
+               ;; An output tiled as RECTS, each leaf holding one
+               ;; window; returns (values OUT WINDOWS-IN-RECT-ORDER)
+               (let* ((out (mk-out proxy))
+                      (tree (build-tree-from-rects rects)))
+                 (set-root out tree)
+                 (values out
+                         (loop for r in rects
+                               for leaf = (find r (frame-leaves tree)
+                                                :key #'rect :test #'equal)
+                               collect (first (fill-frame
+                                               leaf
+                                               (mk-win (gensym "GF-Q-")
+                                                       out)))))))
+             (layout (out)
+               (mapcar (lambda (leaf) (list (rect leaf) (frame-windows leaf)))
+                       (frame-leaves (root out)))))
+        (multiple-value-bind (out wins)
+            (tiled :gf-quarter-over
+                   '((0 0 1500 1080) (1500 0 210 1080) (1710 0 210 1080)))
+          (destructuring-bind (a1 b1 c1) wins
+            (focus a1)
+            (ok "a frame over 3/4 wide grows right to the edge in one press"
+                (lambda () (list (grow-current-frame out 1 :right)
+                                 (layout out)
+                                 (eq (current-frame-for out 1)
+                                     (window-frame a1))))
+                (list t (list (list '(0 0 1920 1080) (list a1 b1 c1)))
+                      t))))
+        (multiple-value-bind (out wins)
+            (tiled :gf-quarter-exact
+                   '((0 0 1440 1080) (1440 0 240 1080) (1680 0 240 1080)))
+          (destructuring-bind (a1 b1 c1) wins
+            (focus a1)
+            (ok "a frame exactly 3/4 wide takes one neighbour only"
+                (lambda () (list (grow-current-frame out 1 :right)
+                                 (layout out)))
+                (list t (list (list '(0 0 1680 1080) (list a1 b1))
+                              (list '(1680 0 240 1080) (list c1)))))))
+        (multiple-value-bind (out wins)
+            (tiled :gf-quarter-overhang
+                   '((0 0 1500 540) (1500 0 200 540) (0 540 1700 540)
+                     (1700 0 220 1080)))
+          (destructuring-bind (a1 b1 c1 d1) wins
+            (focus a1)
+            (setf last-message nil)
+            (ok "over 3/4 with a frame overhanging in the way: one step, no message"
+                (lambda () (list (grow-current-frame out 1 :right)
+                                 (layout out)
+                                 last-message))
+                (list t (list (list '(0 0 1700 540) (list a1 b1))
+                              (list '(0 540 1700 540) (list c1))
+                              (list '(1700 0 220 1080) (list d1)))
+                      nil)))))
+
+      ;; --- A frame spanning the whole axis splits in half ---
+
+      (let* ((out (mk-out :gf-half-right))
+             (r (root out))
+             (w1 (mk-win :gf-hr2-w1 out)) (w2 (mk-win :gf-hr2-w2 out))
+             (w3 (mk-win :gf-hr2-w3 out)))
+        (fill-frame r w1 w2 w3)
+        (focus w1)
+        (ok "grow right on a full-width frame succeeds"
+            (lambda () (grow-current-frame out 1 :right))
+            t)
+        (ok "the frame splits side by side; the shown window takes the right half"
+            (lambda () (snap (root out)))
+            (list :split :horizontal t '(0 0 1920 1080) t t
+                  (list :leaf '(0 0 960 1080) (list w2 w3))
+                  (list :leaf '(960 0 960 1080) (list w1))))
+        (ok "the right half is current and its window keeps focus"
+            (lambda () (let ((right (frame-second-child (root out))))
+                         (list (eq (current-frame-for out 1) right)
+                               (eq (gethash (frame-key out 1) *current-frames*)
+                                   right)
+                               (window-focused-p w1)
+                               (eq (window-frame w1) right))))
+            '(t t t t))
+        (ok "the left half shows the next hidden window, the queue behind it"
+            (lambda () (let ((left (frame-first-child (root out))))
+                         (list (eq (frame-current-window left) w2)
+                               (eq (window-frame w2) left)
+                               (eq (window-frame w3) left))))
+            '(t t t)))
+
+      (let* ((out (mk-out :gf-half-left))
+             (r (root out))
+             (w1 (mk-win :gf-hl2-w1 out)) (w2 (mk-win :gf-hl2-w2 out)))
+        (fill-frame r w1 w2)
+        (focus w1)
+        (ok "grow left on a full-width frame: the shown window takes the left half"
+            (lambda () (list (grow-current-frame out 1 :left)
+                             (snap (root out))
+                             (eq (current-frame-for out 1)
+                                 (frame-first-child (root out)))
+                             (window-focused-p w1)))
+            (list t (list :split :horizontal t '(0 0 1920 1080) t t
+                          (list :leaf '(0 0 960 1080) (list w1))
+                          (list :leaf '(960 0 960 1080) (list w2)))
+                  t t)))
+
+      (let* ((out (mk-out :gf-half-up))
+             (r (root out))
+             (b (split-frame r :horizontal 1/2))
+             (a (frame-first-child r))
+             (a1 (mk-win :gf-hu-a1 out)) (a2 (mk-win :gf-hu-a2 out))
+             (b1 (mk-win :gf-hu-b1 out)))
+        (fill-frame a a1 a2)
+        (fill-frame b b1)
+        (focus a1)
+        (ok "grow up on a full-height frame: stacked halves, window on top"
+            (lambda () (list (grow-current-frame out 1 :up)
+                             (snap (root out))
+                             (eq (current-frame-for out 1)
+                                 (frame-first-child a))
+                             (window-focused-p a1)))
+            (list t (list :split :horizontal nil '(0 0 1920 1080) t t
+                          (list :split :vertical t '(0 0 960 1080) t t
+                                (list :leaf '(0 0 960 540) (list a1))
+                                (list :leaf '(0 540 960 540) (list a2)))
+                          (list :leaf '(960 0 960 1080) (list b1)))
+                  t t)))
+
+      (let* ((out (mk-out :gf-half-down))
+             (r (root out))
+             (w1 (mk-win :gf-hd-w1 out)))
+        (fill-frame r w1)
+        (focus w1)
+        (ok "grow down with nothing hidden: window below, the top half empty"
+            (lambda () (list (grow-current-frame out 1 :down)
+                             (snap (root out))
+                             (eq (current-frame-for out 1)
+                                 (frame-second-child (root out)))
+                             (window-focused-p w1)))
+            (list t (list :split :vertical t '(0 0 1920 1080) t t
+                          (list :leaf '(0 0 1920 540) '())
+                          (list :leaf '(0 540 1920 540) (list w1)))
+                  t t)))
+
+      (let* ((out (mk-out :gf-half-middle))
+             (r (root out))
+             (w1 (mk-win :gf-hm-w1 out)) (w2 (mk-win :gf-hm-w2 out))
+             (w3 (mk-win :gf-hm-w3 out)))
+        (fill-frame r w1 w2 w3)
+        (focus w2)
+        (ok "a shown window mid-queue moves; the vacated half resumes after it"
+            (lambda () (list (grow-current-frame out 1 :right)
+                             (snap (root out))))
+            (list t (list :split :horizontal t '(0 0 1920 1080) t t
+                          (list :leaf '(0 0 960 1080) (list w3 w1))
+                          (list :leaf '(960 0 960 1080) (list w2))))))
+
+      (let ((out (mk-out :gf-half-empty)))
+        (ok "grow on an empty full-width frame: refused, tree unchanged, why"
             (lambda () (refused-unchanged
                         out (lambda () (grow-current-frame out 1 :right))
-                        "no frame there"))
+                        "cannot grow right: the frame is empty"))
+            '(nil t t))
+        (ok "grow to the edge on an empty full-height frame: refused, unchanged, why"
+            (lambda () (refused-unchanged
+                        out (lambda ()
+                              (grow-current-frame-to-edge out 1 :down))
+                        "cannot grow down: the frame is empty"))
             '(nil t t)))
 
       ;; --- Refusal: the merged frames would leave no split tree ---
@@ -464,8 +633,30 @@
             (lambda () (refused-unchanged
                         out (lambda ()
                               (grow-current-frame-to-edge out 1 :right))
-                        "already at the screen edge"))
+                        "cannot grow right: constrained by the screen edge"))
             '(nil t t)))
+
+      (let* ((out (mk-out :gf-edge-half))
+             (r (root out))
+             (b (split-frame r :horizontal 1/2))
+             (a (frame-first-child r))
+             (b1 (mk-win :gf-eh-b1 out)) (b2 (mk-win :gf-eh-b2 out))
+             (a1 (mk-win :gf-eh-a1 out)))
+        (fill-frame a a1)
+        (fill-frame b b1 b2)
+        (focus b1)
+        (ok "grow to the edge on a full-height frame splits it in half"
+            (lambda () (list (grow-current-frame-to-edge out 1 :down)
+                             (snap (root out))
+                             (eq (current-frame-for out 1)
+                                 (frame-second-child b))
+                             (window-focused-p b1)))
+            (list t (list :split :horizontal nil '(0 0 1920 1080) t t
+                          (list :leaf '(0 0 960 1080) (list a1))
+                          (list :split :vertical t '(960 0 960 1080) t t
+                                (list :leaf '(960 0 960 540) (list b2))
+                                (list :leaf '(960 540 960 540) (list b1))))
+                  t t)))
 
       ;; --- The commands ---
 
@@ -506,6 +697,16 @@
                              (eq (root out) b) (frame-windows b)))
             (list t t (list b1 a1))))
 
+      (let* ((out (mk-out :gf-cmd-half))
+             (w1 (mk-win :gf-cmh-w1 out)))
+        (fill-frame (root out) w1)
+        (focus w1)
+        (ok "the grow-frame command splits a full-width frame"
+            (lambda () (list (execute-command out :grow-frame '("right"))
+                             (frame-split-direction (root out))
+                             (frame-windows (frame-second-child (root out)))))
+            (list t :horizontal (list w1))))
+
       ;; --- A NIL output, as a key binding passes it ---
 
       (let* ((out (mk-out :gf-cmd-nil))
@@ -522,14 +723,14 @@
             (lambda () (refused-unchanged
                         out (lambda ()
                               (execute-command nil :grow-frame '("left")))
-                        "no frame there"))
+                        "constrained by the screen edge"))
             '(nil t t))
         (ok "grow-frame-to-edge with a NIL output: refused, tree unchanged, why"
             (lambda () (refused-unchanged
                         out (lambda ()
                               (execute-command nil :grow-frame-to-edge
                                                '("left")))
-                        "already at the screen edge"))
+                        "constrained by the screen edge"))
             '(nil t t))
         (ok "grow-frame with a NIL output grows the focused output's frame"
             (lambda () (list (execute-command nil :grow-frame '("right"))
@@ -559,9 +760,13 @@
                                   (find focus-rect (frame-leaves tree)
                                         :key #'rect :test #'equal))))
                    out)))
-          ;; No frame there
-          (let ((out (rects-output :gf-len-none '((0 0 1920 1080))
-                                   '(0 0 1920 1080))))
+          ;; Constrained by the screen edge
+          (let ((out (rects-output :gf-len-none
+                                   '((0 0 960 1080) (960 0 960 1080))
+                                   '(0 0 960 1080))))
+            (refusal (lambda () (grow-current-frame out 1 :left))))
+          ;; An empty frame spanning the screen
+          (let ((out (mk-out :gf-len-empty)))
             (refusal (lambda () (grow-current-frame out 1 :right))))
           ;; Ten frames meet the edge
           (let ((out (rects-output
@@ -603,7 +808,7 @@
                              (count nil shown)
                              (remove-if (lambda (m) (<= (length m) 75))
                                         (remove nil shown))))
-            '(8 0 nil)))
+            '(9 0 nil)))
 
       (ok "both commands are documented for describe-command"
           (lambda () (list (stringp (gethash :grow-frame *command-docs*))

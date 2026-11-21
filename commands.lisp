@@ -155,7 +155,14 @@ Lisp callers of execute-command may pass strings."
 (define-command :grow-frame (output args)
   "Grow the current frame into the frame beside it. Usage: grow-frame
 left|right|up|down. The neighbour must share the frame's whole edge;
-its windows queue behind the shown window."
+its windows queue behind the shown window. A frame already covering
+more than 3/4 of the screen width (left, right) or height (up, down)
+grows straight to the screen edge, as grow-frame-to-edge does, and
+takes the single step only when that is refused. With no frame that
+way, a frame spanning the whole screen width (left, right) or height
+(up, down) splits in half: the shown window moves to the half on that
+side and the other half shows the next hidden window. A frame that
+only touches that screen edge is left unchanged."
   (let ((direction (command-direction-argument (first args)))
         (output (or output (current-output))))
     (if direction
@@ -166,7 +173,9 @@ its windows queue behind the shown window."
 (define-command :grow-frame-to-edge (output args)
   "Grow the current frame to the screen edge, absorbing every frame in
 the way. Usage: grow-frame-to-edge left|right|up|down. Their windows
-queue behind the shown window."
+queue behind the shown window. A frame already spanning the whole
+screen width (left, right) or height (up, down) splits in half as
+grow-frame does."
   (let ((direction (command-direction-argument (first args)))
         (output (or output (current-output))))
     (if direction

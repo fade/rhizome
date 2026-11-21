@@ -239,12 +239,16 @@ usable). No-op at the root."
 ;;; --- Growing a frame into its neighbours ---
 ;;;
 ;;; grow-current-frame absorbs the one frame that shares the current
-;;; frame's whole edge on one side; grow-current-frame-to-edge absorbs
-;;; every frame between that edge and the screen edge. The absorbed
-;;; frames' windows queue behind the shown window. Only the subtree
-;;; under the lowest split holding every frame involved is rebuilt:
-;;; a new split whose rectangle matches an old one takes its
-;;; dividing line and user mark when that line is still valid.
+;;; frame's whole edge on one side; past 3/4 of the axis it grows to
+;;; the screen edge instead, as grow-current-frame-to-edge does.
+;;; grow-current-frame-to-edge absorbs every frame between that edge
+;;; and the screen edge. The absorbed frames' windows queue behind the
+;;; shown window. Only the subtree under the lowest split holding every
+;;; frame involved is rebuilt: a new split whose rectangle matches an
+;;; old one takes its dividing line and user mark when that line is
+;;; still valid. A frame spanning the whole tree on the growth axis has
+;;; nothing to absorb, so grow-current-frame and
+;;; grow-current-frame-to-edge halve it.
 
 (defun frame-direction-axes (direction)
   "For DIRECTION, return (values AXIS CROSS SIGN): the axis the frame
@@ -344,12 +348,14 @@ is marked as a user split when one of OLD-NODES was."
                          r))
                      items)))))
 
-(defun absorb-frames (output workspace frame absorbed new-rect)
+(defun absorb-frames (output workspace frame absorbed new-rect
+                      &key quiet)
   "Grow FRAME to NEW-RECT (x y w h), removing the ABSORBED leaves and
 queueing their windows, in order, behind FRAME's own. Rebuilds only
 the subtree under the lowest split holding FRAME and every absorbed
-leaf. Returns T, or shows a message and returns NIL, changing nothing,
-when the remaining frames form no split tree."
+leaf. Returns T, or returns NIL, changing nothing, when the remaining
+frames form no split tree; unless QUIET, that refusal shows a
+message."
   (let* ((lca (loop for node = (frame-parent frame) then (frame-parent node)
                     while node
                     when (subsetp absorbed (frame-leaves node))
@@ -362,7 +368,8 @@ when the remaining frames form no split tree."
          (subtree (build-subtree-from-leaves items
                                              (frame-internal-nodes lca))))
     (unless subtree
-      (message "cannot grow: the result is not a split tree")
+      (unless quiet
+        (message "cannot grow: the result is not a split tree"))
       (return-from absorb-frames nil))
     ;; The absorbed frames' windows queue behind FRAME's own
     (let ((moved (loop for leaf in absorbed append (frame-windows leaf))))
@@ -422,23 +429,114 @@ facing edge lies on FRAME's edge."
       (list lo (frame-y frame) (- hi lo) (frame-height frame))
       (list (frame-x frame) lo (frame-width frame) (- hi lo))))
 
+(defun frame-spans-axis-p (frame root axis)
+  "T when FRAME covers ROOT's whole extent along AXIS (:x or :y)."
+  (equal (multiple-value-list (frame-span frame axis))
+         (multiple-value-list (frame-span root axis))))
+
+(defun halve-frame-toward (output workspace frame direction)
+  "Split leaf FRAME in half across DIRECTION's axis and move its shown
+window into the half on the DIRECTION side, which becomes the current
+frame. The other half keeps the remaining windows, starting with the
+one queued after the shown window. The split is user-made, so an empty
+half stays. Returns T. Shows a message and returns NIL, changing
+nothing, when FRAME holds no window."
+  (let ((shown (frame-current-window frame)))
+    (unless shown
+      (message "cannot grow ~A: the frame is empty"
+               (string-downcase (symbol-name direction)))
+      (return-from halve-frame-toward nil))
+    (multiple-value-bind (axis cross sign) (frame-direction-axes direction)
+      (declare (ignore cross))
+      (split-frame frame (if (eq axis :x) :horizontal :vertical) 1/2)
+      (setf (frame-user-split frame) t)
+      (let* ((windows (frame-windows frame))
+             (tail (member shown windows))
+             (others (append (rest tail) (ldiff windows tail)))
+             (target (if (plusp sign)
+                         (frame-second-child frame)
+                         (frame-first-child frame)))
+             (vacated (frame-sibling target)))
+        (setf (frame-windows frame) nil
+              (frame-windows target) (list shown)
+              (window-frame shown) target
+              (frame-windows vacated) others)
+        (dolist (win others)
+          (setf (window-frame win) vacated))
+        (setf (gethash (frame-key output workspace) *current-frames*) target)
+        (request-manage-dirty)
+        t))))
+
+(defun grow-frame-to-screen-edge (output workspace frame root direction
+                                  &key quiet)
+  "Grow leaf FRAME to ROOT's edge in DIRECTION, absorbing every frame in
+the way; their windows queue behind FRAME's own, nearest frame first.
+Returns T. Returns NIL, changing nothing, when no frame lies that way,
+when a frame in the way extends past FRAME's sides, or when the
+result would form no split tree; unless QUIET, the last two show a
+message."
+  (let ((in-way (frames-beyond-edge frame (frame-leaves root) direction))
+        (side (string-downcase (symbol-name direction))))
+    (multiple-value-bind (axis cross sign) (frame-direction-axes direction)
+      (multiple-value-bind (clo chi) (frame-span frame cross)
+        (cond
+          ((null in-way) nil)
+          ((find-if (lambda (leaf)
+                      (multiple-value-bind (nclo nchi) (frame-span leaf cross)
+                        (or (< nclo clo) (> nchi chi))))
+                    in-way)
+           (unless quiet
+             (message "cannot grow ~A to edge: a frame in the way overhangs ~
+                       the ~A"
+                      side (if (eq axis :x) "top or bottom" "sides")))
+           nil)
+          (t
+           (multiple-value-bind (lo hi) (frame-span frame axis)
+             (multiple-value-bind (rlo rhi) (frame-span root axis)
+               (absorb-frames
+                output workspace frame
+                ;; Nearest frame first, ties in layout order
+                (stable-sort (copy-list in-way) #'<
+                             :key (lambda (leaf)
+                                    (multiple-value-bind (nlo nhi)
+                                        (frame-span leaf axis)
+                                      (if (plusp sign) nlo (- nhi)))))
+                (if (plusp sign)
+                    (frame-rect-along frame axis lo rhi)
+                    (frame-rect-along frame axis rlo hi))
+                :quiet quiet)))))))))
+
 (defun grow-current-frame (output workspace direction)
   "Grow the current frame into the frame beside it in DIRECTION (:left
 :right :up :down). The neighbour must share the current frame's whole
 edge on that side; it is removed and its windows queue behind the
-shown window. Returns T. Shows a message and returns NIL, changing
-nothing, when no frame lies that way, when the frames there do not
-line up with the edge, or when the result would form no split tree."
+shown window. Past 3/4 of DIRECTION's axis the frame grows to the
+screen edge, as grow-current-frame-to-edge does: a strip under 1/4 of
+the axis is too thin to hold a program. When that growth is refused,
+the frame grows into the neighbour. With no frame that way, a frame
+spanning the whole screen on DIRECTION's axis splits in half (see
+halve-frame-toward). Returns T. Shows a message and returns NIL,
+changing nothing, when the frame only touches the screen edge, when
+it spans the screen but is empty, when the frames there do not line
+up with the edge, or when the result would form no split tree."
   (let* ((frame (current-frame-for output workspace))
+         (root (frame-tree-for output workspace))
          (touching (frames-beyond-edge
-                    frame (frame-leaves (frame-tree-for output workspace))
+                    frame (frame-leaves root)
                     direction :touching t))
          (side (string-downcase (symbol-name direction))))
     (multiple-value-bind (axis cross) (frame-direction-axes direction)
       (cond
+        ((and (null touching) (frame-spans-axis-p frame root axis))
+         (halve-frame-toward output workspace frame direction))
         ((null touching)
-         (message "cannot grow ~A: no frame there" side)
+         (message "cannot grow ~A: constrained by the screen edge" side)
          nil)
+        ((and (multiple-value-bind (lo hi) (frame-span frame axis)
+                (multiple-value-bind (rlo rhi) (frame-span root axis)
+                  (> (* 4 (- hi lo)) (* 3 (- rhi rlo)))))
+              (grow-frame-to-screen-edge output workspace frame root direction
+                                         :quiet t)))
         ((rest touching)
          (message "cannot grow ~A: ~D frames share that edge"
                   side (length touching))
@@ -460,42 +558,25 @@ line up with the edge, or when the result would form no split tree."
 (defun grow-current-frame-to-edge (output workspace direction)
   "Grow the current frame to the screen edge in DIRECTION (:left :right
 :up :down), absorbing every frame in the way; their windows queue
-behind the shown window, nearest frame first. Returns T. Shows a
-message and returns NIL, changing nothing, when the frame already
-reaches that edge, when a frame in the way extends past the current
-frame's sides, or when the result would form no split tree."
+behind the shown window, nearest frame first. A frame spanning the
+whole screen on DIRECTION's axis splits in half instead (see
+halve-frame-toward). Returns T. Shows a message and returns NIL,
+changing nothing, when the frame only touches that screen edge, when
+a frame in the way extends past the current frame's sides, or when
+the result would form no split tree."
   (let* ((frame (current-frame-for output workspace))
          (root (frame-tree-for output workspace))
-         (in-way (frames-beyond-edge frame (frame-leaves root) direction))
-         (side (string-downcase (symbol-name direction))))
-    (multiple-value-bind (axis cross sign) (frame-direction-axes direction)
-      (multiple-value-bind (clo chi) (frame-span frame cross)
-        (cond
-          ((null in-way)
-           (message "cannot grow ~A: already at the screen edge" side)
-           nil)
-          ((find-if (lambda (leaf)
-                      (multiple-value-bind (nclo nchi) (frame-span leaf cross)
-                        (or (< nclo clo) (> nchi chi))))
-                    in-way)
-           (message "cannot grow ~A to edge: a frame in the way overhangs ~
-                     the ~A"
-                    side (if (eq axis :x) "top or bottom" "sides"))
-           nil)
-          (t
-           (multiple-value-bind (lo hi) (frame-span frame axis)
-             (multiple-value-bind (rlo rhi) (frame-span root axis)
-               (absorb-frames
-                output workspace frame
-                ;; Nearest frame first, ties in layout order
-                (stable-sort (copy-list in-way) #'<
-                      :key (lambda (leaf)
-                             (multiple-value-bind (nlo nhi)
-                                 (frame-span leaf axis)
-                               (if (plusp sign) nlo (- nhi)))))
-                (if (plusp sign)
-                    (frame-rect-along frame axis lo rhi)
-                    (frame-rect-along frame axis rlo hi)))))))))))
+         (in-way (frames-beyond-edge frame (frame-leaves root) direction)))
+    (cond
+      ((and (null in-way)
+            (frame-spans-axis-p frame root (frame-direction-axes direction)))
+       (halve-frame-toward output workspace frame direction))
+      ((null in-way)
+       (message "cannot grow ~A: constrained by the screen edge"
+                (string-downcase (symbol-name direction)))
+       nil)
+      (t
+       (grow-frame-to-screen-edge output workspace frame root direction)))))
 
 ;;; --- Focus ---
 

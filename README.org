@@ -1545,13 +1545,24 @@ frames holding windows, one visible at a time:
 - =rhizome-cmd grow-frame right= grows the current frame into the
   frame beside it (=left=, =right=, =up= or =down=). That frame must
   share the current frame's whole edge. That frame closes, and its
-  windows queue behind the window the current frame shows.
+  windows queue behind the window the current frame shows. A frame
+  that already covers more than three quarters of the screen width or
+  height in that direction grows straight to the screen edge, so no
+  frame is left too thin to hold a program; when that is refused, it
+  grows into the frame beside it.
   =rhizome-cmd grow-frame-to-edge right= grows the current frame to
   the screen edge, absorbing every frame in the way. When the edges
   do not line up (several frames meet the edge, the neighbour is
   taller or wider, or a frame in the way runs past the current
-  frame's sides), the command shows why and changes nothing. Neither
-  command has a default key.
+  frame's sides), the command shows why and changes nothing. With
+  either command, a frame that already spans the whole screen width
+  (for =left= or =right=) or height (for =up= or =down=) splits in
+  half: the window it shows moves to the half on that side and keeps
+  focus, and the other half shows the next hidden window, or stays
+  empty. A frame that
+  only touches that screen edge is left as it is, with a message
+  saying the screen edge constrains it. Neither command has a default
+  key.
 - Frames you split stay when they go empty, so you can split and then
   move a window in, or move the last window out, and the frame waits
   for the next one; =C-t R= removes a split and =C-t Q= collapses to
