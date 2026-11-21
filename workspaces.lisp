@@ -226,7 +226,8 @@ cleared when none is left (see refocus-after-close)."
 ;;;     '(:window-rules ((:match "vivaldi" :workspace 2 :follow t)
 ;;;                      (:match "emacs" :workspace 3 :layout :monocle)
 ;;;                      (:match "gimp" :float t)
-;;;                      (:match "steam" :output 2))))
+;;;                      (:match "steam" :output 2)
+;;;                      (:match "remote-viewer" :raw t))))
 
 (defun window-rule-matches-p (win rule)
   "Whether WIN matches RULE's :wse expression (if given), else its
@@ -297,7 +298,8 @@ keeps the workspace instead of adopting the window onto the one
 showing; a :workspace outside that range is ignored. On a workspace
 its output is not showing, a tiled window joins that workspace's frame
 tree hidden and focus stays put; :follow switches the output there and
-focuses the window."
+focuses the window. :raw T puts the window in raw mode (see
+toggle-raw-mode)."
   (when (gethash win *window-rules-applied*)
     (return-from apply-window-rules nil))
   (dolist (rule (window-rules))
@@ -309,6 +311,8 @@ focuses the window."
             (float (getf rule :float))
             (fullscreen (getf rule :fullscreen))
             (output-index (getf rule :output)))
+        (when (getf rule :raw)
+          (set-window-raw-state win :raw))
         (when float
           ;; GIMP-style: never in the tiling (see floating.lisp)
           (float-window win))

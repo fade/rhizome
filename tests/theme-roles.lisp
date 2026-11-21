@@ -12,6 +12,7 @@
 (defparameter *pre-theme-palette*
   '(:border-focused "#7aa2f7"
     :border-unfocused "#404040"
+    :border-raw "#ff9e64"
     :decoration-tint "#7aa2f7"
     :decoration-shadow "#1e1e24"
     :bar-background "#1a1b26"

@@ -57,7 +57,11 @@
     (:window-focused
      :against :window-unfocused
      :elements (:border-focused :border-unfocused)
-     :cues ((:width 2 1))))
+     :cues ((:width 2 1)))
+    (:window-raw
+     :against :window-focused
+     :elements (:border-raw :border-focused)
+     :cues ((:width 4 2))))
   "Each drawn state against the state it is read against, as
 (STATE :against OTHER :elements (ELEMENT OTHER-ELEMENT)
        :cues ((ATTRIBUTE STATE-VALUE OTHER-VALUE) ...)).

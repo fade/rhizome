@@ -532,9 +532,9 @@ its hide logic."
             (animation-apply win (window-float-x win) (window-float-y win))
           (set-window-position win ax ay))
         (multiple-value-bind (r g b a)
-            (theme-border-rgba32 (window-focused-p win))
+            (window-border-rgba32 win)
           (set-window-borders win '(:top :bottom :left :right)
-                              (border-width (window-focused-p win))
+                              (window-border-width win)
                               r g b a))
         ;; Show only on transition: river treats every show/hide as a
         ;; state change and starts a new manage/render sequence.

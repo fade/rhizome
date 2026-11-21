@@ -56,6 +56,7 @@
 (defparameter *theme-elements*
   '((:border-focused :focus (:theme :focused-border))
     (:border-unfocused :unfocus (:theme :unfocused-border))
+    (:border-raw :warning nil)
     (:decoration-tint :border-focused nil)
     (:decoration-shadow :shadow nil)
     (:bar-background :background (:bar :background))

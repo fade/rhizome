@@ -98,9 +98,9 @@ height plus padding above and below."
         (+ (font-line-height) (* 2 *titlebar-padding*)))))
 
 (defun titlebar-border-width (win)
-  "WIN's float border width, as float-render-decisions sets it: the
-focused or unfocused width from BORDER-WIDTH."
-  (border-width (window-focused-p win)))
+  "WIN's float border width, as float-render-decisions sets it (see
+WINDOW-BORDER-WIDTH)."
+  (window-border-width win))
 
 (defun titlebar-geometry (win)
   "The strip relative to WIN's top-left corner, as
