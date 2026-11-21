@@ -502,12 +502,26 @@ readers check that it still lives there.")
 window it focuses unless RAISE is NIL; float-render-decisions stacks
 this window above the other floats.")
 
+(defvar *selected-output* nil
+  "Output holding keyboard focus: the output of the window or frame
+focus last moved to, by any means, or NIL before focus first lands.
+current-output reads it when no window has focus, and falls back to
+the pointer's output when it is NIL or holds an output since removed.")
+
+(defun note-keyboard-output (output)
+  "Record OUTPUT as the output holding keyboard focus. NIL is ignored.
+Returns OUTPUT."
+  (when output
+    (setf *selected-output* output))
+  output)
+
 (defun focus-window (win seat &key (raise t))
   "Give keyboard focus to WIN on SEAT. The river request is queued
 and flushed during the next manage sequence (flush-focus-requests
 in the manage pass); the internal slots update immediately so
 borders/bars react at once. WIN becomes its workspace's entry in
-*workspace-last-focus*. With RAISE (the default) WIN also becomes
+*workspace-last-focus*, and its output the output holding keyboard
+focus (note-keyboard-output). With RAISE (the default) WIN also becomes
 *raised-window*, the float stacked on top; pointer focus passes NIL."
   (when (and (window-proxy win) (seat-proxy seat))
     ;; Clear focus on all other windows
@@ -520,6 +534,7 @@ borders/bars react at once. WIN becomes its workspace's entry in
           (gethash (cons (window-output win) (window-workspace win))
                    *workspace-last-focus*)
           win)
+    (note-keyboard-output (window-output win))
     (when raise
       (setf *raised-window* win))
     (run-hook :focus-changed win)))

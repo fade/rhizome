@@ -4,18 +4,17 @@
 ;;; New windows open there, output-relative commands act on it, and
 ;;; commands move focus or the focused window between outputs.
 ;;;
-;;; The current output is, in order:
+;;; The current output is the first of these that applies. Items 1
+;;; and 2 follow keyboard focus; items 3 and 4 are fallbacks:
 ;;;   1. the output of the focused window;
-;;;   2. the output last selected by focus-output (an empty output
-;;;      clears keyboard focus, so 1 does not shadow it);
-;;;   3. the output under the seat's pointer;
+;;;   2. the output keyboard focus last moved to (*selected-output*):
+;;;      focusing a window or a frame, an empty one included, records
+;;;      it, and a key sequence records the current output at entry;
+;;;   3. the output under the seat's pointer, when focus has never
+;;;      landed or *selected-output* holds an output since removed;
 ;;;   4. the first output.
 
 (in-package #:rhizome)
-
-(defvar *selected-output* nil
-  "Output most recently selected by focus-output or
-move-window-to-output, or NIL.")
 
 (defun live-output-p (output)
   "True when OUTPUT is a registered output."

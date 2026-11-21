@@ -654,13 +654,15 @@ window unless minimized, else its first unminimized window, else NIL."
   "Make FRAME the current frame of WORKSPACE on OUTPUT and move keyboard
 focus with it: every seat focuses (frame-focus-window FRAME), or, when
 FRAME holds no such window, keyboard focus clears, so a new window
-opens in FRAME under the :focused placement entry. Returns FRAME, or
+opens in FRAME under the :focused placement entry. OUTPUT becomes the
+output holding keyboard focus either way. Returns FRAME, or
 NIL with nothing changed when OUTPUT does not show WORKSPACE or FRAME
 is not a leaf of its tree."
   (when (and (eql (current-workspace output) workspace)
              (member frame (frame-leaves (frame-tree-for output workspace))
                      :test #'eq))
     (setf (gethash (frame-key output workspace) *current-frames*) frame)
+    (note-keyboard-output output)
     (let ((win (frame-focus-window frame)))
       (if win
           (dolist (seat (all-seats))

@@ -137,7 +137,8 @@ seat focused on a window of OUTPUT has its focus cleared."
               ((and (seat-focused-window seat)
                     (eq (window-output (seat-focused-window seat)) output))
                (setf (window-focused-p (seat-focused-window seat)) nil)
-               (clear-focus seat)))))
+               (clear-focus seat)
+               (note-keyboard-output output)))))
     ;; The explicit focus stands; don't let a pending auto-focus override it
     (setf *pending-autofocus* nil)
     ;; Warp the pointer to the output center so it lands on the new

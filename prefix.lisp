@@ -219,6 +219,9 @@ created."
           *prefix-keys* nil
           *prefix-seat* seat
           *prefix-expiry* (+ (get-universal-time) 5))
+    ;; Commands in the key sequence act on this output, wherever the
+    ;; pointer moves while the key sequence is open
+    (note-keyboard-output (current-output))
     (open-prefix-capture-surface)
     (when *prefix-mode-active*
       ;; which-key: show the available follow-up keys
