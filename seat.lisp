@@ -57,10 +57,11 @@ context menu (menus.lisp). The modifier is the user's *mod*."
       (push binding *pointer-bindings*))))
 
 (defun enable-pointer-bindings-if-needed ()
-  "Give every seat its MOD+drag bindings and enable them. Pointer
-bindings may only be enabled during a manage sequence, so this runs
-from on-manage-sequence; it also covers seats that registered before
-a hot reload added the feature."
+  "Give every seat its MOD+drag bindings and enable them, or disable
+them while the focused window is raw, so its pointer buttons reach the
+client. Pointer bindings may only be enabled or disabled during a
+manage sequence, so this runs from on-manage-sequence; it also covers
+seats that registered before a hot reload added the feature."
   (dolist (seat (all-seats))
     (unless (gethash seat *seats-with-pointer-bindings*)
       (handler-case
@@ -69,13 +70,17 @@ a hot reload added the feature."
             (setf (gethash seat *seats-with-pointer-bindings*) t))
         (error (e)
           (format t "~&; Rhizome: error creating pointer bindings: ~A~%" e)))))
-  (unless *pointer-bindings-enabled*
-    (dolist (binding *pointer-bindings*)
-      (handler-case
-          (rwm:river-pointer-binding-v1.enable binding)
-        (error (e)
-          (format t "~&; Rhizome: error enabling pointer binding: ~A~%" e))))
-    (setf *pointer-bindings-enabled* t)))
+  (let ((wanted (not (eq (focused-raw-state) :raw))))
+    (unless (eq wanted *pointer-bindings-enabled*)
+      (dolist (binding *pointer-bindings*)
+        (handler-case
+            (if wanted
+                (rwm:river-pointer-binding-v1.enable binding)
+                (rwm:river-pointer-binding-v1.disable binding))
+          (error (e)
+            (format t "~&; Rhizome: error ~:[disabling~;enabling~] pointer binding: ~A~%"
+                    wanted e))))
+      (setf *pointer-bindings-enabled* wanted))))
 
 (defun pointer-drag-start (seat type)
   "An MOD+drag began. Placeholder: redefined by floating.lisp."

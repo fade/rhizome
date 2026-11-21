@@ -175,7 +175,8 @@ of the snapshot stays readable."
   "The WM state the bar process reads. :outputs holds one
 OUTPUT-SNAPSHOT per output, left to right. The top-level :layout,
 :workspace and :windows mirror the current output's entry; :occupied
-spans every output. :settings holds the bar's configuration and theme
+spans every output. :raw is true while the focused window is in raw
+mode. :settings holds the bar's configuration and theme
 (see BAR-PUSHED-SETTINGS)."
   (let* ((current (current-output))
          (primary (bar-primary-output))
@@ -197,6 +198,7 @@ spans every output. :settings holds the bar's configuration and theme
           :outputs outputs
           :focused (let ((focused (find-if #'window-focused-p (all-windows))))
                      (when focused (window-title focused)))
+          :raw (eq (focused-raw-state) :raw)
           :recording (or (some (lambda (win)
                                  (plusp (window-capture-sessions win)))
                                (all-windows))

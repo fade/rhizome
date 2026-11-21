@@ -1273,6 +1273,7 @@ two colours apart:
 | selected prompt candidate  | other candidates      | a rule along the row                |
 | hovered bar module         | other modules         | a rounded fill under the pointer    |
 | screen capture in progress | no capture            | the =REC= marker                    |
+| raw window                 | focused window        | 4 px border against 2 px, and =RAW= |
 
 =*state-cues*= in =cues.lisp= holds these pairs as data, and the
 drawing code takes its widths and text styles from it. A theme can
@@ -1504,6 +1505,42 @@ Under =:sloppy=:
   resize hold pointer focus off until they finish.
 
 Any value other than =:sloppy= reads as =:click=.
+
+** Raw mode
+
+A window in raw mode receives every key and pointer button while it
+has focus. Rhizome releases every key grab except Right Control and
+disables the MOD+button pointer bindings, so a VM viewer passes the guest's keys
+through and Emacs receives chords that rhizome otherwise binds.
+
+Right Control (keysym =Control_R=, no modifiers) is the one key held
+back. On a raw window it suspends raw mode: the normal bindings act on
+the window again until the next Right Control press resumes raw mode.
+A message shows each change. Right Control is grabbed only while the
+focused window is raw or suspended, so on every other window it stays
+an ordinary modifier.
+
+Toggle raw mode on the focused window with the =raw-mode= command, from
+the command palette or over IPC:
+
+#+begin_src bash
+rhizome-cmd raw-mode
+#+end_src
+
+The command turns a suspended window off as well. To start a window in
+raw mode, give its window rule =:raw t=:
+
+#+begin_src lisp
+(rhizome:configure
+  '(:window-rules ((:match "remote-viewer" :raw t))))
+#+end_src
+
+A raw window has a 4 px border in the =:border-raw= theme element
+(derived from the =:warning= role) where a focused window has 2 px.
+While the focused window is raw, the status bar shows a bold =RAW=
+marker at the start of its left segment; place =:raw= in a bar segment
+to put the marker somewhere else. Moving focus to another window
+restores the normal grabs, and closing a raw window drops its state.
 
 ** Pseudo-shadows on floats (decorations)
 
