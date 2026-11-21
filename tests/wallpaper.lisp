@@ -104,6 +104,29 @@
                       (call "WALLPAPER-FIND-IMAGES"
                             '("~/pics/" "$HOME/pics" "~/city/") :home home)
                       (paths "city/top.jpeg" "pics/a.jpg" "pics/b.PNG"))
+               ;; A directory of tens of thousands of images, named by two
+               ;; specs, scans within a few seconds: the scan runs on the
+               ;; compositor thread.
+               (let ((count 20000))
+                 (dotimes (i count)
+                   (let ((file (path (format nil "many/~6,'0D.jpg" i))))
+                     (ensure-directories-exist file)
+                     (with-open-file (s file :direction :output
+                                             :if-exists :supersede)
+                       (declare (ignore s)))))
+                 (let* ((start (get-internal-real-time))
+                        (found (call "WALLPAPER-FIND-IMAGES"
+                                     '("~/many/" "$HOME/many") :home home))
+                        (seconds (/ (- (get-internal-real-time) start)
+                                    internal-time-units-per-second)))
+                   (check "a large directory: every image once, sorted"
+                          (and (= count (length found))
+                               (loop for (a b) on found
+                                     always (or (null b) (string< a b))))
+                          t)
+                   (check "a large directory scans within 5 seconds"
+                          (< seconds 5)
+                          t)))
                (check "a missing directory gives no images"
                       (call "WALLPAPER-FIND-IMAGES" '("~/no-such-dir/")
                             :home home)
