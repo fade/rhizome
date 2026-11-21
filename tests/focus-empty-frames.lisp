@@ -32,6 +32,11 @@
              (setf (symbol-function 'prefix-capture-available-p)
                    (lambda () t))
              (setf (symbol-function 'all-seats) (lambda () '(:seat)))
+             ;; current-output reads these; :seat is no seat object
+             (setf (symbol-function 'focused-window)
+                   (lambda () (find-if #'window-focused-p (all-windows)))
+                   (symbol-function 'pointer-output)
+                   (lambda () nil))
              (setf (symbol-function 'focus-window)
                    (lambda (win seat &rest more)
                      (declare (ignore seat more))
