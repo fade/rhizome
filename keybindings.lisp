@@ -46,6 +46,14 @@ default builders write it.")
 first key of every binding in it. define-key writes it; *default-top-map* is its parent, so a user
 binding shadows a default on the same key.")
 
+(defvar *raw-map*
+  (let ((map (make-keymap :name :raw
+                          :doc "The raw-mode escape: Right Control alone.")))
+    (setf (gethash (make-key 65508) (keymap-bindings map)) 'raw-escape)
+    map)
+  "The keymap river grabs while the focused window is raw: only Right
+Control (keysym Control_R) with no modifiers, bound to raw-escape.")
+
 (defvar *active-bindings* nil
   "List of active river_xkb_binding_v1 proxy objects.")
 
@@ -233,12 +241,15 @@ call returns NIL."
         nil))))
 
 (defun press-key (key &optional seat)
-  "Run what KEY (a key designator) is bound to in *top-map*, as a press
-on SEAT: a keymap binding begins a key sequence on that keymap, any
-other binding is called through call-binding. Returns true when KEY is
-bound; an :undefined key runs nothing and returns NIL."
+  "Run what KEY (a key designator) is bound to in the first of
+active-top-keymaps that binds it, as a press on SEAT: a keymap binding
+begins a key sequence on that keymap, any other binding is called
+through call-binding. Returns true when KEY is bound; an :undefined key
+runs nothing and returns NIL."
   (let* ((key (ensure-key key))
-         (binding (keymap-lookup *top-map* key))
+         (binding (loop for map in (active-top-keymaps)
+                        for b = (keymap-lookup map key)
+                        when b return b))
          (map (binding-keymap binding)))
     (cond ((undefined-binding-p binding)
            nil)
@@ -260,8 +271,56 @@ keymap edits asks for one manage sequence. Returns T."
 
 (defun active-top-keymaps ()
   "Return the top-level keymaps whose first keys river grabs, highest
-precedence first. The one place a context mechanism adds maps."
-  (list *top-map*))
+precedence first. The one place a context mechanism adds maps. A raw
+focused window yields *raw-map* alone; a suspended one yields
+*raw-map* ahead of *top-map*."
+  (case (focused-raw-state)
+    (:raw (list *raw-map*))
+    (:suspended (list *raw-map* *top-map*))
+    (t (list *top-map*))))
+
+(defun set-window-raw-state (win state)
+  "Set WIN's raw state to STATE (NIL, :raw or :suspended), mark the key
+grabs dirty, and ask for a manage sequence so the grabs, pointer
+bindings and border follow. Returns STATE."
+  (check-type state (member nil :raw :suspended))
+  (setf (window-raw-state win) state)
+  (mark-key-grabs-dirty)
+  (request-manage-dirty)
+  state)
+
+(defun raw-escape ()
+  "Right Control on the focused window: :raw becomes :suspended, so
+the normal key and pointer bindings act on it, and :suspended becomes
+:raw again. Shows the new state with message. Returns the new state,
+or NIL when the focused window is not in raw mode."
+  (let ((win (find-if #'window-focused-p (all-windows))))
+    (case (and win (window-raw-state win))
+      (:raw
+       (set-window-raw-state win :suspended)
+       (message "raw: suspended")
+       :suspended)
+      (:suspended
+       (set-window-raw-state win :raw)
+       (message "raw: on")
+       :raw))))
+
+(defun toggle-raw-mode (&optional (win (find-if #'window-focused-p
+                                                (all-windows))))
+  "Put WIN (default: the focused window) into raw mode, or take it out
+when it is :raw or :suspended. Shows the new state with message and
+returns it; returns NIL with a message when there is no window."
+  (cond ((null win)
+         (message "no focused window")
+         nil)
+        ((window-raw-state win)
+         (set-window-raw-state win nil)
+         (message "raw: off")
+         nil)
+        (t
+         (set-window-raw-state win :raw)
+         (message "raw: on")
+         :raw)))
 
 (defun key-grab-set (&optional (maps (active-top-keymaps)))
   "Return a fresh list, without duplicates, of the keys river grabs for

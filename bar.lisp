@@ -372,6 +372,15 @@ use it."
       (list (list* "REC " (theme-color :bar-recording)))
       ""))
 
+(defun bar-module-raw ()
+  "A bold RAW marker in the :border-raw colour while the focused window
+is in raw mode (the snapshot's :raw flag), else \"\". While shown it
+leads the left segment unless the bar configuration places :raw
+itself."
+  (if (getf (bar-snapshot) :raw)
+      (list (list* "RAW" (theme-color :border-raw) '(:bold t)))
+      ""))
+
 (defun bar-module-echo ()
   "The WM's echo text (the snapshot's :echo, e.g. fselect's hint) in
 the accent colour, or \"\" when there is none. It takes the centre
@@ -684,6 +693,7 @@ strftime subset: %H %M %S %d %m %y %Y %a %A %b %B."
     (:windows . bar-module-windows)
     (:focused . bar-module-focused)
     (:recording . bar-module-recording)
+    (:raw . bar-module-raw)
     (:echo . bar-module-echo)
     (:clock . bar-module-clock)
     (:battery . bar-module-battery)
@@ -741,16 +751,23 @@ telltale."
   "The configured module list for :left, :center or :right. While the
 snapshot carries an :echo and no segment names :echo, the centre
 segment is (:echo) alone, so the text has the middle of the bar on a
-narrow output."
+narrow output. While the snapshot carries :raw and no segment names
+:raw, the left segment starts with :raw."
   (let ((modules (config-getf '(:bar :modules) position :default nil)))
-    (if (and (eq position :center)
-             (getf (bar-snapshot) :echo)
-             (notany (lambda (segment)
-                       (member :echo (config-getf '(:bar :modules) segment
-                                                  :default nil)))
-                     '(:left :center :right)))
-        '(:echo)
-        modules)))
+    (flet ((placed-p (module)
+             (some (lambda (segment)
+                     (member module (config-getf '(:bar :modules) segment
+                                                 :default nil)))
+                   '(:left :center :right))))
+      (cond ((and (eq position :center)
+                  (getf (bar-snapshot) :echo)
+                  (not (placed-p :echo)))
+             '(:echo))
+            ((and (eq position :left)
+                  (getf (bar-snapshot) :raw)
+                  (not (placed-p :raw)))
+             (cons :raw modules))
+            (t modules)))))
 
 (defun bar-ostate-segment-modules (position)
   "The modules the rendering bar draws in POSITION. The primary bar

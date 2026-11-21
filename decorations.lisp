@@ -71,7 +71,7 @@ the first one arrives. A client may commit less than was requested
 widened by the border on every side and raised by the titlebar when
 WIN carries one."
   (multiple-value-bind (w h) (decoration-window-size win)
-    (let ((bw (or (border-width (window-focused-p win)) 0))
+    (let ((bw (or (window-border-width win) 0))
           (th (if (window-titlebar-p win) (titlebar-height) 0)))
       (values (- bw) (- (+ bw th)) (+ w (* 2 bw)) (+ h (* 2 bw) th)))))
 

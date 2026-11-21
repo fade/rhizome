@@ -324,6 +324,14 @@ Usage: pull <n>"
         (message "no focused window"))
     nil))
 
+(define-command :raw-mode (output args)
+  "Toggle raw mode on the focused window: while it has focus, every key
+and pointer button reaches it, except Right Control, which suspends and
+resumes raw mode."
+  (declare (ignore output args))
+  (toggle-raw-mode)
+  nil)
+
 (define-command :delete (output args)
   "Ask the focused window to close (StumpWM: delete)."
   (declare (ignore output args))

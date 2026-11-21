@@ -55,7 +55,11 @@ fullscreen request, or NIL for no preference.")
    (decoration-sent :accessor window-decoration-sent :initform nil
                     :documentation "Last decoration request sent: :ssd, :csd, or NIL.")
    (decoration-stale :accessor window-decoration-stale-p :initform nil
-                     :documentation "True when a hint arrived since the last request."))
+                     :documentation "True when a hint arrived since the last request.")
+   (raw :initarg :raw :accessor window-raw-state :initform nil
+        :documentation "Raw mode: NIL, :raw (rhizome grabs only the
+escape key while the window has focus) or :suspended (the escape key
+plus the normal grabs)."))
   (:documentation "Represents a managed window in the river compositor."))
 
 (defvar *last-registered-window* nil
@@ -369,6 +373,10 @@ Does nothing when WIN is NIL."
         (:closed
          (format t "~&; Rhizome: window closed~%")
          (run-hook :window-closed win)
+         ;; A raw window takes its raw keymap with it
+         (when (window-raw-state win)
+           (setf (window-raw-state win) nil)
+           (mark-key-grabs-dirty))
          ;; Remember the placement (identifier windows) before we forget
          (handler-case (remember-window-state win)
            (error () nil))
@@ -502,24 +510,34 @@ readers check that it still lives there.")
 window it focuses unless RAISE is NIL; float-render-decisions stacks
 this window above the other floats.")
 
+(defun focused-raw-state ()
+  "The raw state of the window that has keyboard focus: NIL, :raw or
+:suspended. NIL when no window has focus."
+  (let ((win (find-if #'window-focused-p (all-windows))))
+    (and win (window-raw-state win))))
+
 (defun focus-window (win seat &key (raise t))
   "Give keyboard focus to WIN on SEAT. The river request is queued
 and flushed during the next manage sequence (flush-focus-requests
 in the manage pass); the internal slots update immediately so
 borders/bars react at once. WIN becomes its workspace's entry in
 *workspace-last-focus*. With RAISE (the default) WIN also becomes
-*raised-window*, the float stacked on top; pointer focus passes NIL."
+*raised-window*, the float stacked on top; pointer focus passes NIL.
+A change of focused raw state marks the key grabs dirty."
   (when (and (window-proxy win) (seat-proxy seat))
-    ;; Clear focus on all other windows
-    (dolist (w (all-windows))
-      (unless (eq w win)
-        (setf (window-focused-p w) nil)))
-    (queue-focus-request win seat)
-    (setf (window-focused-p win) t
-          (seat-focused-window seat) win
-          (gethash (cons (window-output win) (window-workspace win))
-                   *workspace-last-focus*)
-          win)
+    (let ((raw-before (focused-raw-state)))
+      ;; Clear focus on all other windows
+      (dolist (w (all-windows))
+        (unless (eq w win)
+          (setf (window-focused-p w) nil)))
+      (queue-focus-request win seat)
+      (setf (window-focused-p win) t
+            (seat-focused-window seat) win
+            (gethash (cons (window-output win) (window-workspace win))
+                     *workspace-last-focus*)
+            win)
+      (unless (eq raw-before (window-raw-state win))
+        (mark-key-grabs-dirty)))
     (when raise
       (setf *raised-window* win))
     (run-hook :focus-changed win)))
@@ -527,8 +545,11 @@ borders/bars react at once. WIN becomes its workspace's entry in
 (defun queue-clear-focus (seat)
   "Take keyboard focus away from every window on SEAT. Like
 focus-window, the river request (clear_focus) is queued for the
-next manage sequence; the internal slots update at once."
+next manage sequence; the internal slots update at once. Leaving a
+raw window marks the key grabs dirty."
   (when (seat-proxy seat)
+    (when (focused-raw-state)
+      (mark-key-grabs-dirty))
     (dolist (w (all-windows))
       (setf (window-focused-p w) nil))
     (queue-focus-request nil seat)
@@ -802,6 +823,26 @@ Requires that the window's node has been created."
   "Set borders on WIN during a render sequence. R G B A are 32-bit
 pre-multiplied values (see BORDER-RGBA32), not bytes."
   (rwm:river-window-v1.set-borders (window-proxy win) edges width r g b a))
+
+(defun window-raw-border-p (win)
+  "True when WIN is drawn with the raw border: its raw state is :raw."
+  (eq (window-raw-state win) :raw))
+
+(defun window-border-width (win)
+  "WIN's border width in pixels: the :window-raw width while WIN is
+raw, else the focused or unfocused width from BORDER-WIDTH."
+  (if (window-raw-border-p win)
+      (state-cue :window-raw :width)
+      (border-width (window-focused-p win))))
+
+(defun window-border-rgba32 (win)
+  "WIN's border colour as the four 32-bit set_borders values (values r
+g b a): the :border-raw element while WIN is raw, else the focused or
+unfocused border colour."
+  (if (window-raw-border-p win)
+      (multiple-value-bind (r g b) (theme-rgb :border-raw)
+        (border-rgba32 r g b))
+      (theme-border-rgba32 (window-focused-p win))))
 
 (defun set-window-clip-box (win x y width height)
   "Clip WIN (content + borders + decorations) to a box in
