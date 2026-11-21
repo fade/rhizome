@@ -78,8 +78,13 @@ stubbed river requests. Run with:
 - `grow-frame.lisp` - grow-frame and grow-frame-to-edge: a frame grows
   into the neighbour that shares its whole edge, sibling or not, or to
   the screen edge across every frame in the way; absorbed windows queue
-  behind the shown window and none is lost. A split neighbour, a
-  taller or wider neighbour, the screen edge, a frame in the way that
+  behind the shown window and none is lost. A frame over 3/4 of the
+  axis grows to the edge in one press, falling back to one step when
+  that is refused; exactly 3/4 takes one step. A frame spanning the whole
+  screen on the growth axis splits in half, its shown window taking the
+  half on the growth side and the other half keeping the queue. A split
+  neighbour, a taller or wider neighbour, a screen edge the frame only
+  touches, an empty frame with nothing to move, a frame in the way that
   runs past the frame's sides, and a result no split tree can hold are
   each refused with a reason and an unchanged tree.
 - `parity.lisp` — Alt+drag pointer bindings (drag floats tiled
