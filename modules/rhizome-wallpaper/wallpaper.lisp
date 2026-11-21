@@ -128,14 +128,17 @@ trailing \"*\" every directory below it."
 
 (defun wallpaper-find-images (specs &key (home (wallpaper-home)))
   "The image files in the directories SPECS name, as native
-namestrings, sorted and without duplicates."
+namestrings, sorted and without duplicates. Runs in O(n log n) time
+in the number of files found."
   (let ((files '()))
     (dolist (spec specs)
       (dolist (dir (wallpaper-spec-directories spec :home home))
         (dolist (file (uiop:directory-files dir))
           (when (wallpaper-image-p file)
             (push (uiop:native-namestring file) files)))))
-    (sort (remove-duplicates files :test #'string=) #'string<)))
+    (loop for (file . rest) on (sort files #'string<)
+          unless (and rest (string= file (first rest)))
+            collect file)))
 
 ;;; --- Choosing images ---
 
