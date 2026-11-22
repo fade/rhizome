@@ -126,6 +126,14 @@ missed frame never freezes a window mid-air."
                    (values (round (+ x (* (getf anim :dx) (- 1 k))))
                            (round (+ y (* (getf anim :dy) (- 1 k)))))))))))))
 
+(defun animation-land (win x y)
+  "End WIN's animation where the glide has reached at this moment.
+Return that position for layout target (X Y), and remove the
+animation, so the next render places WIN at whatever target the caller
+sets from that position. Without an animation, return X and Y."
+  (multiple-value-prog1 (animation-position win x y)
+    (remhash win *animations*)))
+
 (defun animation-drain ()
   "Main-loop pump: while anything animates, request fresh
 manage/render sequences at frame cadence. Returns T when

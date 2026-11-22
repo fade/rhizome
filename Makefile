@@ -47,7 +47,7 @@ SUITES    := animations decorations surface window-rules window-rules-reload flo
              wallpaper coverage bar-outline bar-dot shadow \
              grow-frame launch-directory bar-launch-core \
              compositor-loss prompt-popup keyboard-output raw-mode \
-             idle-wait frame-pacing workspace-slide
+             idle-wait frame-pacing workspace-slide drag-cancel
 
 .PHONY: all build test install docs clean help
 
