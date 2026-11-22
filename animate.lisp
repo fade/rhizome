@@ -128,6 +128,34 @@ one request per cycle is the contract."
       (request-manage-dirty))
     t))
 
+(defparameter *animation-frame-interval* 1/60
+  "Seconds between the starts of successive animation frames.")
+
+(defun frame-wait-seconds (previous-start now
+                           &optional (interval *animation-frame-interval*))
+  "Seconds left until the next frame deadline, PREVIOUS-START plus
+INTERVAL seconds, as a float; 0.0 when the deadline has passed or
+PREVIOUS-START is NIL. PREVIOUS-START and NOW are internal real times."
+  (if (null previous-start)
+      0.0
+      (float (max 0 (- interval
+                       (/ (- now previous-start)
+                          internal-time-units-per-second)))
+             1.0)))
+
+(defun animation-frame-wait (previous-start now manage-pending)
+  "Seconds the main loop waits on the display before starting the next
+animation frame, or NIL when the frame is due now. PREVIOUS-START is
+the internal real time the last frame started, or NIL; NOW is the
+current internal real time. Before the deadline, wait out the rest of
+the interval. After it, with MANAGE-PENDING true, the previous frame's
+manage request is still out: wait up to one interval for river's reply
+instead of polling."
+  (let ((wait (frame-wait-seconds previous-start now)))
+    (cond ((plusp wait) wait)
+          (manage-pending (float *animation-frame-interval* 1.0))
+          (t nil))))
+
 ;;; --- Clip boxes: glides never overdraw the bar ---
 
 (defvar *clipped-windows* (make-hash-table :test #'eq)

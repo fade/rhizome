@@ -747,7 +747,8 @@ queues that nothing wakes it for."
       ;; Main event loop: poll the compositor socket and drain the IPC
       ;; queue so IPC commands execute on this (main) thread
       (unwind-protect
-           (loop while *running* do
+           (loop with frame-start = nil
+                 while *running* do
              (handler-case
                  (when (wl:wl-display-listen display)
                    (wl:wl-display-dispatch-event display))
@@ -761,10 +762,18 @@ queues that nothing wakes it for."
              (message-drain)
              (prompt-drain)
              (prefix-drain)
-             (if (animation-drain)
-                 ;; Animating: frame-cap the loop (~60fps) so river
-                 ;; gets a smooth sequence cadence
-                 (sleep 1/60)
+             (if (and *wm-proxy* (animations-running-p))
+                 ;; Animating: start a frame at most once per
+                 ;; interval, measured from the previous frame's
+                 ;; start; until then, serve input from the socket
+                 (let* ((now (get-internal-real-time))
+                        (wait (animation-frame-wait frame-start now
+                                                    *pending-manage*)))
+                   (cond ((null wait)
+                          (setf frame-start now)
+                          (animation-drain))
+                         ((not (wl:wl-display-listen display))
+                          (wait-for-display-input display wait))))
                  (unless (wl:wl-display-listen display)
                    (wait-for-display-input display 0.05))))
         (format t "~&; Rhizome: shutting down~%")
