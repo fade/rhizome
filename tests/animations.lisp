@@ -104,6 +104,28 @@
         (ok "relative offset decays to the exact target"
             (list (round x) (round y)) '(500 50))))
 
+    ;; --- the animation clock: glide start and interpolation read it ---
+
+    (let* ((now 5000)
+           (*animation-clock* (lambda () now))
+           (*animations* (make-hash-table))
+           (win (make-instance 'rhizome-window :proxy :anim-clock)))
+      (setf (window-x win) 0 (window-y win) 0)
+      (animation-start win :from-x 0 :from-y 0
+                            :duration 1000 :easing :linear)
+      (ok "the start time comes from the animation clock"
+          (getf (gethash win *animations*) :start) 5000)
+      (incf now (floor internal-time-units-per-second 2))
+      (multiple-value-bind (x y)
+          (animation-position win 1000 0)
+        (ok "interpolation reads the animation clock"
+            (list x y) '(500 0)))
+      (incf now internal-time-units-per-second)
+      (multiple-value-bind (x y)
+          (animation-position win 1000 0)
+        (ok "the animation lands by the animation clock"
+            (list x y (animation-active-p win)) '(1000 0 nil))))
+
     ;; --- config gates ---
 
     (ok "default duration 200ms"
@@ -140,8 +162,11 @@
 
     ;; --- render integration: float glide captures position ---
 
+    ;; The clock is frozen: on a loaded machine the real clock moves
+    ;; between the start and the read, and ease-out is steep at t=0.
     (let* ((*animations* (make-hash-table))
            (*config* '(:animations (:enabled t :duration-ms 200)))
+           (*animation-clock* (constantly 5000))
            (win (make-instance 'rhizome-window :proxy :anim-4)))
       (setf (window-x win) 10 (window-y win) 20
             (window-width win) 100 (window-height win) 80)

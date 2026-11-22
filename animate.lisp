@@ -27,6 +27,11 @@
 (defparameter *animation-started-count* 0
   "Animations started (test introspection).")
 
+(defvar *animation-clock* #'get-internal-real-time
+  "Function of no arguments returning the current time in internal time
+units. Supplies glide start times and interpolation; frame pacing reads
+real time directly. Tests bind it to freeze or step time.")
+
 (defun animations-enabled-p ()
   (config-getf '(:animations) :enabled :default t))
 
@@ -84,7 +89,7 @@ the duration is zero — instant placement."
                 :from-y (or from-y (window-y win))
                 :dx dx
                 :dy dy
-                :start (get-internal-real-time)
+                :start (funcall *animation-clock*)
                 :duration (* duration
                              (/ internal-time-units-per-second 1000))
                 :ease easing))))
@@ -97,7 +102,7 @@ missed frame never freezes a window mid-air."
   (let ((anim (gethash win *animations*)))
     (if (null anim)
         (values x y)
-        (let* ((elapsed (- (get-internal-real-time)
+        (let* ((elapsed (- (funcall *animation-clock*)
                             (getf anim :start)))
                (raw (/ elapsed (getf anim :duration))))
           (if (>= raw 1)
