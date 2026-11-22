@@ -27,6 +27,11 @@
 (defparameter *animation-started-count* 0
   "Animations started (test introspection).")
 
+(defvar *animation-clock* #'get-internal-real-time
+  "Function of no arguments returning the current time in internal time
+units. Supplies glide start times and interpolation; frame pacing reads
+real time directly. Tests bind it to freeze or step time.")
+
 (defun animations-enabled-p ()
   (config-getf '(:animations) :enabled :default t))
 
@@ -34,6 +39,11 @@
   "Duration in universal-time subseconds — internal-time units per
 millisecond, so animations work off INTERNAL-REAL-TIME."
   (max 0 (config-getf '(:animations) :duration-ms :default 200)))
+
+(defun workspace-slide-duration ()
+  "Milliseconds a workspace switch slides for: (:animations
+:workspace-duration-ms), 160 when unset. Independent of :duration-ms."
+  (max 0 (config-getf '(:animations) :workspace-duration-ms :default 160)))
 
 (defun animation-easing ()
   (config-getf '(:animations) :easing :default :ease-out-cubic))
@@ -84,7 +94,7 @@ the duration is zero — instant placement."
                 :from-y (or from-y (window-y win))
                 :dx dx
                 :dy dy
-                :start (get-internal-real-time)
+                :start (funcall *animation-clock*)
                 :duration (* duration
                              (/ internal-time-units-per-second 1000))
                 :ease easing))))
@@ -97,7 +107,7 @@ missed frame never freezes a window mid-air."
   (let ((anim (gethash win *animations*)))
     (if (null anim)
         (values x y)
-        (let* ((elapsed (- (get-internal-real-time)
+        (let* ((elapsed (- (funcall *animation-clock*)
                             (getf anim :start)))
                (raw (/ elapsed (getf anim :duration))))
           (if (>= raw 1)
@@ -116,6 +126,14 @@ missed frame never freezes a window mid-air."
                    (values (round (+ x (* (getf anim :dx) (- 1 k))))
                            (round (+ y (* (getf anim :dy) (- 1 k)))))))))))))
 
+(defun animation-land (win x y)
+  "End WIN's animation where the glide has reached at this moment.
+Return that position for layout target (X Y), and remove the
+animation, so the next render places WIN at whatever target the caller
+sets from that position. Without an animation, return X and Y."
+  (multiple-value-prog1 (animation-position win x y)
+    (remhash win *animations*)))
+
 (defun animation-drain ()
   "Main-loop pump: while anything animates, request fresh
 manage/render sequences at frame cadence. Returns T when
@@ -127,6 +145,34 @@ one request per cycle is the contract."
     (unless *pending-manage*
       (request-manage-dirty))
     t))
+
+(defparameter *animation-frame-interval* 1/60
+  "Seconds between the starts of successive animation frames.")
+
+(defun frame-wait-seconds (previous-start now
+                           &optional (interval *animation-frame-interval*))
+  "Seconds left until the next frame deadline, PREVIOUS-START plus
+INTERVAL seconds, as a float; 0.0 when the deadline has passed or
+PREVIOUS-START is NIL. PREVIOUS-START and NOW are internal real times."
+  (if (null previous-start)
+      0.0
+      (float (max 0 (- interval
+                       (/ (- now previous-start)
+                          internal-time-units-per-second)))
+             1.0)))
+
+(defun animation-frame-wait (previous-start now manage-pending)
+  "Seconds the main loop waits on the display before starting the next
+animation frame, or NIL when the frame is due now. PREVIOUS-START is
+the internal real time the last frame started, or NIL; NOW is the
+current internal real time. Before the deadline, wait out the rest of
+the interval. After it, with MANAGE-PENDING true, the previous frame's
+manage request is still out: wait up to one interval for river's reply
+instead of polling."
+  (let ((wait (frame-wait-seconds previous-start now)))
+    (cond ((plusp wait) wait)
+          (manage-pending (float *animation-frame-interval* 1.0))
+          (t nil))))
 
 ;;; --- Clip boxes: glides never overdraw the bar ---
 

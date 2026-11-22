@@ -605,6 +605,15 @@ Cumulative deltas make this idempotent: origin + total motion."
         (setf (seat-op-pending seat) nil)
         (let ((win (getf pending :win)))
           (when (and win (gethash (window-proxy win) *windows*))
+            ;; A glide in flight lands where the glide has reached at
+            ;; this manage pass: the op starts from there, and no
+            ;; interpolation moves the window against the drag
+            (when (animation-active-p win)
+              (multiple-value-bind (x y)
+                  (animation-land win (window-float-x win)
+                                  (window-float-y win))
+                (setf (window-float-x win) x
+                      (window-float-y win) y)))
             (setf (seat-op-state seat)
                   (list :win win
                         :type (getf pending :type)
