@@ -120,10 +120,10 @@ ring for that frame (empty or showing a window) is off."
 
 ;;; --- Pixels ---
 
-(defun frame-outline-draw (state w h width r g b)
-  "Draw a W x H ring WIDTH px wide in R G B, clear inside, into
-STATE's shm buffer, reallocated when W or H changes. Returns the
-updated STATE, or NIL when no buffer could be allocated."
+(defun frame-outline-draw (state w h width r g b &optional (alpha 255))
+  "Draw a W x H ring WIDTH px wide in R G B at ALPHA (0-255), clear
+inside, into STATE's shm buffer, reallocated when W or H changes.
+Returns the updated STATE, or NIL when no buffer could be allocated."
   (unless (and (eql (getf state :w) w) (eql (getf state :h) h))
     ;; decoration-shm reuses a buffer of equal byte size, which would
     ;; keep the old stride for a frame of the same area and new shape
@@ -136,7 +136,7 @@ updated STATE, or NIL when no buffer could be allocated."
       (setf (getf state :w) w (getf state :h) h)
       (let ((ptr (getf state :ptr))
             (band (max 1 (min width (floor w 2) (floor h 2))))
-            (pixel (make-argb r g b)))
+            (pixel (make-argb r g b :alpha alpha)))
         (cffi:foreign-funcall "memset" :pointer ptr :int 0
                               :unsigned-long (* w h 4) :pointer)
         (loop for y below h

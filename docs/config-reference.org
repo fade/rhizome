@@ -283,6 +283,7 @@ Merged key by key, including the per-kind groups.
 | =:expose=                | group        | =(:enabled t)=    | live    | Windows gliding into and out of the expose grid.                          |
 | =:float=                 | group        | =(:enabled t)=    | live    | Floating windows gliding on float, move, unfloat, and maximize.           |
 | =:reduced-motion=        | keyword      | =:follow=         | live    | =:follow= turns motion off while the desktop asks for reduced motion; =t= always does; =nil= ignores the desktop. |
+| =:focus-cue=             | group        | see below         | live    | A ring that flashes around the newly focused frame. Off by default.       |
 
 Each kind group takes these keys:
 
@@ -303,6 +304,26 @@ as no preference.
 
 The =toggle-animations= command flips =:enabled= at run time, until the
 config is next loaded.
+
+=:focus-cue= takes these keys:
+
+| Key            | Type         | Default | Effect                                                         |
+|----------------+--------------+---------+----------------------------------------------------------------|
+| =:enabled=     | boolean      | =nil=   | Show the cue when keyboard focus moves to another frame or output. |
+| =:duration-ms= | milliseconds | =180=   | Time the ring takes to fade from fully opaque to transparent.  |
+| =:width=       | pixels       | =3=     | Width of the ring.                                             |
+
+The ring takes the =:frame-outline= theme colour and is independent of
+=:frame-outline-width=. A workspace switch, a split, and a merge show
+no cue, and a workspace switch ends a cue in flight. The cue does not
+show where the frame outline is hidden: on a scroll or floating
+workspace, during expose, or while a fullscreen window that is not
+minimized is on the workspace. Reduced motion and
+=(:animations :enabled nil)= turn the cue off.
+
+#+begin_src lisp
+(rhizome:configure '(:animations (:focus-cue (:enabled t :width 4))))
+#+end_src
 
 #+begin_src lisp
 (rhizome:configure '(:animations (:enabled t :duration-ms 150 :easing :linear)))

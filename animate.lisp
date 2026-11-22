@@ -144,8 +144,15 @@ error that corrupts the wire and gets the client terminated."
   "Whether WIN has an animation in flight."
   (and (gethash win *animations*) t))
 
+(defvar *focus-cue* nil
+  "The focus cue in flight as (:start TIME :duration UNITS), times in
+*animation-clock* units, or NIL. Set and cleared by focus-cue.lisp.")
+
 (defun animations-running-p ()
-  (plusp (hash-table-count *animations*)))
+  "True while a window glides or the focus cue fades: the main loop
+keeps requesting frames."
+  (or (plusp (hash-table-count *animations*))
+      (and *focus-cue* t)))
 
 (defun animation-start (win &key kind (from-x nil) (from-y nil)
                                  (dx 0) (dy 0)

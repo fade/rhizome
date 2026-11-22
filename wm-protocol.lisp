@@ -505,6 +505,9 @@ window positions, borders, and z-ordering here."
   ;; The focused-frame outline (river_shell_surface_v1).
   ;; Placeholder: redefined by frame-outline.lisp, which loads later.
   (frame-outline-render-pass)
+  ;; The opt-in focus cue (river_shell_surface_v1).
+  ;; Placeholder: redefined by focus-cue.lisp, which loads later.
+  (focus-cue-render-pass)
   ;; Float titlebars (river_decoration_v1 above the window).
   ;; Placeholder: redefined by titlebar.lisp, which loads later.
   (titlebars-render-pass)
@@ -525,6 +528,10 @@ decorations.lisp)."
 (defun frame-outline-render-pass ()
   "Focused-frame outline (placeholder: redefined by
 frame-outline.lisp)."
+  nil)
+
+(defun focus-cue-render-pass ()
+  "Focus cue (placeholder: redefined by focus-cue.lisp)."
   nil)
 
 (defun titlebars-render-pass ()

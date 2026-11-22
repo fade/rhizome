@@ -1415,7 +1415,12 @@ from old→new workspace index).
                 :float (:enabled t)       ; float, move, unfloat, maximize
                 ;; :follow the desktop's reduced-motion setting (the
                 ;; settings portal), t to always reduce, nil to ignore it
-                :reduced-motion :follow)))
+                :reduced-motion :follow
+                ;; opt-in: a ring that fades out around the newly
+                ;; focused frame when focus moves to another frame or
+                ;; output; a workspace switch, a split, and a merge
+                ;; show no cue
+                :focus-cue (:enabled nil :duration-ms 180 :width 3))))
 #+end_src
 
 A kind's own =:duration-ms= overrides the global duration for that

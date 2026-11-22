@@ -185,7 +185,14 @@ Returns (values value found-p)."
                  ;; asks for reduced motion (the settings portal's
                  ;; org.freedesktop.appearance reduced-motion); t
                  ;; always reduces; nil ignores the desktop
-                 :reduced-motion :follow)
+                 :reduced-motion :follow
+                 ;; Opt-in: when keyboard focus moves to another frame
+                 ;; or output, a ring :width px wide around the newly
+                 ;; focused frame appears fully opaque and fades out
+                 ;; over :duration-ms. A workspace switch, a split, and
+                 ;; a merge show no cue. Off with reduced motion or
+                 ;; :enabled nil above.
+                 :focus-cue (:enabled nil :duration-ms 180 :width 3))
     :window-state (:enabled t
                    ;; Remember identifier-based window placements
                    ;; across WM restarts (river v4 identifiers)

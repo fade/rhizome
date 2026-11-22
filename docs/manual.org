@@ -1477,6 +1477,24 @@ portal or session bus answers, motion stays as configured.
 (rhizome:configure '(:animations (:reduced-motion t)))
 #+end_src
 
+*** Focus cue
+
+The focus cue shows where keyboard focus went. When it is on and focus
+moves to another frame or output, a ring appears around the newly
+focused frame fully opaque and fades out. The cue changes opacity and
+shape, never colour alone. It is off by default:
+
+#+begin_src lisp
+(rhizome:configure '(:animations (:focus-cue (:enabled t
+                                               :duration-ms 180
+                                               :width 3))))
+#+end_src
+
+The ring takes the =:frame-outline= theme colour but none of the frame
+outline's settings, so it works with =:frame-outline-width 0=. A
+workspace switch, a split, and a merge show no cue. Reduced motion and
+=(:animations :enabled nil)= turn the cue off.
+
 *** Turning motion off at run time
 
 =rhizome-cmd toggle-animations= flips =(:animations :enabled)= and

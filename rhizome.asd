@@ -54,6 +54,7 @@
    (:file "menus" :depends-on ("expose" "animate" "theme"))
    (:file "decorations" :depends-on ("floating" "animate" "theme"))
    (:file "frame-outline" :depends-on ("decorations" "frames" "scroll" "groups" "heads" "theme"))
+   (:file "focus-cue" :depends-on ("frame-outline" "animate" "reduced-motion"))
    (:file "titlebar" :depends-on ("decorations" "font" "workspaces" "seat" "theme" "cues"))
    (:file "fselect" :depends-on ("frame-outline" "prefix" "commands" "font" "theme"))
    (:file "frame-launch" :depends-on ("fselect" "placement" "tiling" "workspaces"))
