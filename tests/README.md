@@ -13,6 +13,12 @@ stubbed river requests. Run with:
   workspace's windows and SHOW the new one's, without redundant
   show/hide requests (which cause river manage/render loops).
 - `window-rules.lisp` — app-id/title regex rules assign workspaces.
+- `rule-no-focus.lisp` - a rule with `:focus nil` places its window but
+  gives it no keyboard focus on map: on the showing workspace, with
+  `:raw t` (no raw key grabs until it has focus), and with `:follow`
+  (the output switches; focus goes to another window there, or clears).
+  Explicit focus still reaches the window, and rules without `:focus nil`
+  focus as before.
 - `floating.lisp` — float/tile state, geometry clamps, interactive
   resize math, manage/render integration, and `:float` window rules.
 - `float-centring.lisp` - where a new float first appears: centred on

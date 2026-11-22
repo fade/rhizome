@@ -206,7 +206,12 @@
 ;;; workspace and switches to it; :layout gives the window's
 ;;; workspace that layout and rebuilds its frames, as switch-layout
 ;;; does. A workspace that already has the rule's layout keeps its
-;;; frames when the rule matches again.
+;;; frames when the rule matches again. :focus nil places the window
+;;; as the rest of the rule says but gives it no keyboard focus when
+;;; it maps, even on the workspace showing; with :follow the output
+;;; still switches. A click or a focus command focuses it later.
+;;; For a VM viewer in raw mode, add :focus nil so it cannot take
+;;; the keyboard when it maps.
 
 #-(and) (configure
   '(:window-rules ((:match "vivaldi" :workspace 2 :follow t)
