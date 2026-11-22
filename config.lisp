@@ -168,7 +168,19 @@ Returns (values value found-p)."
                  ;; :easing :ease-out-cubic (default) | :linear |
                  ;; :ease-in-out — window glide: workspace slide-ins,
                  ;; expose gliding into the grid, float/maximize
-                 :easing :ease-out-cubic)
+                 :easing :ease-out-cubic
+                 ;; Each kind of motion has its own switch and an
+                 ;; optional :duration-ms; an unset :duration-ms takes
+                 ;; :workspace-duration-ms for the slide and
+                 ;; :duration-ms for the other kinds. NIL in place of
+                 ;; the group turns that kind off.
+                 ;; the slide-in on a workspace switch
+                 :workspace (:enabled t)
+                 ;; windows gliding into and out of the expose grid
+                 :expose (:enabled t)
+                 ;; floating windows gliding on float, move, unfloat,
+                 ;; and maximize
+                 :float (:enabled t))
     :window-state (:enabled t
                    ;; Remember identifier-based window placements
                    ;; across WM restarts (river v4 identifiers)

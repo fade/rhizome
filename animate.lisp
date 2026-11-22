@@ -15,7 +15,14 @@
 ;;;     position is unknown at trigger time. Workspace slide-ins.
 ;;;
 ;;; Config: (:animations (:enabled t :duration-ms 200
-;;;                       :easing :ease-out-cubic))
+;;;                       :workspace-duration-ms 160
+;;;                       :easing :ease-out-cubic
+;;;                       :workspace (:enabled t)
+;;;                       :expose (:enabled t)
+;;;                       :float (:enabled t)))
+;;; Each motion kind (*animation-kinds*) has its own :enabled and an
+;;; optional :duration-ms; see animation-kind-enabled-p and
+;;; animation-kind-duration.
 ;;; Easing: :linear, :ease-out-cubic (default), :ease-in-out.
 
 (in-package #:rhizome)
@@ -48,6 +55,42 @@ millisecond, so animations work off INTERNAL-REAL-TIME."
 (defun animation-easing ()
   (config-getf '(:animations) :easing :default :ease-out-cubic))
 
+(defparameter *animation-kinds* '(:workspace :expose :float)
+  "Motion kinds with their own switch and duration under :animations:
+:workspace, the slide on a workspace switch; :expose, windows gliding
+into and out of the expose grid; :float, floating windows gliding on
+float, move, unfloat, and maximize.")
+
+(defun animation-kind-setting (kind)
+  "KIND's group under :animations as (VALUES ENABLED DURATION-MS).
+ENABLED is NIL when the group is NIL or sets :enabled NIL, else T.
+DURATION-MS is the group's :duration-ms, or NIL when it is unset or
+not an integer."
+  (multiple-value-bind (group foundp) (config-get (list :animations kind))
+    (cond ((not foundp) (values t nil))
+          ((null group) (values nil nil))
+          ((not (config-plist-p group)) (values t nil))
+          (t (let ((ms (getf group :duration-ms)))
+               (values (and (getf group :enabled t) t)
+                       (and (integerp ms) ms)))))))
+
+(defun animation-kind-enabled-p (kind)
+  "True when motion of KIND runs: (:animations :enabled) is on and
+KIND's own :enabled is not NIL. KIND NIL asks about the global switch
+alone."
+  (and (animations-enabled-p)
+       (or (null kind) (nth-value 0 (animation-kind-setting kind)))
+       t))
+
+(defun animation-kind-duration (kind)
+  "Milliseconds a glide of KIND lasts, never negative: KIND's own
+:duration-ms, else workspace-slide-duration for :workspace and
+animation-duration for every other kind."
+  (let ((own (nth-value 1 (animation-kind-setting kind))))
+    (cond (own (max 0 own))
+          ((eq kind :workspace) (workspace-slide-duration))
+          (t (animation-duration)))))
+
 (defun ease (name t*)
   "Easing functions over normalized T* in [0,1] → [0,1]. T* is
 coerced to a float first: SBCL's internal-real-time arithmetic is
@@ -72,16 +115,20 @@ error that corrupts the wire and gets the client terminated."
 (defun animations-running-p ()
   (plusp (hash-table-count *animations*)))
 
-(defun animation-start (win &key (from-x nil) (from-y nil)
+(defun animation-start (win &key kind (from-x nil) (from-y nil)
                                  (dx 0) (dy 0)
-                                 (duration (animation-duration))
+                                 (duration (if kind
+                                               (animation-kind-duration kind)
+                                               (animation-duration)))
                                  (easing (animation-easing)))
-  "Start animating WIN. Absolute mode (from-x/from-y given or
+  "Start animating WIN as motion of KIND (see *animation-kinds*), or of
+no kind when KIND is NIL. Absolute mode (from-x/from-y given or
 defaulted to the current rendered position) glides from there to
 whatever the next render pass computes; relative mode (dx/dy)
-decays an offset to zero. No-op when animations are disabled or
-the duration is zero — instant placement."
-  (when (and win (animations-enabled-p) (plusp duration))
+decays an offset to zero. DURATION defaults to KIND's resolved
+duration. No-op when KIND is switched off (animation-kind-enabled-p)
+or the duration is zero: instant placement."
+  (when (and win (animation-kind-enabled-p kind) (plusp duration))
     (incf *animation-started-count*)
     (setf (gethash win *animations*)
           (list :mode (cond ((or from-x from-y) :absolute)
@@ -90,6 +137,7 @@ the duration is zero — instant placement."
                             ((or (plusp (abs dx)) (plusp (abs dy)))
                              :relative)
                             (t :absolute))
+                :kind kind
                 :from-x (or from-x (window-x win))
                 :from-y (or from-y (window-y win))
                 :dx dx

@@ -1446,6 +1446,21 @@ workspace slide lasts =:workspace-duration-ms= milliseconds, and every
 other glide lasts =:duration-ms=. A duration of 0 moves windows with no
 glide.
 
+Each kind of motion has its own switch: =:workspace= for the slide,
+=:expose= for the expose grid, and =:float= for floating windows. A
+kind group takes =:enabled= and an optional =:duration-ms= that
+overrides the global duration for that kind alone:
+
+#+begin_src lisp
+;; no slide on a workspace switch; expose and floats still glide
+(rhizome:configure '(:animations (:workspace (:enabled nil))))
+;; a quicker expose
+(rhizome:configure '(:animations (:expose (:duration-ms 120))))
+#+end_src
+
+=(:animations :enabled)= set to =nil= turns every kind off, whatever
+the kind groups say.
+
 * Sessions
 
 ** Locking

@@ -96,9 +96,9 @@ layout. Returns T if there was anything to expose."
             (frame-remove-window win)
             ;; Glide from the window's current rendered position
             ;; into its grid slot (expose-begin knows both)
-            (when (animations-enabled-p)
-              (animation-start win :from-x (window-x win)
-                                      :from-y (window-y win)))
+            (animation-start win :kind :expose
+                                 :from-x (window-x win)
+                                 :from-y (window-y win))
             (setf (window-floating-p win) t
                   (window-float-x win) x
                   (window-float-y win) y
@@ -117,9 +117,9 @@ PICKED (the pre-expose focus by default)."
                               fx fy fw fh)
                             save
           ;; Glide back out of the grid slot to the restored position
-          (when (animations-enabled-p)
-            (animation-start win :from-x (window-x win)
-                                    :from-y (window-y win)))
+          (animation-start win :kind :expose
+                               :from-x (window-x win)
+                               :from-y (window-y win))
           (setf (window-floating-p win) was-float
                 (window-float-x win) fx
                 (window-float-y win) fy

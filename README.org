@@ -1408,8 +1408,16 @@ from old→new workspace index).
   '(:animations (:enabled t          ; default on
                 :duration-ms 200     ; every glide but the workspace slide
                 :workspace-duration-ms 160 ; workspace slide-ins
-                :easing :ease-out-cubic))) ; or :linear / :ease-in-out
+                :easing :ease-out-cubic   ; or :linear / :ease-in-out
+                ;; per-kind switches, each with an optional :duration-ms
+                :workspace (:enabled t)   ; workspace slide-ins
+                :expose (:enabled t)      ; expose grid in and out
+                :float (:enabled t))))    ; float, move, unfloat, maximize
 #+end_src
+
+A kind's own =:duration-ms= overrides the global duration for that
+kind; unset, the slide takes =:workspace-duration-ms= and the other
+kinds =:duration-ms=. =:enabled nil= at the top turns every kind off.
 
 What glides today: workspace switches (MOD+N), expose (C-t
 Return) in and out, floating at an explicit position

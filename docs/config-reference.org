@@ -271,17 +271,33 @@ The =:placement= list is replaced whole by each =configure= call.
 
 * :animations
 
-Replaced whole by each =configure= call.
+Merged key by key, including the per-kind groups.
 
 | Key                      | Type         | Default           | Applies | Effect                                                                    |
 |--------------------------+--------------+-------------------+---------+---------------------------------------------------------------------------|
-| =:enabled=               | boolean      | =t=               | live    | Animate window movement.                                                  |
+| =:enabled=               | boolean      | =t=               | live    | Animate window movement. =nil= turns every kind off.                      |
 | =:duration-ms=           | milliseconds | =200=             | live    | Length of a glide: expose, floats, maximize, and a return to the tiling.  |
 | =:workspace-duration-ms= | milliseconds | =160=             | live    | Length of the slide-in on a workspace switch. =0= switches with no slide. |
 | =:easing=                | keyword      | =:ease-out-cubic= | live    | =:ease-out-cubic=, =:linear=, or =:ease-in-out=.                          |
+| =:workspace=             | group        | =(:enabled t)=    | live    | The slide-in on a workspace switch.                                       |
+| =:expose=                | group        | =(:enabled t)=    | live    | Windows gliding into and out of the expose grid.                          |
+| =:float=                 | group        | =(:enabled t)=    | live    | Floating windows gliding on float, move, unfloat, and maximize.           |
+
+Each kind group takes these keys:
+
+| Key            | Type         | Default | Effect                                                                                                    |
+|----------------+--------------+---------+-----------------------------------------------------------------------------------------------------------|
+| =:enabled=     | boolean      | =t=     | =nil= turns this kind off and leaves the others on.                                                       |
+| =:duration-ms= | milliseconds | unset   | Length of this kind's glide. Unset, the slide takes =:workspace-duration-ms= and the others =:duration-ms=. |
+
+=nil= in place of a kind group, as in =(:expose nil)=, also turns that
+kind off.
 
 #+begin_src lisp
 (rhizome:configure '(:animations (:enabled t :duration-ms 150 :easing :linear)))
+;; keep the workspace slide, glide floats faster, and drop expose motion
+(rhizome:configure '(:animations (:float (:duration-ms 120)
+                                  :expose (:enabled nil))))
 #+end_src
 
 * :window-rules

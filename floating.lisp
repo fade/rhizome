@@ -50,9 +50,10 @@ and maximize ride this). QUIET suppresses the \"floated\" message."
       ;; Already floating: an explicit reposition glides from the
       ;; current rendered position to the target
       (when (or x y)
-        (when (and animate (animations-enabled-p))
-          (animation-start win :from-x (window-x win)
-                                  :from-y (window-y win)))
+        (when animate
+          (animation-start win :kind :float
+                               :from-x (window-x win)
+                               :from-y (window-y win)))
         (when x (setf (window-float-x win) x))
         (when y (setf (window-float-y win) y))
         (message "moved: ~A" (or (window-title win)
@@ -79,9 +80,10 @@ and maximize ride this). QUIET suppresses the \"floated\" message."
                   (window-frame win) nil)))
         ;; First float at an explicit position glides from the
         ;; tiling position; keeping geometry is instant
-        (when (and animate (or x y) (animations-enabled-p))
-          (animation-start win :from-x (window-x win)
-                                  :from-y (window-y win)))
+        (when (and animate (or x y))
+          (animation-start win :kind :float
+                               :from-x (window-x win)
+                               :from-y (window-y win)))
         (unless quiet
           (message "floated: ~A" (or (window-title win)
                                      (window-app-id win) "window")))
@@ -102,9 +104,9 @@ places WIN as a new window, in the frame the placement policy picks."
         (window-maximize-prev win) nil)
   (place-retiled-window win)
   ;; Glide back to wherever the tiling places it
-  (when (animations-enabled-p)
-    (animation-start win :from-x (window-x win)
-                            :from-y (window-y win)))
+  (animation-start win :kind :float
+                       :from-x (window-x win)
+                       :from-y (window-y win))
   (message "tiled: ~A" (or (window-title win) (window-app-id win) "window"))
   (request-manage-dirty))
 

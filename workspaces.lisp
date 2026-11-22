@@ -119,13 +119,13 @@ seat focused on a window of OUTPUT has its focus cleared."
     ;; math is untouched; the animation decays the offset to zero.
     ;; Floating windows glide too: the float render path runs the
     ;; same animation-apply (and its clip math) as the tiling.
-    (when (and (animations-enabled-p) old-workspace)
+    (when (and (animation-kind-enabled-p :workspace) old-workspace)
       (let ((dir (if (> workspace old-workspace) 1 -1))
             (slide (output-width output)))
         (dolist (win (windows-on-workspace output workspace))
           (unless (window-minimized-p win)
-            (animation-start win :dx (- (* dir slide))
-                                    :duration (workspace-slide-duration))))))
+            (animation-start win :kind :workspace
+                                 :dx (- (* dir slide)))))))
     (format t "~&; Rhizome: switched to workspace ~D~%" workspace)
     (message "workspace ~A" (workspace-label output workspace))
     (run-hook :workspace-changed workspace output)
