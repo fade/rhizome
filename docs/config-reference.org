@@ -301,6 +301,9 @@ portal's =SettingChanged= signal afterwards. A value of 1 turns every
 kind of motion off. An absent key, no portal, or no session bus counts
 as no preference.
 
+The =toggle-animations= command flips =:enabled= at run time, until the
+config is next loaded.
+
 #+begin_src lisp
 (rhizome:configure '(:animations (:enabled t :duration-ms 150 :easing :linear)))
 ;; keep the workspace slide, glide floats faster, and drop expose motion

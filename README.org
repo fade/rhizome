@@ -1421,7 +1421,8 @@ from old→new workspace index).
 A kind's own =:duration-ms= overrides the global duration for that
 kind; unset, the slide takes =:workspace-duration-ms= and the other
 kinds =:duration-ms=. =:enabled nil= at the top turns every kind off,
-and so does reduced motion while it is in effect.
+and so does reduced motion while it is in effect. =rhizome-cmd
+toggle-animations= flips =:enabled= until the config is next loaded.
 
 What glides today: workspace switches (MOD+N), expose (C-t
 Return) in and out, floating at an explicit position

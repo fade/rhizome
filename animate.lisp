@@ -110,6 +110,19 @@ animation-duration for every other kind."
           ((eq kind :workspace) (workspace-slide-duration))
           (t (animation-duration)))))
 
+(defun toggle-animations ()
+  "Flip (:animations :enabled) in *config*, keeping every other key, and
+return a reply naming the new state: \"animations on\", \"animations
+off\", or \"animations on (reduced motion in effect)\". The change lasts
+until a configure call sets (:animations :enabled) or the config is
+reloaded."
+  (let ((on (not (animations-enabled-p))))
+    (setf *config* (merge-plist *config*
+                                (list :animations (list :enabled on))))
+    (cond ((not on) "animations off")
+          ((reduced-motion-p) "animations on (reduced motion in effect)")
+          (t "animations on"))))
+
 (defun ease (name t*)
   "Easing functions over normalized T* in [0,1] → [0,1]. T* is
 coerced to a float first: SBCL's internal-real-time arithmetic is

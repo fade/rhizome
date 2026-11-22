@@ -689,6 +689,15 @@ follows it."
   (toggle-bar)
   "ok")
 
+(define-command :toggle-animations (output args)
+  "Turn window motion off, or back on, until the config is next loaded.
+Replies with the new state, and notes when reduced motion keeps motion
+off."
+  (declare (ignore output args))
+  (let ((reply (toggle-animations)))
+    (message "~A" reply)
+    reply))
+
 (define-command :set-theme (output args)
   "Switch to the theme NAME; the WM and the bar redraw in its colours.
 Usage: set-theme <name>"

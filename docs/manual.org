@@ -1048,6 +1048,7 @@ The same commands run from the command palette.
 | =disable-minor-mode=                                              | NAME      | Disable a minor mode.                                                                                   |
 | =list-minor-modes=                                                |           | Reply with the enabled minor modes.                                                                     |
 | =toggle-bar=                                                      |           | Hide or show the bar.                                                                                   |
+| =toggle-animations=                                               |           | Turn window motion off or back on until the config is next loaded.                                      |
 | =display-menu=                                                    |           | Open the display menu.                                                                                  |
 | =tray-show-menu=                                                  | ...       | Open a tray item's menu. The bar sends this command.                                                    |
 | =scratchpad=                                                      | [NAME]    | Show or hide the named scratchpad, or =term= with no name; =list= lists them.                           |
@@ -1475,6 +1476,13 @@ portal or session bus answers, motion stays as configured.
 ;; nil ignores the desktop
 (rhizome:configure '(:animations (:reduced-motion t)))
 #+end_src
+
+*** Turning motion off at run time
+
+=rhizome-cmd toggle-animations= flips =(:animations :enabled)= and
+replies with the new state. The change lasts until the config is next
+loaded. While reduced motion is in effect, the reply says so and motion
+stays off.
 
 * Sessions
 

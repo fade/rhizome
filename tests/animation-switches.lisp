@@ -146,7 +146,30 @@
         (ok "expose restore: an :expose glide at its own duration"
             (list (getf anim :kind) (ms anim)) '(:expose 120)))
       (ok "expose restore with expose glides off: no glide"
-          (expose-back '(:expose (:enabled nil))) nil)))
+          (expose-back '(:expose (:enabled nil))) nil))
+
+    ;; --- the run-time toggle ---
+
+    (let ((*desktop-reduced-motion* nil))
+      (use '(:duration-ms 90 :float (:enabled nil)))
+      (ok "toggle-animations: on to off"
+          (list (execute-command nil :toggle-animations nil)
+                (animations-enabled-p))
+          '("animations off" nil))
+      (ok "toggle-animations: off to on"
+          (list (execute-command nil :toggle-animations nil)
+                (animations-enabled-p))
+          '("animations on" t))
+      (ok "toggle-animations keeps the other :animations keys"
+          (list (animation-duration) (animation-kind-enabled-p :float))
+          '(90 nil))
+      (use '(:reduced-motion t))
+      (execute-command nil :toggle-animations nil)
+      (ok "toggle-animations under reduced motion says so"
+          (execute-command nil :toggle-animations nil)
+          "animations on (reduced motion in effect)")
+      (ok "toggle-animations has command help"
+          (and (gethash :toggle-animations *command-docs*) t) t)))
 
   (format t "~&=== ~D passed, ~D failed ===~%" pass fail)
   (uiop:quit (if (zerop fail) 0 1)))
