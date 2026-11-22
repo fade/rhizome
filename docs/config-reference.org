@@ -282,6 +282,7 @@ Merged key by key, including the per-kind groups.
 | =:workspace=             | group        | =(:enabled t)=    | live    | The slide-in on a workspace switch.                                       |
 | =:expose=                | group        | =(:enabled t)=    | live    | Windows gliding into and out of the expose grid.                          |
 | =:float=                 | group        | =(:enabled t)=    | live    | Floating windows gliding on float, move, unfloat, and maximize.           |
+| =:reduced-motion=        | keyword      | =:follow=         | live    | =:follow= turns motion off while the desktop asks for reduced motion; =t= always does; =nil= ignores the desktop. |
 
 Each kind group takes these keys:
 
@@ -292,6 +293,13 @@ Each kind group takes these keys:
 
 =nil= in place of a kind group, as in =(:expose nil)=, also turns that
 kind off.
+
+Under =:follow=, the window manager reads the =reduced-motion= key of
+the =org.freedesktop.appearance= namespace from the settings portal
+(=org.freedesktop.portal.Settings=) when it starts, and follows the
+portal's =SettingChanged= signal afterwards. A value of 1 turns every
+kind of motion off. An absent key, no portal, or no session bus counts
+as no preference.
 
 #+begin_src lisp
 (rhizome:configure '(:animations (:enabled t :duration-ms 150 :easing :linear)))

@@ -180,7 +180,12 @@ Returns (values value found-p)."
                  :expose (:enabled t)
                  ;; floating windows gliding on float, move, unfloat,
                  ;; and maximize
-                 :float (:enabled t))
+                 :float (:enabled t)
+                 ;; :follow turns every kind off while the desktop
+                 ;; asks for reduced motion (the settings portal's
+                 ;; org.freedesktop.appearance reduced-motion); t
+                 ;; always reduces; nil ignores the desktop
+                 :reduced-motion :follow)
     :window-state (:enabled t
                    ;; Remember identifier-based window placements
                    ;; across WM restarts (river v4 identifiers)

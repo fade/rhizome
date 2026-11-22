@@ -19,10 +19,12 @@
 ;;;                       :easing :ease-out-cubic
 ;;;                       :workspace (:enabled t)
 ;;;                       :expose (:enabled t)
-;;;                       :float (:enabled t)))
+;;;                       :float (:enabled t)
+;;;                       :reduced-motion :follow))
 ;;; Each motion kind (*animation-kinds*) has its own :enabled and an
 ;;; optional :duration-ms; see animation-kind-enabled-p and
-;;; animation-kind-duration.
+;;; animation-kind-duration. Reduced motion (reduced-motion-p) turns
+;;; every kind off.
 ;;; Easing: :linear, :ease-out-cubic (default), :ease-in-out.
 
 (in-package #:rhizome)
@@ -61,6 +63,22 @@ millisecond, so animations work off INTERNAL-REAL-TIME."
 into and out of the expose grid; :float, floating windows gliding on
 float, move, unfloat, and maximize.")
 
+(defvar *desktop-reduced-motion* nil
+  "True when the desktop asks for reduced motion: the settings portal's
+org.freedesktop.appearance reduced-motion key is 1. Set by
+reduced-motion.lisp; NIL when the key is absent or unread.")
+
+(defun reduced-motion-p ()
+  "True when reduced motion is in effect. (:animations :reduced-motion)
+T always reduces, NIL never does, and :follow (the default, and any
+other value) follows *desktop-reduced-motion*."
+  (let ((setting (config-getf '(:animations) :reduced-motion
+                              :default :follow)))
+    (case setting
+      ((t) t)
+      ((nil) nil)
+      (otherwise (and *desktop-reduced-motion* t)))))
+
 (defun animation-kind-setting (kind)
   "KIND's group under :animations as (VALUES ENABLED DURATION-MS).
 ENABLED is NIL when the group is NIL or sets :enabled NIL, else T.
@@ -75,10 +93,11 @@ not an integer."
                        (and (integerp ms) ms)))))))
 
 (defun animation-kind-enabled-p (kind)
-  "True when motion of KIND runs: (:animations :enabled) is on and
-KIND's own :enabled is not NIL. KIND NIL asks about the global switch
-alone."
+  "True when motion of KIND runs: (:animations :enabled) is on, reduced
+motion is not in effect (reduced-motion-p), and KIND's own :enabled is
+not NIL. KIND NIL asks about the global switches alone."
   (and (animations-enabled-p)
+       (not (reduced-motion-p))
        (or (null kind) (nth-value 0 (animation-kind-setting kind)))
        t))
 

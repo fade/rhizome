@@ -40,6 +40,7 @@
    (:file "dbus" :depends-on ("wm-protocol" "config"))
    (:file "font" :depends-on ("package" "config"))
    (:file "tray" :depends-on ("dbus"))
+   (:file "reduced-motion" :depends-on ("dbus" "animate"))
    (:file "keys" :depends-on ("package"))
    (:file "keymap" :depends-on ("keys"))
    (:file "keybindings" :depends-on ("tiling" "keymap"))

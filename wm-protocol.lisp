@@ -743,6 +743,8 @@ queues that nothing wakes it for."
       (when (config-getf '(:ipc) :enabled :default t)
         (start-ipc-server))
       (start-slynk)
+      ;; The desktop's reduced-motion setting, read off the main thread
+      (reduced-motion-start)
 
       ;; Main event loop: poll the compositor socket and drain the IPC
       ;; queue so IPC commands execute on this (main) thread
@@ -762,6 +764,7 @@ queues that nothing wakes it for."
              (message-drain)
              (prompt-drain)
              (prefix-drain)
+             (reduced-motion-drain)
              (if (and *wm-proxy* (animations-running-p))
                  ;; Animating: start a frame at most once per
                  ;; interval, measured from the previous frame's

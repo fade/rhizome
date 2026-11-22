@@ -96,14 +96,14 @@
                ;; Switch an output from workspace 1 to 2; return the
                ;; window's animation plist, or NIL
                (use animations)
-               (let* ((*animations* (make-hash-table))
-                      (*windows* (make-hash-table))
-                      (*output-workspace* (make-hash-table))
-                      (*window-workspace* (make-hash-table))
-                      (out (make-instance 'rhizome-output :proxy :asw-out
-                                          :width 1920 :height 1080))
-                      (win (make-instance 'rhizome-window
-                                          :proxy :asw-win)))
+               (let ((*animations* (make-hash-table))
+                     (*windows* (make-hash-table))
+                     (*output-workspace* (make-hash-table))
+                     (*window-workspace* (make-hash-table))
+                     (out (make-instance 'rhizome-output :proxy :asw-out
+                                         :width 1920 :height 1080))
+                     (win (make-instance 'rhizome-window
+                                         :proxy :asw-win)))
                  (setf (gethash :asw-win *windows*) win
                        (window-output win) out
                        (gethash out *output-workspace*) 1)

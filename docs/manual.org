@@ -1461,6 +1461,21 @@ overrides the global duration for that kind alone:
 =(:animations :enabled)= set to =nil= turns every kind off, whatever
 the kind groups say.
 
+*** Reduced motion
+
+By default rhizome follows the desktop's reduced-motion setting: the
+=reduced-motion= key of =org.freedesktop.appearance=, published by the
+settings portal. The window manager reads it at start and again each
+time the portal reports a change. While the desktop asks for reduced
+motion, every kind of motion is off. When the key is absent, or no
+portal or session bus answers, motion stays as configured.
+
+#+begin_src lisp
+;; :follow (the default) follows the desktop; t always reduces motion;
+;; nil ignores the desktop
+(rhizome:configure '(:animations (:reduced-motion t)))
+#+end_src
+
 * Sessions
 
 ** Locking
