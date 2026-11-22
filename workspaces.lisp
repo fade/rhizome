@@ -79,13 +79,21 @@ every unconfigured one."
   "Stamp WIN as belonging to WORKSPACE."
   (setf (gethash win *window-workspace*) workspace))
 
+(defvar *map-focus-refused* nil
+  "A window that takes no focus from the workspace switch now running:
+the newly mapped window of a :focus nil rule with :follow. Bound, never
+set.")
+
 (defun workspace-focus-target (output workspace)
   "The window that takes focus when OUTPUT shows WORKSPACE, or NIL when
 the workspace has no unminimized window. The window last focused there
 wins while it is registered, unminimized, and still on OUTPUT and
 WORKSPACE; otherwise the unminimized window there with the highest
-registration number (the newest)."
-  (let ((wins (remove-if #'window-minimized-p
+registration number (the newest). *MAP-FOCUS-REFUSED* is never the
+target."
+  (let ((wins (remove-if (lambda (win)
+                           (or (window-minimized-p win)
+                               (eq win *map-focus-refused*)))
                          (windows-on-workspace output workspace)))
         (last (gethash (cons output workspace) *workspace-last-focus*)))
     (cond ((and last
@@ -300,7 +308,15 @@ showing; a :workspace outside that range is ignored. On a workspace
 its output is not showing, a tiled window joins that workspace's frame
 tree hidden and focus stays put; :follow switches the output there and
 focuses the window. :raw T puts the window in raw mode (see
-toggle-raw-mode)."
+toggle-raw-mode).
+:focus NIL places the window as the rest of the rule says but gives it
+no keyboard focus on map, provided the client names itself before its
+first manage pass: the pending autofocus is dropped, and with
+:follow the output switches and focus goes where a workspace switch
+sends it, never to WIN. With :raw T, the raw key grabs start only
+once WIN has focus.
+Explicit focus later (a click, a focus command) still reaches WIN.
+An absent :focus, or :focus T, leaves focus behaviour unchanged."
   (when (gethash win *window-rules-applied*)
     (return-from apply-window-rules nil))
   (dolist (rule (window-rules))
@@ -311,7 +327,8 @@ toggle-raw-mode)."
             (follow (getf rule :follow))
             (float (getf rule :float))
             (fullscreen (getf rule :fullscreen))
-            (output-index (getf rule :output)))
+            (output-index (getf rule :output))
+            (no-focus (null (getf rule :focus t))))
         (when (getf rule :raw)
           (set-window-raw-state win :raw))
         (when float
@@ -360,9 +377,12 @@ toggle-raw-mode)."
         (when layout
           (apply-window-rule-layout win (find-layout-symbol layout)))
         (when (and follow workspace)
-          (let ((out (or (window-output win) (find-output-for-window win))))
+          (let ((out (or (window-output win) (find-output-for-window win)))
+                (*map-focus-refused* (and no-focus win)))
             (when out
               (switch-workspace workspace out))))
+        (when (and no-focus (eq *pending-autofocus* win))
+          (setf *pending-autofocus* nil))
         (request-manage-dirty)
         (format t "~&; Rhizome: window rule ~S applied to ~A~%"
                 rule (or (window-app-id win) (window-title win) win))
