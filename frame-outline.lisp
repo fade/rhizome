@@ -24,14 +24,18 @@
 ;;;
 ;;; Settings, under :theme:
 ;;;   :frame-outline        T (the default) draws the outline, NIL
-;;;                         turns it off
+;;;                         turns off both rings
 ;;;   :frame-outline-empty  NIL gives a focused frame that shows no
 ;;;                         window the :frame-outline colour
-;;;   :frame-outline-width  ring width in px (default 2; 0 is off)
+;;;   :frame-outline-width  ring width in px for a focused frame that
+;;;                         shows a window (default 2; 0 turns that
+;;;                         ring off)
 ;;;   :frame-outline-empty-width
 ;;;                         ring width in px for a focused frame that
-;;;                         shows no window (default 1), or NIL (the
-;;;                         :frame-outline-width)
+;;;                         shows no window (default 1; 0 turns that
+;;;                         ring off). NIL, or any value that is not a
+;;;                         non-negative integer, takes
+;;;                         :frame-outline-width
 ;;; Colours, theme elements: :frame-outline (follows the focused window
 ;;; border) and :frame-outline-empty (follows the :warning role).
 
@@ -46,16 +50,23 @@
 
 (defun frame-outline-style (&optional empty-p)
   "The ring colour and width as (VALUES R G B WIDTH), or NIL when the
-outline is off. The colour is the :frame-outline theme element, or for
+ring is off. The colour is the :frame-outline theme element, or for
 EMPTY-P the :frame-outline-empty element; (:theme :frame-outline-empty)
-set to NIL gives an empty frame the :frame-outline colour. The width is
-(:theme :frame-outline-empty-width) for EMPTY-P when it is a positive
-integer, otherwise :frame-outline-width."
-  (let ((on (config-getf '(:theme) :frame-outline :default t))
-        (width (config-getf '(:theme) :frame-outline-width :default 2))
-        (empty-width (config-getf '(:theme) :frame-outline-empty-width
-                                  :default 1)))
-    (when (and on (integerp width) (plusp width))
+set to NIL gives an empty frame the :frame-outline colour. WIDTH is the
+resolved width of the ring. For the ring around a frame that shows a
+window it is (:theme :frame-outline-width). For EMPTY-P it is
+(:theme :frame-outline-empty-width) when that is a non-negative integer,
+otherwise :frame-outline-width. A ring whose resolved width is not a
+positive integer is off; (:theme :frame-outline) NIL turns both off."
+  (let* ((on (config-getf '(:theme) :frame-outline :default t))
+         (width (config-getf '(:theme) :frame-outline-width :default 2))
+         (empty-width (config-getf '(:theme) :frame-outline-empty-width
+                                   :default 1))
+         (ring-width (if (and empty-p (integerp empty-width)
+                              (not (minusp empty-width)))
+                         empty-width
+                         width)))
+    (when (and on (integerp ring-width) (plusp ring-width))
       (multiple-value-bind (r g b)
           (theme-rgb (if (and empty-p
                               (multiple-value-bind (value foundp)
@@ -63,10 +74,7 @@ integer, otherwise :frame-outline-width."
                                 (or value (not foundp))))
                          :frame-outline-empty
                          :frame-outline))
-        (values r g b
-                (if (and empty-p (integerp empty-width) (plusp empty-width))
-                    empty-width
-                    width))))))
+        (values r g b ring-width)))))
 
 ;;; --- Target ---
 
@@ -93,14 +101,16 @@ fullscreen window."
 
 (defun frame-outline-target ()
   "Where the outline goes: (VALUES OUTPUT FRAME X Y W H), the frame in
-global coordinates, or NIL when no outline shows."
+global coordinates, or NIL when no outline shows, including when the
+ring for that frame (empty or showing a window) is off."
   (let ((output (frame-outline-output)))
-    (when (and output (frame-outline-style))
+    (when output
       (let ((workspace (current-workspace output)))
         (unless (frame-outline-hidden-p output workspace)
           (let ((frame (current-frame-for output workspace)))
             (when (and (plusp (frame-width frame))
-                       (plusp (frame-height frame)))
+                       (plusp (frame-height frame))
+                       (frame-outline-style (frame-outline-empty-p frame)))
               (values output frame
                       (+ (output-x output) (frame-x frame))
                       (+ (output-y output) (frame-y frame)

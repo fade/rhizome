@@ -27,7 +27,7 @@ SUITES    := animations decorations surface window-rules window-rules-reload flo
              client-fullscreen multi-head frame-adoption \
              bar-per-output prefix-capture-output display-layout \
              mouse-focus config-merge border-colours \
-             display-brightness frame-outline titlebars \
+             display-brightness frame-outline frame-outline-gating titlebars \
              unfloat-placement float-centring dialog-placement fselect focus-empty-frames \
              bindings-overridable modules \
              command-table active-screen bar-adoption \
