@@ -273,11 +273,12 @@ The =:placement= list is replaced whole by each =configure= call.
 
 Replaced whole by each =configure= call.
 
-| Key            | Type         | Default           | Applies | Effect                                                                |
-|----------------+--------------+-------------------+---------+-----------------------------------------------------------------------|
-| =:enabled=     | boolean      | =t=               | live    | Animate window movement.                                              |
-| =:duration-ms= | milliseconds | =200=             | live    | Length of a glide. The workspace slide always lasts 160 milliseconds. |
-| =:easing=      | keyword      | =:ease-out-cubic= | live    | =:ease-out-cubic=, =:linear=, or =:ease-in-out=.                      |
+| Key                      | Type         | Default           | Applies | Effect                                                                    |
+|--------------------------+--------------+-------------------+---------+---------------------------------------------------------------------------|
+| =:enabled=               | boolean      | =t=               | live    | Animate window movement.                                                  |
+| =:duration-ms=           | milliseconds | =200=             | live    | Length of a glide: expose, floats, maximize, and a return to the tiling.  |
+| =:workspace-duration-ms= | milliseconds | =160=             | live    | Length of the slide-in on a workspace switch. =0= switches with no slide. |
+| =:easing=                | keyword      | =:ease-out-cubic= | live    | =:ease-out-cubic=, =:linear=, or =:ease-in-out=.                          |
 
 #+begin_src lisp
 (rhizome:configure '(:animations (:enabled t :duration-ms 150 :easing :linear)))

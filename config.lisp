@@ -161,7 +161,10 @@ Returns (values value found-p)."
               ;; labels close; nil waits until a key arrives
               )
     :animations (:enabled t
+                 ;; length of a glide: every glide but the workspace slide
                  :duration-ms 200
+                 ;; length of the slide-in on a workspace switch
+                 :workspace-duration-ms 160
                  ;; :easing :ease-out-cubic (default) | :linear |
                  ;; :ease-in-out — window glide: workspace slide-ins,
                  ;; expose gliding into the grid, float/maximize

@@ -40,6 +40,11 @@ real time directly. Tests bind it to freeze or step time.")
 millisecond, so animations work off INTERNAL-REAL-TIME."
   (max 0 (config-getf '(:animations) :duration-ms :default 200)))
 
+(defun workspace-slide-duration ()
+  "Milliseconds a workspace switch slides for: (:animations
+:workspace-duration-ms), 160 when unset. Independent of :duration-ms."
+  (max 0 (config-getf '(:animations) :workspace-duration-ms :default 160)))
+
 (defun animation-easing ()
   (config-getf '(:animations) :easing :default :ease-out-cubic))
 

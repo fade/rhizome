@@ -1406,7 +1406,8 @@ from old→new workspace index).
 #+begin_src lisp
 (rhizome:configure
   '(:animations (:enabled t          ; default on
-                :duration-ms 200     ; per transition
+                :duration-ms 200     ; every glide but the workspace slide
+                :workspace-duration-ms 160 ; workspace slide-ins
                 :easing :ease-out-cubic))) ; or :linear / :ease-in-out
 #+end_src
 

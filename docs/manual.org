@@ -1437,11 +1437,14 @@ position, as when they maximize.
 #+begin_src lisp
 (rhizome:configure '(:animations (:enabled t
                                   :duration-ms 200
+                                  :workspace-duration-ms 160
                                   :easing :ease-out-cubic)))
 #+end_src
 
 =:easing= is =:ease-out-cubic=, =:linear=, or =:ease-in-out=. The
-workspace slide lasts 160 milliseconds whatever =:duration-ms= says.
+workspace slide lasts =:workspace-duration-ms= milliseconds, and every
+other glide lasts =:duration-ms=. A duration of 0 moves windows with no
+glide.
 
 * Sessions
 
