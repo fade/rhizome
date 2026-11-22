@@ -584,6 +584,27 @@ internals (%WL-DISPLAY-SOCKET and the wire %FD)."
                  (or (null fd) (socket-fd-at-eof-p fd))))
         (wl:wl-socket-error () t))))
 
+(defun wait-for-fd-input (fd seconds)
+  "Block until FD is readable, at end-of-file, or hung up, or until
+SECONDS pass. Return true when FD became ready, NIL on timeout. An
+invalid FD waits out the full SECONDS."
+  (and (sb-sys:wait-until-fd-usable fd :input seconds nil) t))
+
+(defun wait-for-display-input (display seconds)
+  "Block until DISPLAY's compositor socket is readable, at end-of-file,
+or hung up, or until SECONDS pass. Return true when the socket became
+ready, NIL on timeout. With no socket on DISPLAY, sleep SECONDS and
+return NIL. Callers keep SECONDS short: the main loop also drains
+queues that nothing wakes it for."
+  (let ((fd (and (typep display 'wl:wl-display)
+                 (ignore-errors
+                  (slot-value
+                   (xyz.shunter.wayflan.client::%wl-display-socket display)
+                   'xyz.shunter.wayflan.wire::%fd)))))
+    (if (integerp fd)
+        (wait-for-fd-input fd seconds)
+        (progn (sleep seconds) nil))))
+
 (defun run ()
   "Start the rhizome window manager. Connects to the running river compositor."
   (setf *running* t
@@ -745,7 +766,7 @@ internals (%WL-DISPLAY-SOCKET and the wire %FD)."
                  ;; gets a smooth sequence cadence
                  (sleep 1/60)
                  (unless (wl:wl-display-listen display)
-                   (sleep 0.05))))
+                   (wait-for-display-input display 0.05))))
         (format t "~&; Rhizome: shutting down~%")
         ;; A detach hands the bar to the successor; everything else
         ;; stops it with the WM
