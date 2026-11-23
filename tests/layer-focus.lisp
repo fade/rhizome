@@ -150,7 +150,8 @@
               (plusp manage-requests)
               t)
           (ok "focus_none is logged"
-              (and (search "layer shell focus none" text) t)
+              (and (search "[focus]" text)
+                   (search " layer-none " text) t)
               t)
           (ok "focus_none leaves the seat focus unchanged"
               (list (proxy-of (seat-focused-window seat))
@@ -171,7 +172,8 @@
         (declare (ignore seat))
         (let ((text (deliver ls 0)))
           (ok "focus_exclusive is logged"
-              (and (search "layer shell exclusive focus" text) t)
+              (and (search "[focus]" text)
+                   (search " layer-exclusive " text) t)
               t)
           (ok "focus_exclusive queues no focus request"
               (list (pending) manage-requests)
@@ -182,7 +184,8 @@
         (declare (ignore seat))
         (let ((text (deliver ls 1)))
           (ok "focus_non_exclusive is logged"
-              (and (search "layer shell non-exclusive focus" text) t)
+              (and (search "[focus]" text)
+                   (search " layer-non-exclusive " text) t)
               t)
           (ok "focus_non_exclusive queues no focus request"
               (list (pending) manage-requests)

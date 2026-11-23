@@ -307,6 +307,76 @@ synchronous stdout writes at 60fps are real CPU and I/O. Turn on
 with (:debug (:events t)) when diagnosing."
   (config-getf '(:debug) :events :default nil))
 
+;;; --- Focus log --
+;;;
+;;; One stamped [focus] line per event, including each keyboard focus
+;;; change, focus request sent, layer shell focus event, WM keyboard
+;;; enter or leave, pointer enter or leave, and window map, close,
+;;; hide, show, or fullscreen change. Never per frame or per manage
+;;; pass. On by default; (:debug (:focus nil)) turns it off.
+
+(defvar *focus-cause* :unspecified
+  "Why the focus change in progress happens: :key, :pointer, :map,
+:reassert, :workspace-switch, :close, :command, or
+:unspecified. Bound by the code that moves keyboard focus and reported
+in [focus] lines.")
+
+(defun focus-log-p ()
+  "True when [focus] lines are written: (:debug (:focus nil)) turns
+them off; they are on by default."
+  (config-getf '(:debug) :focus :default t))
+
+(defun focus-log-timestamp ()
+  "Return the current UTC time as an ISO-8601 string with milliseconds,
+such as 2026-11-22T23:35:01.123Z."
+  (multiple-value-bind (seconds microseconds) (sb-ext:get-time-of-day)
+    (multiple-value-bind (s m h day month year)
+        (decode-universal-time
+         (+ seconds (encode-universal-time 0 0 0 1 1 1970 0)) 0)
+      (format nil "~4,'0D-~2,'0D-~2,'0DT~2,'0D:~2,'0D:~2,'0D.~3,'0DZ"
+              year month day h m s (floor microseconds 1000)))))
+
+(defun focus-log-proxy-id (proxy)
+  "Return PROXY's Wayland object id, - when it has none, or PROXY
+itself when it is not a wl-proxy."
+  (if (typep proxy 'wl:wl-proxy)
+      (handler-case (wl:wl-proxy-id proxy)
+        (unbound-slot () "-"))
+      proxy))
+
+(defun focus-log-window (win)
+  "Return WIN as a [focus] value, ID:APP-ID:\"TITLE\", or none for NIL.
+A missing app-id prints as -; a title over 40 characters is cut."
+  (if (null win)
+      "none"
+      (let ((title (or (window-title win) "")))
+        (format nil "~(~A~):~A:~S"
+                (focus-log-proxy-id (window-proxy win))
+                (or (window-app-id win) "-")
+                (if (> (length title) 40)
+                    (concatenate 'string (subseq title 0 40) "...")
+                    title)))))
+
+(defun focus-log-seat (seat)
+  "Return SEAT as a [focus] value: its wl_seat global name, else -."
+  (or (and seat (seat-wl-seat-name seat)) "-"))
+
+(defun focus-log (event &rest fields)
+  "Write one [focus] line: the stamp, EVENT, then FIELDS, a plist
+written as key=value with symbol values in lower case. A :flag field
+writes its value alone. Write nothing when focus-log-p is false."
+  (when (focus-log-p)
+    (format t "~&; Rhizome [focus] ~A ~A~{~A~}~%"
+            (focus-log-timestamp)
+            event
+            (loop for (key value) on fields by #'cddr
+                  for text = (if (symbolp value)
+                                 (string-downcase (symbol-name value))
+                                 value)
+                  collect (if (eq key :flag)
+                              (format nil " ~A" text)
+                              (format nil " ~(~A~)=~A" key text))))))
+
 (defun handle-wm-event (event-name &rest args)
   "Dispatch river_window_manager_v1 events."
   (when (debug-events-p)
@@ -471,7 +541,8 @@ the remaining steps still run."
         (setf *pending-autofocus* nil)
         (dolist (seat (all-seats))
           (format t "~&; Rhizome [debug]: auto-focusing window ~A on seat ~A~%" win seat)
-          (focus-window win seat)))))
+          (let ((*focus-cause* :map))
+            (focus-window win seat))))))
 
   ;; Hot-swap takeover: once every remembered window has
   ;; re-registered (or enough passes passed — windows closed during

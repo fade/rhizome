@@ -139,7 +139,8 @@ seat focused on a window of OUTPUT has its focus cleared."
     (run-hook :workspace-changed workspace output)
     ;; Focus the workspace's window; with none, no seat may keep a
     ;; window the output no longer shows
-    (let ((target (workspace-focus-target output workspace)))
+    (let ((target (workspace-focus-target output workspace))
+          (*focus-cause* :workspace-switch))
       (dolist (seat (all-seats))
         (cond (target
                (focus-window target seat))

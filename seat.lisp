@@ -108,7 +108,13 @@ a press on a float's titlebar starts a move)."
    (pointer-x      :initarg :pointer-x      :accessor seat-pointer-x :initform 0)
    (pointer-y      :initarg :pointer-y      :accessor seat-pointer-y :initform 0)
    (op-pending     :initarg :op-pending     :accessor seat-op-pending :initform nil)
-   (op-state       :initarg :op-state       :accessor seat-op-state :initform nil))
+   (op-state       :initarg :op-state       :accessor seat-op-state :initform nil)
+   (focus-sent     :accessor seat-focus-sent :initform nil
+                   :documentation "Window of the last focus_window sent, or
+NIL after clear_focus or a layer shell focus event.")
+   (pointer-window :accessor seat-pointer-window :initform nil
+                   :documentation "Window proxy of the last pointer_enter,
+or NIL after pointer_leave."))
   (:documentation "Represents an input seat managed by rhizome."))
 
 (defun handle-layer-shell-seat-event (event-name &rest args)
@@ -119,23 +125,31 @@ prefix capture is open it queues nothing: river hands the keyboard to
 the capture once it maps, and focusing the window first only delays
 that. :focus-exclusive and :focus-non-exclusive only log: river ignores focus
 requests while an exclusive surface holds the keyboard, and a request in
-the sequence that grants non-exclusive focus keeps it from the surface."
+the sequence that grants non-exclusive focus keeps it from the surface.
+Each event writes a [focus] line naming the focused window and clears
+every seat's last-sent window: river has moved the keyboard, so the
+next focus_window is no repeat."
   (declare (ignore args))
-  (case event-name
-    (:focus-exclusive
-     (format t "~&; Rhizome: layer shell exclusive focus~%"))
-    (:focus-non-exclusive
-     (format t "~&; Rhizome: layer shell non-exclusive focus~%"))
-    (:focus-none
-     (cond
-       ((prefix-capture-open-p)
-        (format t "~&; Rhizome: layer shell focus none, kept for the prefix capture~%"))
-       (t
-        (format t "~&; Rhizome: layer shell focus none~%")
-        (handler-case
-            (reassert-seat-focus)
-          (error (e)
-            (format t "~&; Rhizome: layer shell focus none failed: ~A~%" e))))))))
+  (let ((focused (focus-log-window (find-if #'window-focused-p (all-windows)))))
+    (when (member event-name '(:focus-exclusive :focus-non-exclusive :focus-none))
+      (dolist (seat (all-seats))
+        (setf (seat-focus-sent seat) nil)))
+    (case event-name
+      (:focus-exclusive
+       (focus-log "layer-exclusive" :focused focused))
+      (:focus-non-exclusive
+       (focus-log "layer-non-exclusive" :focused focused))
+      (:focus-none
+       (focus-log "layer-none" :focused focused)
+       (cond
+         ((prefix-capture-open-p)
+          (format t "~&; Rhizome: layer shell focus none, kept for the prefix capture~%"))
+         (t
+          (handler-case
+              (let ((*focus-cause* :reassert))
+                (reassert-seat-focus))
+            (error (e)
+              (format t "~&; Rhizome: layer shell focus none failed: ~A~%" e)))))))))
 
 (defun register-seat (proxy)
   "Register a new river_seat_v1 proxy and set up event handlers."
@@ -285,6 +299,14 @@ because the motion that sequence reports may predate the move."
         (pointer-focus-put seat :y y)
         (pointer-focus-put seat :focus (seat-focused-window seat))))))
 
+(defun pointer-window-label (window-proxy)
+  "Return the [focus] value for WINDOW-PROXY: the managed window it
+names, else its object id, else none."
+  (let ((win (and window-proxy (gethash window-proxy *windows*))))
+    (cond (win (focus-log-window win))
+          (window-proxy (format nil "~(~A~)" (focus-log-proxy-id window-proxy)))
+          (t "none"))))
+
 (defun handle-seat-event (seat event-name &rest args)
   "Dispatch river_seat_v1 events for SEAT."
   (case event-name
@@ -304,10 +326,18 @@ because the motion that sequence reports may predate the move."
      ;; manage sequence that follows (pointer-focus-manage-pass)
      (destructuring-bind (window-proxy) args
        (pointer-focus-put seat :entered (gethash window-proxy *windows*))
-       (pointer-focus-put seat :crossed t)))
+       (pointer-focus-put seat :crossed t)
+       (setf (seat-pointer-window seat) window-proxy)
+       (focus-log "pointer-enter"
+                  :seat (focus-log-seat seat)
+                  :window (pointer-window-label window-proxy))))
 
     (:pointer-leave
-     (pointer-focus-put seat :entered nil))
+     (pointer-focus-put seat :entered nil)
+     (focus-log "pointer-leave"
+                :seat (focus-log-seat seat)
+                :window (pointer-window-label (seat-pointer-window seat)))
+     (setf (seat-pointer-window seat) nil))
 
     (:window-interaction
      (destructuring-bind (window-proxy) args
@@ -317,7 +347,8 @@ because the motion that sequence reports may predate the move."
            ;; this window so the WM can give it keyboard focus.
            ;; Actually send the focus request (previously only the
            ;; internal slot was updated, so clicks never moved focus).
-           (focus-window win seat)
+           (let ((*focus-cause* :pointer))
+             (focus-window win seat))
            ;; Expose: a click during the overview picks the window
            ;; (redefined by expose.lisp, which loads later)
            (expose-clicked win)
@@ -377,18 +408,26 @@ because the motion that sequence reports may predate the move."
 
 (defun setup-keyboard-handler (seat keyboard)
   "Set up event handler for wl_keyboard key events."
-  (declare (ignore seat))
   (push (lambda (event-name &rest args)
           (case event-name
             (:keymap nil)
             (:enter
-             (format t "~&; Rhizome [debug]: keyboard enter surface~%"))
+             (destructuring-bind (serial surface &rest keys) args
+               (declare (ignore serial keys))
+               (focus-log "wm-keyboard-enter"
+                          :seat (focus-log-seat seat)
+                          :surface (focus-log-proxy-id surface))))
             (:leave
-             (format t "~&; Rhizome [debug]: keyboard leave surface~%"))
+             (destructuring-bind (serial surface) args
+               (declare (ignore serial))
+               (focus-log "wm-keyboard-leave"
+                          :seat (focus-log-seat seat)
+                          :surface (focus-log-proxy-id surface))))
             (:key
              (destructuring-bind (serial time key state) args
                (declare (ignore serial time))
-               (let ((keysym (evdev-to-xkb key *keyboard-shift-p*)))
+               (let ((keysym (evdev-to-xkb key *keyboard-shift-p*))
+                     (*focus-cause* :key))
                  (when *prompt-active*
                    (format t "~&; Rhizome [debug]: prompt key keysym=~A state=~A~%"
                            keysym state))
@@ -546,6 +585,12 @@ it stays on keys it does not change, so Shift+Return is \"S-Return\"."
   "Clear keyboard focus on SEAT. clear_focus is manage-sequence state:
 the request is queued for the next manage sequence, and one is
 requested."
+  (when (seat-focused-window seat)
+    (focus-log "focus"
+               :seat (focus-log-seat seat)
+               :from (focus-log-window (seat-focused-window seat))
+               :to "none"
+               :cause *focus-cause*))
   (queue-focus-request nil seat)
   (setf (seat-focused-window seat) nil)
   (request-manage-dirty))
