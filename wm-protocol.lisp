@@ -713,6 +713,56 @@ queues that nothing wakes it for."
         (wait-for-fd-input fd seconds)
         (progn (sleep seconds) nil))))
 
+(defvar *dispatch-context* nil
+  "Plist for the Wayland message being dispatched: :step (:read or
+:dispatch), :object (the sender's class name), :id, :opcode, and :event
+once read. Set rather than bound, so a handler outside the dispatch
+still reads it after the stack unwinds.")
+
+(defun dispatch-message (sender opcode buffer)
+  "Read the message with OPCODE in BUFFER as an event of SENDER, then
+run SENDER's hooks on it. Record each step in *dispatch-context*."
+  (setf *dispatch-context*
+        (list :step :read
+              :object (class-name (class-of sender))
+              :id (focus-log-proxy-id sender)
+              :opcode opcode))
+  (let ((event (wl::%read-event sender opcode buffer)))
+    (setf (getf *dispatch-context* :step) :dispatch
+          (getf *dispatch-context* :event) (first event))
+    (wl::%dispatch-event sender event)))
+
+(defun dispatch-events (display)
+  "Read and dispatch DISPLAY's next event and any others already
+waiting, as wl-display-dispatch-event does, through dispatch-message.
+Return the number of events dispatched. An error ends the batch; the
+events still waiting are read on the next call."
+  (setf *dispatch-context* nil)
+  (do ((events 0 (1+ events)))
+      ((and (plusp events)
+            (not (wl:wl-display-listen display)))
+       events)
+    (xyz.shunter.wayflan.wire:with-incoming-message
+        ((wl::%wl-display-socket display) sender-id opcode buffer)
+      (setf *dispatch-context*
+            (list :step :read :object :unknown :id sender-id :opcode opcode))
+      (dispatch-message (wl::%find-proxy! display sender-id) opcode buffer))))
+
+(defun report-dispatch-error (condition)
+  "Log CONDITION, signalled by event dispatch, with the message context
+in *dispatch-context*: the step, the object class and id, the opcode,
+and the event when it was read."
+  (let ((context *dispatch-context*))
+    (if context
+        (format t "~&; Rhizome: error in event dispatch (step=~(~A~) object=~(~A~) id=~A opcode=~A~@[ event=~(~A~)~]): ~A~%"
+                (getf context :step)
+                (getf context :object)
+                (getf context :id)
+                (getf context :opcode)
+                (getf context :event)
+                condition)
+        (format t "~&; Rhizome: error in event dispatch: ~A~%" condition))))
+
 (defun run ()
   "Start the rhizome window manager. Connects to the running river compositor."
   (setf *running* t
@@ -859,9 +909,9 @@ queues that nothing wakes it for."
                  while *running* do
              (handler-case
                  (when (wl:wl-display-listen display)
-                   (wl:wl-display-dispatch-event display))
+                   (dispatch-events display))
                (error (e)
-                 (format t "~&; Rhizome: error in event dispatch: ~A~%" e)))
+                 (report-dispatch-error e)))
              ;; River gone: stop, or the loop sleeps on a dead socket
              (when (display-connection-lost-p display)
                (format t "~&; Rhizome: compositor connection lost~%")

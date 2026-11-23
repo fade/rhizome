@@ -1,6 +1,12 @@
-;;; Tests for the [focus] log: one stamped line per keyboard focus
-;;; change, focus request sent, layer shell focus event, and WM
-;;; keyboard enter or leave. River requests are stubbed.
+;;; Tests for the [focus] log, which writes one stamped line per:
+;;;   - keyboard focus change
+;;;   - focus request sent, dropped, or queued during a capture
+;;;   - layer shell focus event
+;;;   - WM keyboard enter or leave
+;;;   - pointer enter or leave
+;;;   - window map, close, hide, show, or fullscreen change
+;;; Also tests the context an event dispatch error names. River
+;;; requests are stubbed.
 ;;;
 ;;; Event orders come from a recorded WM log of one C-' prefix capture
 ;;; on a Konsole window: key pressed C-', layer shell exclusive focus,
@@ -309,7 +315,46 @@
         (ok "focus requests are still sent with the log off"
             (reverse river)
             '((:focus :kb) (:focus :kb)))
-        (configure '(:debug (:focus t)))))
+        (configure '(:debug (:focus t))))
+
+      ;; Dispatch errors name the object, the opcode, and the step. The
+      ;; recorded error is a read on a destroyed proxy.
+      (let* ((proxy (make-instance 'rwm:river-window-v1))
+             (text (progn
+                     (setf (wl::%wl-proxy-id proxy) 21)
+                     (change-class proxy 'wl:wl-destroyed-proxy)
+                     (with-output-to-string (*standard-output*)
+                       (handler-case (dispatch-message proxy 0 nil)
+                         (error (e)
+                           (report-dispatch-error e)))))))
+        (ok "a read error on a destroyed proxy is reported"
+            (and (search "error in event dispatch" text) t)
+            t)
+        (ok "the report names the step, class, id, and opcode"
+            (list (has text "step=read")
+                  (has text "object=wl-destroyed-proxy")
+                  (has text "id=21")
+                  (has text "opcode=0"))
+            '(t t t t)))
+
+      ;; A handler error names the event read
+      (let* ((proxy (make-instance 'rwm:river-layer-shell-seat-v1))
+             (text (progn
+                     (setf (wl::%wl-proxy-id proxy) 40)
+                     (push (lambda (&rest args)
+                             (declare (ignore args))
+                             (error "handler failed"))
+                           (wl:wl-proxy-hooks proxy))
+                     (with-output-to-string (*standard-output*)
+                       (handler-case (dispatch-message proxy 2 nil)
+                         (error (e)
+                           (report-dispatch-error e)))))))
+        (ok "a handler error names the dispatch step and the event"
+            (list (has text "step=dispatch")
+                  (has text "event=focus-none")
+                  (has text "id=40")
+                  (has text "handler failed"))
+            '(t t t t))))
 
     (format t "~&=== ~A passed, ~A failed ===~%" pass fail)
     (unless (zerop fail) (uiop:quit 1))))
