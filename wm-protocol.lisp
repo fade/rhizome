@@ -359,6 +359,17 @@ with (:debug (:events t)) when diagnosing."
 
 ;;; --- Manage sequence --
 
+(defmacro with-sequence-step ((sequence step) &body body)
+  "Run BODY as STEP of a manage or render SEQUENCE. On an error, log
+SEQUENCE, STEP, and the condition, and return NIL. River waits for
+manage_finish / render_finish with no timeout and processes no input
+until it arrives, so a step that signals an error must not leave the
+pass before the finish request."
+  `(handler-case (progn ,@body)
+     (error (e)
+       (format t "~&; Rhizome: error in ~A step ~A: ~A~%" ,sequence ,step e)
+       nil)))
+
 (defun handle-manage-start ()
   "Begin a manage sequence. Process all pending state changes and send
 window management decisions to the compositor."
@@ -369,7 +380,8 @@ window management decisions to the compositor."
   (on-manage-sequence)
 
   ;; Refresh the WM snapshot for the bar
-  (update-wm-snapshot)
+  (with-sequence-step ("manage" "update-wm-snapshot")
+    (update-wm-snapshot))
 
   ;; Finish the manage sequence
   (rwm:river-window-manager-v1.manage-finish *wm-proxy*)
@@ -384,75 +396,90 @@ window management decisions to the compositor."
 
 (defun on-manage-sequence ()
   "Hook called during a manage sequence. The tiling engine and command
-handlers should make window management requests here."
+handlers should make window management requests here. Each step runs
+under WITH-SEQUENCE-STEP: a step that signals an error is logged and
+the remaining steps still run."
   (when (debug-events-p)
     (format t "~&; Rhizome [debug]: on-manage-sequence - ~D outputs, ~D windows~%"
             (hash-table-count *outputs*) (hash-table-count *windows*)))
 
   ;; Sync key grabs with the keymaps (builds the defaults once; never
   ;; writes user bindings)
-  (install-keybindings-if-needed)
+  (with-sequence-step ("manage" "install-keybindings-if-needed")
+    (install-keybindings-if-needed))
 
   ;; Enable the Alt+drag pointer bindings (defined in seat.lisp,
   ;; which loads later — same forward reference as keybindings)
-  (enable-pointer-bindings-if-needed)
+  (with-sequence-step ("manage" "enable-pointer-bindings-if-needed")
+    (enable-pointer-bindings-if-needed))
 
   ;; Mouse focus policy: under :sloppy the window the pointer moved
   ;; into takes focus (seat.lisp)
-  (pointer-focus-manage-pass)
+  (with-sequence-step ("manage" "pointer-focus-manage-pass")
+    (pointer-focus-manage-pass))
 
   ;; Focus requests queued by keybindings/interactions: focus_window
   ;; is manage-state, only legal inside a sequence
-  (flush-focus-requests)
+  (with-sequence-step ("manage" "flush-focus-requests")
+    (flush-focus-requests))
 
   ;; use_ssd / use_csd answer decoration hints: manage-state too
-  (sync-window-decorations)
+  (with-sequence-step ("manage" "sync-window-decorations")
+    (sync-window-decorations))
 
   ;; Windows whose remembered output awaited a connector name move
   ;; now, before this pass adopts them (workspaces.lisp)
-  (resolve-pending-window-outputs)
+  (with-sequence-step ("manage" "resolve-pending-window-outputs")
+    (resolve-pending-window-outputs))
 
   ;; New windows open on the current output; bind it once so every
-  ;; per-output pass uses the same output while focus moves
-  (let ((*arrival-output* (current-output)))
+  ;; per-output pass uses the same output while focus moves. NIL on
+  ;; an error falls back to the live current output per window.
+  (let ((*arrival-output* (with-sequence-step ("manage" "current-output")
+                            (current-output))))
     (maphash (lambda (output-proxy output)
                (declare (ignore output-proxy))
-               (when (debug-events-p)
-                 (format t "~&; Rhizome [debug]: output ~A dims ~Ax~A~%"
-                         output (output-width output) (output-height output)))
-               (apply-layout-for-output output))
+               (with-sequence-step ("manage" "apply-layout-for-output")
+                 (when (debug-events-p)
+                   (format t "~&; Rhizome [debug]: output ~A dims ~Ax~A~%"
+                           output (output-width output) (output-height output)))
+                 (apply-layout-for-output output)))
              *outputs*))
 
   ;; Advance interactive float move/resize operations (op-start,
   ;; op-delta application, op-end). Placeholder: redefined by
   ;; floating.lisp, which loads later.
-  (float-op-manage-pass)
+  (with-sequence-step ("manage" "float-op-manage-pass")
+    (float-op-manage-pass))
 
   ;; Flush pending fullscreen requests from the WM and from clients
   ;; (river_window_v1.fullscreen is a manage-sequence request)
-  (flush-fullscreen-requests)
+  (with-sequence-step ("manage" "flush-fullscreen-requests")
+    (flush-fullscreen-requests))
 
   ;; Auto-focus: focus a newly registered window once (not every
   ;; manage cycle), and only if it lives on the current workspace
-  (let ((win *pending-autofocus*))
-    (when (and win
-               (gethash (window-proxy win) *windows*)
-               ;; A new float goes where it lands first
-               (not (window-placement-pending-p win))
-               (let ((out (window-output win)))
-                 (or (null out)
-                     (eql (window-workspace win) (current-workspace out)))))
-      (setf *pending-autofocus* nil)
-      (dolist (seat (all-seats))
-        (format t "~&; Rhizome [debug]: auto-focusing window ~A on seat ~A~%" win seat)
-        (focus-window win seat))))
+  (with-sequence-step ("manage" "auto-focus")
+    (let ((win *pending-autofocus*))
+      (when (and win
+                 (gethash (window-proxy win) *windows*)
+                 ;; A new float goes where it lands first
+                 (not (window-placement-pending-p win))
+                 (let ((out (window-output win)))
+                   (or (null out)
+                       (eql (window-workspace win) (current-workspace out)))))
+        (setf *pending-autofocus* nil)
+        (dolist (seat (all-seats))
+          (format t "~&; Rhizome [debug]: auto-focusing window ~A on seat ~A~%" win seat)
+          (focus-window win seat)))))
 
   ;; Hot-swap takeover: once every remembered window has
   ;; re-registered (or enough passes passed — windows closed during
   ;; the gap never return), rebuild the frame trees and focus
-  (when (and (boundp '*takeover-state*) *takeover-state*)
-    (when (takeover-settled-p)
-      (apply-takeover-trees))))
+  (with-sequence-step ("manage" "takeover")
+    (when (and (boundp '*takeover-state*) *takeover-state*)
+      (when (takeover-settled-p)
+        (apply-takeover-trees)))))
 
 ;;; --- Render sequence --
 
@@ -465,7 +492,8 @@ z-ordering) to the compositor."
   (on-render-sequence)
 
   ;; Refresh the WM snapshot for the bar
-  (update-wm-snapshot)
+  (with-sequence-step ("render" "update-wm-snapshot")
+    (update-wm-snapshot))
 
   ;; Finish the render sequence
   (rwm:river-window-manager-v1.render-finish *wm-proxy*)
@@ -489,31 +517,40 @@ by floating.lisp."
 
 (defun on-render-sequence ()
   "Hook called during a render sequence. The tiling engine should set
-window positions, borders, and z-ordering here."
+window positions, borders, and z-ordering here. Each step runs under
+WITH-SEQUENCE-STEP: a step that signals an error is logged and the
+remaining steps still run."
   (when (debug-events-p)
     (format t "~&; Rhizome [debug]: on-render-sequence - ~D outputs, ~D windows~%"
             (hash-table-count *outputs*) (hash-table-count *windows*)))
   (maphash (lambda (output-proxy output)
              (declare (ignore output-proxy))
              ;; Render-sequence requests: presentation mode (VRR)
-             (apply-presentation-mode output)
-             (render-layout-for-output output))
+             (with-sequence-step ("render" "apply-presentation-mode")
+               (apply-presentation-mode output))
+             (with-sequence-step ("render" "render-layout-for-output")
+               (render-layout-for-output output)))
            *outputs*)
   ;; Pseudo-shadows on floating windows (river_decoration_v1).
   ;; Placeholder: redefined by decorations.lisp, which loads later.
-  (decorations-render-pass)
+  (with-sequence-step ("render" "decorations-render-pass")
+    (decorations-render-pass))
   ;; The focused-frame outline (river_shell_surface_v1).
   ;; Placeholder: redefined by frame-outline.lisp, which loads later.
-  (frame-outline-render-pass)
+  (with-sequence-step ("render" "frame-outline-render-pass")
+    (frame-outline-render-pass))
   ;; Float titlebars (river_decoration_v1 above the window).
   ;; Placeholder: redefined by titlebar.lisp, which loads later.
-  (titlebars-render-pass)
+  (with-sequence-step ("render" "titlebars-render-pass")
+    (titlebars-render-pass))
   ;; fselect's frame labels (river_shell_surface_v1).
   ;; Placeholder: redefined by fselect.lisp, which loads later.
-  (fselect-labels-render-pass)
+  (with-sequence-step ("render" "fselect-labels-render-pass")
+    (fselect-labels-render-pass))
   ;; The active-screen edge line (river_shell_surface_v1).
   ;; Placeholder: redefined by active-edge.lisp, which loads later.
-  (active-edge-render-pass))
+  (with-sequence-step ("render" "active-edge-render-pass")
+    (active-edge-render-pass)))
 
 ;;; --- Manage dirty --
 
