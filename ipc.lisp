@@ -40,7 +40,8 @@
         (setf thunk (pop *ipc-queue*)))
       (unless thunk (return))
       (handler-case
-          (funcall thunk)
+          (let ((*focus-cause* :command))
+            (funcall thunk))
         (serious-condition (e)
           (format t "~&; Rhizome: ipc command error: ~A~%"
                   (format-reply "~A" e)))))))

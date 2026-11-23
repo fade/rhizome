@@ -283,7 +283,10 @@ A request that signals an error is logged and dropped."
                 (let ((output (fullscreen-output win)))
                   (cond (output
                          (rwm:river-window-v1.fullscreen proxy output)
-                         (rwm:river-window-v1.inform-fullscreen proxy))
+                         (rwm:river-window-v1.inform-fullscreen proxy)
+                         (focus-log "fullscreen-on"
+                                    :window (focus-log-window win)
+                                    :output (focus-log-proxy-id output)))
                         (t
                          ;; River never saw it: match its state
                          (setf (window-fullscreen-p win) nil
@@ -291,7 +294,8 @@ A request that signals an error is logged and dropped."
                          (format t "~&; Rhizome: no output for fullscreen request~%"))))
                 (progn
                   (rwm:river-window-v1.exit-fullscreen proxy)
-                  (rwm:river-window-v1.inform-not-fullscreen proxy))))
+                  (rwm:river-window-v1.inform-not-fullscreen proxy)
+                  (focus-log "fullscreen-off" :window (focus-log-window win)))))
         (error (e)
           (format t "~&; Rhizome: fullscreen request failed: ~A~%" e))))))
 
@@ -312,7 +316,8 @@ Does nothing when WIN is NIL."
             (apply #'handle-window-event win event-name args))
           (wl:wl-proxy-hooks proxy))
     (run-hook :window-created win)
-    (format t "~&; Rhizome: new window registered~%")))
+    (format t "~&; Rhizome: new window registered~%")
+    (focus-log "window-map" :window (focus-log-window win))))
 
 (defun handle-window-event (win event-name &rest args)
   "Dispatch river_window_v1 events for WIN."
@@ -372,6 +377,7 @@ Does nothing when WIN is NIL."
 
         (:closed
          (format t "~&; Rhizome: window closed~%")
+         (focus-log "window-close" :window (focus-log-window win))
          (run-hook :window-closed win)
          ;; A raw window takes its raw keymap with it
          (when (window-raw-state win)
@@ -495,10 +501,16 @@ and switch-workspace (a keybinding path) is always outside one.")
 (defun queue-focus-request (win seat)
   "Queue a focus request for WIN on SEAT for the next manage sequence.
 One request per seat: the newest replaces any queued for SEAT. A NIL
-WIN queues a focus clear."
+WIN queues a focus clear. A request queued while the prefix capture
+holds the keyboard writes a [focus] line."
   (setf *pending-focus-requests*
         (remove seat *pending-focus-requests* :key #'cdr :test #'eq))
-  (push (cons win seat) *pending-focus-requests*))
+  (push (cons win seat) *pending-focus-requests*)
+  (when (and (boundp '*prefix-mode-active*)
+             (symbol-value '*prefix-mode-active*))
+    (focus-log "queued-during-capture"
+               :seat (focus-log-seat seat)
+               :to (focus-log-window win))))
 
 (defvar *workspace-last-focus* (make-hash-table :test 'equal)
   "The window last given keyboard focus on each workspace, keyed
@@ -537,8 +549,18 @@ borders/bars react at once. WIN becomes its workspace's entry in
 *workspace-last-focus*, and its output the output holding keyboard
 focus (note-keyboard-output). With RAISE (the default) WIN also becomes
 *raised-window*, the float stacked on top; pointer focus passes NIL.
-A change of focused raw state marks the key grabs dirty."
+A change of focused raw state marks the key grabs dirty. A change of
+SEAT's focused window writes a [focus] line naming *focus-cause*."
   (when (and (window-proxy win) (seat-proxy seat))
+    (unless (eq win (seat-focused-window seat))
+      (let ((output (window-output win)))
+        (focus-log "focus"
+                   :seat (focus-log-seat seat)
+                   :from (focus-log-window (seat-focused-window seat))
+                   :to (focus-log-window win)
+                   :cause *focus-cause*
+                   :output (or (and output (output-wl-output-name output)) "-")
+                   :workspace (or (window-workspace win) "-"))))
     (let ((raw-before (focused-raw-state)))
       ;; Clear focus on all other windows
       (dolist (w (all-windows))
@@ -577,16 +599,35 @@ pointer_warp modifies window management state, sequence-only.")
 (defun flush-focus-requests ()
   "Send queued focus requests and pointer warps (manage-sequence
 context: called from the manage pass). Dead windows are dropped.
-A queued NIL window sends clear_focus for its seat."
+A queued NIL window sends clear_focus for its seat.
+Each request sent or dropped writes a [focus] line; a focus_window for
+the window last sent on that seat is flagged REPEAT, since river
+ignores a focus_window for the window it already focuses."
   (dolist (r (nreverse *pending-focus-requests*))
     (let ((win (car r)) (seat (cdr r)))
       (cond ((null win)
              (when (seat-proxy seat)
-               (rwm:river-seat-v1.clear-focus (seat-proxy seat))))
+               (rwm:river-seat-v1.clear-focus (seat-proxy seat))
+               (setf (seat-focus-sent seat) nil)
+               (focus-log "flush"
+                          :request "clear_focus"
+                          :seat (focus-log-seat seat))))
             ((and (gethash (window-proxy win) *windows*)
                   (seat-proxy seat))
-             (rwm:river-seat-v1.focus-window (seat-proxy seat)
-                                             (window-proxy win))))))
+             (let ((repeat (eq win (seat-focus-sent seat))))
+               (rwm:river-seat-v1.focus-window (seat-proxy seat)
+                                               (window-proxy win))
+               (setf (seat-focus-sent seat) win)
+               (apply #'focus-log "flush"
+                      :request "focus_window"
+                      :seat (focus-log-seat seat)
+                      :to (focus-log-window win)
+                      (and repeat '(:flag "REPEAT")))))
+            (t
+             (focus-log "flush-dropped"
+                        :seat (focus-log-seat seat)
+                        :to (focus-log-window win)
+                        :reason "gone")))))
   (setf *pending-focus-requests* nil)
   ;; Queued window closes (MOD+Q): close is manage-state too
   (dolist (win (nreverse *pending-close-requests*))
@@ -664,7 +705,8 @@ its focus when there is none or the move does not take, then unmark
 WIN as focused. Request a manage sequence when any seat moved. Return
 the successor or NIL. Call while WIN is still registered."
   (let ((successor (close-successor win))
-        (moved nil))
+        (moved nil)
+        (*focus-cause* :close))
     (dolist (seat (all-seats))
       (when (eq (seat-focused-window seat) win)
         (setf moved t)
@@ -710,6 +752,9 @@ while one holds the keyboard."
         (when (and win
                    (seat-proxy seat)
                    (gethash (window-proxy win) *windows*))
+          (focus-log "reassert"
+                     :seat (focus-log-seat seat)
+                     :window (focus-log-window win))
           (queue-focus-request win seat)
           (incf queued))))
     (when (plusp queued)
@@ -871,14 +916,18 @@ clip is ignored while the window is fullscreen."
                                        x y width height)))
 
 (defun show-window (win)
-  "Show WIN (un-hide it) during a render sequence."
+  "Show WIN (un-hide it) during a render sequence. Callers send the
+request only on a transition, so the [focus] line it writes is one per change."
   (rwm:river-window-v1.show (window-proxy win))
-  (setf (window-hidden-p win) nil))
+  (setf (window-hidden-p win) nil)
+  (focus-log "window-show" :window (focus-log-window win)))
 
 (defun hide-window (win)
-  "Hide WIN during a render sequence."
+  "Hide WIN during a render sequence. Callers send the request only on
+a transition, so the [focus] line it writes is one per change."
   (rwm:river-window-v1.hide (window-proxy win))
-  (setf (window-hidden-p win) t))
+  (setf (window-hidden-p win) t)
+  (focus-log "window-hide" :window (focus-log-window win)))
 
 (defun make-window-node (win)
   "Create the render list node for WIN. Must be called once per window."

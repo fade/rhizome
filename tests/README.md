@@ -53,6 +53,16 @@ stubbed river requests. Run with:
   back in the next manage pass without changing focus state;
   focus_exclusive and focus_non_exclusive are logged and queue nothing;
   a missing or closed window gets nothing.
+- `focus-log.lisp` - the [focus] log. Each line carries a UTC stamp
+  with milliseconds. One line is written per focus change (from, to,
+  cause), per focus_window or clear_focus sent, and per dropped
+  request. A focus_window for the window last sent is flagged REPEAT.
+  Layer shell focus events, WM keyboard enter and leave, pointer enter
+  and leave, a request queued during the prefix capture, and the
+  autofocus a `:focus nil` window rule suppresses each write a line;
+  `(:debug (:focus nil))` silences them all. A dispatch error names
+  the step, the object class and id, the opcode, and the event.
+  The capture cycle follows a recorded WM log.
 - `frames.lisp` — frame tree operations: splits, merges, resizes,
   directional focus, cycling, tree construction from rectangles,
   layout templates, and manage/render integration.

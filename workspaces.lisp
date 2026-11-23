@@ -139,7 +139,8 @@ seat focused on a window of OUTPUT has its focus cleared."
     (run-hook :workspace-changed workspace output)
     ;; Focus the workspace's window; with none, no seat may keep a
     ;; window the output no longer shows
-    (let ((target (workspace-focus-target output workspace)))
+    (let ((target (workspace-focus-target output workspace))
+          (*focus-cause* :workspace-switch))
       (dolist (seat (all-seats))
         (cond (target
                (focus-window target seat))
@@ -311,7 +312,8 @@ focuses the window. :raw T puts the window in raw mode (see
 toggle-raw-mode).
 :focus NIL places the window as the rest of the rule says but gives it
 no keyboard focus on map, provided the client names itself before its
-first manage pass: the pending autofocus is dropped, and with
+first manage pass: the pending autofocus is dropped with a [focus]
+autofocus-suppressed line naming WIN, and with
 :follow the output switches and focus goes where a workspace switch
 sends it, never to WIN. With :raw T, the raw key grabs start only
 once WIN has focus.
@@ -382,7 +384,10 @@ An absent :focus, or :focus T, leaves focus behaviour unchanged."
             (when out
               (switch-workspace workspace out))))
         (when (and no-focus (eq *pending-autofocus* win))
-          (setf *pending-autofocus* nil))
+          (setf *pending-autofocus* nil)
+          (focus-log "autofocus-suppressed"
+                     :window (focus-log-window win)
+                     :reason "rule"))
         (request-manage-dirty)
         (format t "~&; Rhizome: window rule ~S applied to ~A~%"
                 rule (or (window-app-id win) (window-title win) win))

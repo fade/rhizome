@@ -48,7 +48,7 @@ SUITES    := animations decorations surface window-rules window-rules-reload flo
              grow-frame launch-directory bar-launch-core \
              compositor-loss prompt-popup keyboard-output raw-mode \
              idle-wait frame-pacing workspace-slide drag-cancel \
-             rule-no-focus sequence-finish
+             rule-no-focus sequence-finish focus-log
 
 .PHONY: all build test install docs clean help
 
