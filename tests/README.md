@@ -380,3 +380,7 @@ stubbed river requests. Run with:
   sbcl that starts), exits without starting the window manager when
   one is missing, and otherwise logs the rhizome source tree and hands
   over to river-init.
+- `sequence-finish.lisp` - a manage or render step that signals an
+  error is logged by name, the remaining steps still run, and
+  manage_finish / render_finish is sent exactly once, so the sequence
+  never stays open; a normal pass runs its steps in order.
