@@ -58,9 +58,10 @@ stubbed river requests. Run with:
   cause), per focus_window or clear_focus sent, and per dropped
   request. A focus_window for the window last sent is flagged REPEAT.
   Layer shell focus events, WM keyboard enter and leave, pointer enter
-  and leave, and a request queued during the prefix capture each write
-  a line; `(:debug (:focus nil))` silences them all. A dispatch error
-  names the step, the object class and id, the opcode, and the event.
+  and leave, a request queued during the prefix capture, and the
+  autofocus a `:focus nil` window rule suppresses each write a line;
+  `(:debug (:focus nil))` silences them all. A dispatch error names
+  the step, the object class and id, the opcode, and the event.
   The capture cycle follows a recorded WM log.
 - `frames.lisp` — frame tree operations: splits, merges, resizes,
   directional focus, cycling, tree construction from rectangles,

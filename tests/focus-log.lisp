@@ -293,6 +293,29 @@
             (has (second lines) "window=ka:")
             t))
 
+      ;; A :focus nil window rule keeps a newly mapped window from
+      ;; autofocus. No recording holds this; the rule and the pending
+      ;; autofocus are set directly.
+      (start)
+      (let ((b (make-win :kb *konsole-title-2*)))
+        (setf (window-app-id b) "quiet"
+              *pending-autofocus* b)
+        (configure '(:window-rules ((:match "^quiet$" :focus nil))))
+        (let* ((text (with-output-to-string (*standard-output*)
+                       (apply-window-rules b)))
+               (lines (focus-lines text)))
+          (ok "a :focus nil rule logs the autofocus it suppresses"
+              (events text)
+              '("autofocus-suppressed"))
+          (ok "the suppression line names the window and the rule"
+              (list (has (first lines) "window=kb:quiet:")
+                    (has (first lines) "reason=rule"))
+              '(t t))
+          (ok "the suppressed window gets no autofocus or focus request"
+              (list *pending-autofocus* *pending-focus-requests*)
+              '(nil nil)))
+        (configure '(:window-rules nil)))
+
       ;; (:debug (:focus nil)) silences every [focus] line
       (let* ((seat (start))
              (b (make-win :kb *konsole-title-2*))
